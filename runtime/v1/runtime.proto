@@ -1,0 +1,655 @@
+// Package runtime.v1 is the k3sm node runtime contract: the gRPC API the
+// k3sm Virtual Kubelet provider (k3sm.io/k3sm) calls and the native runtime
+// daemon (k3sm.io/runtimed) implements. Pods run as native Darwin processes
+// (no Linux, no chroot) confined by a per-pod Seatbelt profile — see
+// k3sm/docs/DESIGN.md §5a.
+//
+// Stability contract: field numbers are STABLE and the surface is
+// ADDITIVE-ONLY forever. Never renumber or repurpose a field; never reuse a
+// reserved number/name. `buf breaking` (WIRE_JSON) enforces this.
+syntax = "proto3";
+
+package k3sm.runtime.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/rpc/status.proto";
+
+option go_package = "k3sm.io/apis/runtime/v1;runtimev1";
+
+// Runtime is the node-local pod runtime. Every RPC is pod-granular: the unit
+// of work is a whole Pod (a "PodBox"), never an individual container, because
+// k3sm has no namespaces — a pod is one process group / uid / Seatbelt domain.
+//
+// RPC numbering note: gRPC method names (not numbers) are the wire identity, so
+// there is no numeric range to reserve. The M2 process-split adds resource and
+// metrics RPCs (e.g. UpdatePodResources, ListPodStats) to THIS service —
+// append-only; do not remove or rename the methods below.
+service Runtime {
+  // CreatePod materializes and starts a PodBox: it creates the per-pod dir,
+  // applies the Seatbelt profile, and posix_spawns each container as a native
+  // process. Idempotent on pod id (a second call for a live pod is a no-op).
+  rpc CreatePod(CreatePodRequest) returns (CreatePodResponse);
+
+  // DeletePod kills the pod's process group (SIGKILL), tears down the PodBox,
+  // and forgets it. Idempotent: deleting an unknown pod succeeds.
+  rpc DeletePod(DeletePodRequest) returns (DeletePodResponse);
+
+  // UpdatePod applies an in-place spec change to a running pod (e.g. an
+  // annotation or, at M2, a resource limit). The runtime decides what is
+  // updatable in place vs. requires recreate; non-updatable fields are an error.
+  rpc UpdatePod(UpdatePodRequest) returns (UpdatePodResponse);
+
+  // WatchPodStatus is a server stream of PodStatus snapshots. The VK
+  // PodNotifier consumes this to drive kubectl Pod state event-driven, with no
+  // polling. The server SHOULD emit the current status immediately on subscribe
+  // and then on every transition. Watching a single pod (pod_id set) or all
+  // pods on the node (pod_id empty) are both valid.
+  rpc WatchPodStatus(WatchPodStatusRequest) returns (stream PodStatusEvent);
+
+  // GetPodStatus returns a single point-in-time PodStatus (the request/response
+  // counterpart to WatchPodStatus, for callers that don't want a stream).
+  rpc GetPodStatus(GetPodStatusRequest) returns (GetPodStatusResponse);
+
+  // GetLogs is a server stream of a container's combined stdout/stderr. Honors
+  // follow/tail/since like `kubectl logs`.
+  rpc GetLogs(GetLogsRequest) returns (stream LogEntry);
+
+  // Exec runs a command in a container (`kubectl exec`). Bidirectional stream:
+  // client sends stdin + a resize channel, server sends stdout/stderr and a
+  // final exit code.
+  rpc Exec(stream ExecRequest) returns (stream ExecResponse);
+
+  // Attach attaches to a container's running process streams (`kubectl attach`).
+  rpc Attach(stream AttachRequest) returns (stream AttachResponse);
+
+  // PortForward forwards a local stream to a pod port (`kubectl port-forward`).
+  // Bidirectional: framed payloads carry the per-connection port + bytes.
+  rpc PortForward(stream PortForwardRequest) returns (stream PortForwardResponse);
+
+  // GetRuntimeInfo returns the daemon's version and health. The M2 process
+  // split (provider and runtimed as separate processes) uses this for the
+  // version-compat handshake across the IPC boundary.
+  rpc GetRuntimeInfo(GetRuntimeInfoRequest) returns (GetRuntimeInfoResponse);
+}
+
+// ---------------------------------------------------------------------------
+// PodBox — the runtime's unit of execution (DESIGN §5a).
+// ---------------------------------------------------------------------------
+
+// PodBox is everything the runtime needs to instantiate one pod as a native
+// process group: identity, rootfs, the uid/gid it runs as, its loopback pod
+// IP, and the inputs the SBPL generator turns into a default-deny Seatbelt
+// profile. This is the SINGLE definition of a PodBox — there is no parallel
+// hand-written Go struct.
+message PodBox {
+  // pod_id is the stable runtime id for the pod (the kube Pod UID).
+  string pod_id = 1;
+
+  // namespace and name are the kube coordinates, for logs/diagnostics.
+  string namespace = 2;
+  string name = 3;
+
+  // rootfs_path is the per-pod dir, e.g. /var/lib/k3sm/pods/<id>/rootfs, into
+  // which image payloads are clonefile'd and run in place at host paths.
+  string rootfs_path = 4;
+
+  // uid and gid are the dedicated user/group the pod's processes run as.
+  uint32 uid = 5;
+  uint32 gid = 6;
+
+  // pod_ip is the lo0 alias (a /32 from the node podCIDR) the runtime binds the
+  // pod's processes to. pod_ips carries dual-stack if ever applicable; pod_ips[0]
+  // == pod_ip.
+  string pod_ip = 7;
+  repeated string pod_ips = 8;
+
+  // containers are the workloads to spawn, in order. init_containers run first,
+  // sequentially, each to completion.
+  repeated Container init_containers = 9;
+  repeated Container containers = 10;
+
+  // sandbox_profile carries the inputs the SBPL generator needs to emit the
+  // per-pod default-deny Seatbelt profile.
+  SandboxProfile sandbox_profile = 11;
+
+  // signature_policy is the binary-signature gate enforced before exec.
+  SignaturePolicy signature_policy = 12;
+
+  // labels and annotations mirror the kube object metadata the runtime needs.
+  map<string, string> labels = 13;
+  map<string, string> annotations = 14;
+
+  reserved 100 to 199; // M2: resource limits (mem bytes, QoS class, RLIMITs).
+}
+
+// Container is one workload process within a PodBox.
+message Container {
+  // name is unique within the pod.
+  string name = 1;
+
+  // image is the OCI image reference (or, for the M0 convention, a host binary
+  // path when command/args are empty).
+  string image = 2;
+
+  // command and args form argv: argv = command + args. If both are empty the
+  // image reference is treated as the binary path (M0 convention).
+  repeated string command = 3;
+  repeated string args = 4;
+
+  // working_dir is the process working directory (empty = pod rootfs default).
+  string working_dir = 5;
+
+  // env are the environment variables, merged over the host environment.
+  repeated EnvVar env = 6;
+
+  // tty requests a pseudo-terminal for the container's process.
+  bool tty = 7;
+
+  // stdin keeps stdin open for the container's process.
+  bool stdin = 8;
+
+  reserved 100 to 149; // M2: per-container resource limits / probes.
+}
+
+// EnvVar is a single environment variable.
+message EnvVar {
+  string name = 1;
+  string value = 2;
+}
+
+// SandboxProfile is the input to the per-pod SBPL (Seatbelt) generator. The
+// generator always emits a default-deny profile with the dyld/mach baseline
+// `(import "system.sb")`; these fields scope the allow-list on top of it.
+message SandboxProfile {
+  // backend selects the isolation backend (OS-version-gated; see DESIGN §5a).
+  SandboxBackend backend = 1;
+
+  // data_volume_path is the only path the pod may write (its APFS data volume);
+  // typically the rootfs_path. Reads of /System, /usr, dyld cache, and the pod
+  // dir are always granted by the baseline.
+  string data_volume_path = 2;
+
+  // extra_read_paths and extra_write_paths widen the allow-list for workloads
+  // that need host paths beyond the baseline (e.g. hostPath volumes). Keep
+  // minimal — every entry weakens isolation.
+  repeated string extra_read_paths = 3;
+  repeated string extra_write_paths = 4;
+
+  // allow_network, when false, denies all network (default-deny). When true,
+  // the runtime scopes network-bind/outbound to the pod IP.
+  bool allow_network = 5;
+
+  reserved 100 to 149; // M2: fine-grained mach-service / sysctl allow rules.
+}
+
+// SandboxBackend is the pod isolation mechanism. UNSPECIFIED means the runtime
+// picks the best available for the host OS version.
+enum SandboxBackend {
+  SANDBOX_BACKEND_UNSPECIFIED = 0;
+  // SEATBELT_EXEC shells out to sandbox-exec with a generated profile.
+  SANDBOX_BACKEND_SEATBELT_EXEC = 1;
+  // SEATBELT_INPROC applies the profile in-process via libsandbox (private SPI).
+  SANDBOX_BACKEND_SEATBELT_INPROC = 2;
+  // UIDJAIL is the uid-isolation fallback (no Seatbelt).
+  SANDBOX_BACKEND_UIDJAIL = 3;
+  // VM runs the pod in a Virtualization.framework micro-VM (untrusted tenancy).
+  SANDBOX_BACKEND_VM = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Image manifest + signature policy (DESIGN §5a, image/rootfs).
+// ---------------------------------------------------------------------------
+
+// SignaturePolicy is the binary-signature gate enforced before exec.
+// UNSPECIFIED is 0 and FAIL-CLOSED: a decoder that sees the zero value MUST
+// treat it as "no policy specified" and refuse to run unverified code rather
+// than silently allowing ad-hoc binaries.
+enum SignaturePolicy {
+  SIGNATURE_POLICY_UNSPECIFIED = 0;
+  // ADHOC_OK permits unsigned binaries after ad-hoc signing (codesign -s - -f)
+  // on pull — the dev default.
+  SIGNATURE_POLICY_ADHOC_OK = 1;
+  // REQUIRE_SIGNED requires a valid (any-authority) code signature.
+  SIGNATURE_POLICY_REQUIRE_SIGNED = 2;
+  // REQUIRE_NOTARIZED requires an Apple-notarized signature — the strictest.
+  SIGNATURE_POLICY_REQUIRE_NOTARIZED = 3;
+}
+
+// ImageManifest describes an OCI image as an artifact: the config descriptor
+// plus the ordered layer descriptors. Mirrors the OCI image-manifest shape so
+// the runtime can pull → content-address → clonefile into the pod dir.
+message ImageManifest {
+  // reference is the pull reference (e.g. registry/repo:tag or @digest).
+  string reference = 1;
+
+  // media_type is the manifest media type
+  // (application/vnd.oci.image.manifest.v1+json).
+  string media_type = 2;
+
+  // config is the image config descriptor.
+  Descriptor config = 3;
+
+  // layers are the layer descriptors in apply order.
+  repeated Descriptor layers = 4;
+
+  // annotations are arbitrary manifest annotations.
+  map<string, string> annotations = 5;
+
+  reserved 100 to 149; // M2: platform / subject (referrers) fields.
+}
+
+// Descriptor is an OCI content descriptor (media type, digest, size).
+message Descriptor {
+  // media_type is the descriptor's media type.
+  string media_type = 1;
+
+  // digest is the content digest, "<algo>:<hex>" (e.g. sha256:...).
+  string digest = 2;
+
+  // size is the content size in bytes.
+  int64 size = 3;
+
+  // urls are optional alternate download locations.
+  repeated string urls = 4;
+
+  // annotations are arbitrary descriptor annotations.
+  map<string, string> annotations = 5;
+
+  // platform, when set, constrains the descriptor to an OS/arch.
+  Platform platform = 6;
+}
+
+// Platform is an OCI platform constraint (e.g. os=darwin, arch=arm64).
+message Platform {
+  string os = 1;
+  string architecture = 2;
+  string variant = 3;
+  string os_version = 4;
+}
+
+// ---------------------------------------------------------------------------
+// PodStatus — a LOSSLESS mirror of k8s.io/api/core/v1 PodStatus so kubectl Pod
+// state never degrades crossing the runtime boundary.
+// ---------------------------------------------------------------------------
+
+// PodPhase mirrors corev1.PodPhase.
+enum PodPhase {
+  POD_PHASE_UNSPECIFIED = 0;
+  POD_PHASE_PENDING = 1;
+  POD_PHASE_RUNNING = 2;
+  POD_PHASE_SUCCEEDED = 3;
+  POD_PHASE_FAILED = 4;
+  POD_PHASE_UNKNOWN = 5;
+}
+
+// ConditionStatus mirrors corev1.ConditionStatus (True/False/Unknown).
+enum ConditionStatus {
+  CONDITION_STATUS_UNSPECIFIED = 0;
+  CONDITION_STATUS_TRUE = 1;
+  CONDITION_STATUS_FALSE = 2;
+  CONDITION_STATUS_UNKNOWN = 3;
+}
+
+// PodStatus is a lossless mirror of corev1.PodStatus for the fields the k3sm
+// provider sets (and headroom for the rest). String type/reason/message fields
+// are carried verbatim so the provider can round-trip them into corev1.
+message PodStatus {
+  // pod_id is the pod this status belongs to (the kube Pod UID).
+  string pod_id = 1;
+
+  // phase is the pod lifecycle phase.
+  PodPhase phase = 2;
+
+  // conditions are all pod conditions (Initialized, Ready, ContainersReady,
+  // PodScheduled, …).
+  repeated PodCondition conditions = 3;
+
+  // message and reason are human/machine-readable status detail.
+  string message = 4;
+  string reason = 5;
+
+  // host_ip / host_ips are the node IP(s).
+  string host_ip = 6;
+  repeated string host_ips = 7;
+
+  // pod_ip / pod_ips are the pod IP(s); pod_ips[0] == pod_ip.
+  string pod_ip = 8;
+  repeated string pod_ips = 9;
+
+  // start_time is when the kubelet acknowledged the pod (RFC3339).
+  google.protobuf.Timestamp start_time = 10;
+
+  // qos_class mirrors corev1 QOSClass ("Guaranteed"/"Burstable"/"BestEffort").
+  string qos_class = 11;
+
+  // nominated_node_name mirrors corev1 (scheduler preemption hint).
+  string nominated_node_name = 12;
+
+  // init_container_statuses and container_statuses carry per-container state.
+  repeated ContainerStatus init_container_statuses = 13;
+  repeated ContainerStatus container_statuses = 14;
+
+  // ephemeral_container_statuses carries `kubectl debug` container state.
+  repeated ContainerStatus ephemeral_container_statuses = 15;
+
+  reserved 100 to 149; // M2: resourceClaimStatuses, resize, observedGeneration.
+}
+
+// PodCondition mirrors corev1.PodCondition.
+message PodCondition {
+  // type is the condition type ("Ready", "Initialized", …), carried verbatim.
+  string type = 1;
+  // status is True/False/Unknown.
+  ConditionStatus status = 2;
+  // last_probe_time / last_transition_time are RFC3339 timestamps.
+  google.protobuf.Timestamp last_probe_time = 3;
+  google.protobuf.Timestamp last_transition_time = 4;
+  // reason and message explain the condition.
+  string reason = 5;
+  string message = 6;
+}
+
+// ContainerStatus mirrors corev1.ContainerStatus.
+message ContainerStatus {
+  // name is the container name.
+  string name = 1;
+  // state is the current state (running / terminated / waiting).
+  ContainerState state = 2;
+  // last_termination_state is the previous terminated state, if any.
+  ContainerState last_termination_state = 3;
+  // ready reflects readiness-probe success.
+  bool ready = 4;
+  // restart_count is the number of times the container has restarted.
+  int32 restart_count = 5;
+  // image and image_id identify the running image.
+  string image = 6;
+  string image_id = 7;
+  // container_id is the runtime container id.
+  string container_id = 8;
+  // started reflects whether the startup probe has succeeded. Optional in
+  // corev1 (*bool); started_set distinguishes false from unset.
+  bool started = 9;
+  bool started_set = 10;
+
+  reserved 100 to 149; // M2: resources, allocatedResources, volumeMounts.
+}
+
+// ContainerState mirrors corev1.ContainerState: exactly one of the three is
+// set, matching the kube semantics (a pointer-per-state union).
+message ContainerState {
+  ContainerStateWaiting waiting = 1;
+  ContainerStateRunning running = 2;
+  ContainerStateTerminated terminated = 3;
+}
+
+// ContainerStateWaiting mirrors corev1.ContainerStateWaiting.
+message ContainerStateWaiting {
+  string reason = 1;
+  string message = 2;
+}
+
+// ContainerStateRunning mirrors corev1.ContainerStateRunning.
+message ContainerStateRunning {
+  google.protobuf.Timestamp started_at = 1;
+}
+
+// ContainerStateTerminated mirrors corev1.ContainerStateTerminated.
+message ContainerStateTerminated {
+  int32 exit_code = 1;
+  int32 signal = 2;
+  string reason = 3;
+  string message = 4;
+  google.protobuf.Timestamp started_at = 5;
+  google.protobuf.Timestamp finished_at = 6;
+  string container_id = 7;
+}
+
+// ---------------------------------------------------------------------------
+// RPC request/response messages.
+// ---------------------------------------------------------------------------
+
+// CreatePodRequest carries the PodBox to instantiate.
+message CreatePodRequest {
+  PodBox pod = 1;
+  reserved 100 to 149;
+}
+
+// CreatePodResponse returns the initial status and a structured failure. status
+// is OK on success; on failure error carries a google.rpc.Status (code +
+// message + details) so the reason crosses the wire actionably, and
+// failure_reason gives a typed, switchable cause.
+message CreatePodResponse {
+  PodStatus status = 1;
+  google.rpc.Status error = 2;
+  FailureReason failure_reason = 3;
+  reserved 100 to 149;
+}
+
+// DeletePodRequest identifies the pod to delete.
+message DeletePodRequest {
+  string pod_id = 1;
+  // grace_period_seconds is the SIGTERM→SIGKILL window; 0 means immediate kill.
+  int64 grace_period_seconds = 2;
+  reserved 100 to 149;
+}
+
+// DeletePodResponse returns a structured failure (empty on success).
+message DeletePodResponse {
+  google.rpc.Status error = 1;
+  FailureReason failure_reason = 2;
+  reserved 100 to 149;
+}
+
+// UpdatePodRequest carries the desired PodBox; the runtime applies what it can
+// in place.
+message UpdatePodRequest {
+  PodBox pod = 1;
+  reserved 100 to 149;
+}
+
+// UpdatePodResponse returns the resulting status and a structured failure.
+message UpdatePodResponse {
+  PodStatus status = 1;
+  google.rpc.Status error = 2;
+  FailureReason failure_reason = 3;
+  reserved 100 to 149;
+}
+
+// WatchPodStatusRequest selects what to watch. pod_id empty = all pods on the
+// node.
+message WatchPodStatusRequest {
+  string pod_id = 1;
+}
+
+// PodStatusEventType distinguishes adds/updates from deletes on the watch.
+enum PodStatusEventType {
+  POD_STATUS_EVENT_TYPE_UNSPECIFIED = 0;
+  POD_STATUS_EVENT_TYPE_ADDED = 1;
+  POD_STATUS_EVENT_TYPE_MODIFIED = 2;
+  POD_STATUS_EVENT_TYPE_DELETED = 3;
+}
+
+// PodStatusEvent is one item on the WatchPodStatus stream.
+message PodStatusEvent {
+  PodStatusEventType type = 1;
+  PodStatus status = 2;
+}
+
+// GetPodStatusRequest identifies the pod.
+message GetPodStatusRequest {
+  string pod_id = 1;
+}
+
+// GetPodStatusResponse returns the status (error set if the pod is unknown).
+message GetPodStatusResponse {
+  PodStatus status = 1;
+  google.rpc.Status error = 2;
+}
+
+// GetLogsRequest selects a container's logs and the streaming options.
+message GetLogsRequest {
+  string pod_id = 1;
+  string container = 2;
+  // follow streams new lines as they are written (`kubectl logs -f`).
+  bool follow = 3;
+  // tail_lines, if > 0, starts from the last N lines.
+  int64 tail_lines = 4;
+  // since_time, if set, filters to entries at/after this time.
+  google.protobuf.Timestamp since_time = 5;
+  // timestamps prefixes each entry with its RFC3339 time.
+  bool timestamps = 6;
+  // previous returns logs from the previous terminated instance.
+  bool previous = 7;
+  // limit_bytes, if > 0, caps the bytes returned.
+  int64 limit_bytes = 8;
+}
+
+// LogEntry is one chunk of container output on the GetLogs stream.
+message LogEntry {
+  // line is the raw bytes (may be a partial line for large writes).
+  bytes line = 1;
+  // timestamp is when the line was written.
+  google.protobuf.Timestamp timestamp = 2;
+  // stream identifies stdout vs stderr.
+  LogStream stream = 3;
+}
+
+// LogStream identifies a container output stream.
+enum LogStream {
+  LOG_STREAM_UNSPECIFIED = 0;
+  LOG_STREAM_STDOUT = 1;
+  LOG_STREAM_STDERR = 2;
+}
+
+// ExecRequest frames a `kubectl exec`. The first message SHOULD set the exec
+// parameters (pod_id, container, command, tty); subsequent messages carry
+// stdin and resize events.
+message ExecRequest {
+  string pod_id = 1;
+  string container = 2;
+  repeated string command = 3;
+  bool tty = 4;
+  bool stdin = 5;
+  bool stdout = 6;
+  bool stderr = 7;
+  // stdin_data carries input bytes for an already-started exec.
+  bytes stdin_data = 8;
+  // resize carries terminal size changes for a tty exec.
+  TerminalSize resize = 9;
+}
+
+// ExecResponse streams a container exec's output and final exit code.
+message ExecResponse {
+  bytes stdout = 1;
+  bytes stderr = 2;
+  // exit, when set, is the terminal result; the server closes the stream after.
+  ExecResult exit = 3;
+}
+
+// ExecResult is the terminal outcome of an exec.
+message ExecResult {
+  int32 exit_code = 1;
+  google.rpc.Status error = 2;
+}
+
+// AttachRequest frames a `kubectl attach`.
+message AttachRequest {
+  string pod_id = 1;
+  string container = 2;
+  bool stdin = 3;
+  bool stdout = 4;
+  bool stderr = 5;
+  bool tty = 6;
+  bytes stdin_data = 7;
+  TerminalSize resize = 8;
+}
+
+// AttachResponse streams attach output.
+message AttachResponse {
+  bytes stdout = 1;
+  bytes stderr = 2;
+  ExecResult exit = 3;
+}
+
+// PortForwardRequest frames a `kubectl port-forward` payload: bytes destined
+// for a pod port on a logical connection.
+message PortForwardRequest {
+  string pod_id = 1;
+  // port is the pod-side TCP port.
+  int32 port = 2;
+  // connection_id multiplexes multiple forwarded connections on one stream.
+  uint64 connection_id = 3;
+  // data is the forwarded bytes.
+  bytes data = 4;
+  // close signals the connection should be half/fully closed.
+  bool close = 5;
+}
+
+// PortForwardResponse streams bytes from the pod back to the client.
+message PortForwardResponse {
+  uint64 connection_id = 1;
+  bytes data = 2;
+  bool close = 3;
+  google.rpc.Status error = 4;
+}
+
+// TerminalSize is a tty window size.
+message TerminalSize {
+  uint32 width = 1;
+  uint32 height = 2;
+}
+
+// GetRuntimeInfoRequest is empty (reserved for future filters).
+message GetRuntimeInfoRequest {}
+
+// GetRuntimeInfoResponse reports the daemon version + health for the M2 process
+// split's version-compat handshake.
+message GetRuntimeInfoResponse {
+  // runtime_name is the implementation name (e.g. "k3sm-runtimed").
+  string runtime_name = 1;
+  // runtime_version is the daemon's semantic version.
+  string runtime_version = 2;
+  // api_version is the runtime/v1 contract version this daemon speaks.
+  string api_version = 3;
+  // healthy is the overall readiness; conditions detail subsystems.
+  bool healthy = 4;
+  repeated RuntimeCondition conditions = 5;
+  reserved 100 to 149; // M2: backend capabilities, OS version, feature flags.
+}
+
+// RuntimeCondition is a single daemon subsystem health signal.
+message RuntimeCondition {
+  string type = 1;
+  ConditionStatus status = 2;
+  string reason = 3;
+  string message = 4;
+}
+
+// FailureReason is a typed, switchable cause for a failed pod operation,
+// complementing the google.rpc.Status detail. UNSPECIFIED means "no typed
+// reason" (consult the rpc.Status).
+enum FailureReason {
+  FAILURE_REASON_UNSPECIFIED = 0;
+  // INVALID_POD_BOX: the PodBox failed validation (missing id, rootfs, …).
+  FAILURE_REASON_INVALID_POD_BOX = 1;
+  // IMAGE_PULL: the image could not be pulled.
+  FAILURE_REASON_IMAGE_PULL = 2;
+  // SIGNATURE_REJECTED: a binary failed the SignaturePolicy gate.
+  FAILURE_REASON_SIGNATURE_REJECTED = 3;
+  // SANDBOX_SETUP: the Seatbelt profile failed to compile/apply.
+  FAILURE_REASON_SANDBOX_SETUP = 4;
+  // ROOTFS_SETUP: materializing the rootfs (clonefile) failed.
+  FAILURE_REASON_ROOTFS_SETUP = 5;
+  // SPAWN: posix_spawn of a container process failed.
+  FAILURE_REASON_SPAWN = 6;
+  // NOT_FOUND: the referenced pod does not exist.
+  FAILURE_REASON_NOT_FOUND = 7;
+  // ALREADY_EXISTS: the pod id is already live.
+  FAILURE_REASON_ALREADY_EXISTS = 8;
+  // NOT_UPDATABLE: an UpdatePod touched a field that requires recreate.
+  FAILURE_REASON_NOT_UPDATABLE = 9;
+  // RESOURCE_EXHAUSTED: the node lacks capacity (uid/IP/fd) to admit the pod.
+  FAILURE_REASON_RESOURCE_EXHAUSTED = 10;
+  // INTERNAL: an unexpected runtime error.
+  FAILURE_REASON_INTERNAL = 11;
+}

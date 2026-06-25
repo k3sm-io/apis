@@ -1,0 +1,25 @@
+version: v2
+modules:
+  - path: .
+deps:
+  # Supplies google/rpc/status.proto (the structured Create/Delete error model).
+  # Imports resolve to the existing google.golang.org/genproto/googleapis/rpc Go
+  # package (already pulled in transitively by grpc) — buf generate does NOT emit
+  # a copy. google/protobuf/* well-known types are bundled with buf itself.
+  - buf.build/googleapis/googleapis
+lint:
+  use:
+    - STANDARD
+  except:
+    # The package is k3sm.runtime.v1 but the dir is runtime/v1 (go_package
+    # k3sm.io/apis/runtime/v1) — the repo is already namespaced as k3sm.io/apis,
+    # so a leading k3sm/ dir would stutter.
+    - PACKAGE_DIRECTORY_MATCH
+    # Contract names are fixed by the M1.1 design: `service Runtime` (not
+    # RuntimeService); the watch/logs streams carry domain types PodStatusEvent
+    # and LogEntry (not WatchPodStatusResponse / GetLogsResponse).
+    - SERVICE_SUFFIX
+    - RPC_RESPONSE_STANDARD_NAME
+breaking:
+  use:
+    - WIRE_JSON # additive-only: no field renumber, no wire/JSON-incompatible change
