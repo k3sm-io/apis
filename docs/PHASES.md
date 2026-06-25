@@ -1,9 +1,9 @@
 ---
 repo: apis
 schema: phases/v1
-current_phase: M1
+current_phase: M2
 updated: 2026-06-24
-updated_by: human
+updated_by: agent
 
 phases:
   - id: M0
@@ -15,7 +15,8 @@ phases:
 
   - id: M1
     title: Runtime + image + Service/DNS contracts
-    status: todo
+    status: done
+    completed: 2026-06-24
     depends_on: []
     subphases:
       - id: M1.1
@@ -57,14 +58,15 @@ phases:
             method: build
       - id: M1.2
         title: Service-proxy + DNS-shim shared types
-        status: todo
+        status: done
+        completed: 2026-06-24
         deliverables:
           - id: M1.2-d1
-            done: false
-            desc: shared Go types that cross the repo boundary for the userspace Service proxy (ServiceVIP, endpoint tuple) and the DNS-shim config
+            done: true
+            desc: shared Go types that cross the repo boundary for the userspace Service proxy (ServiceVIP, endpoint tuple) and the DNS-shim config — package netv1 (k3sm.io/apis/net/v1): ServiceVIP/ServicePort/Protocol, Endpoint, DNSConfig; plain Go (not proto), additive-only, zero k3sm.io/* imports
         acceptance:
           - id: M1.2-a1
-            met: false
+            met: true
             check: builds pure-Go and a darwin-net compile-check consumes the types
             method: build
 
@@ -101,7 +103,7 @@ so it has no `depends_on` edges; instead, every other repo's milestone `depends_
 The walking skeleton needed no shared contracts — the `k3sm` HostProcess provider was self-contained
 and `runtimed`'s M0 was a standalone Seatbelt prototype. First `apis` code lands in M1.
 
-## M1 — Runtime + image + Service/DNS contracts 🟡
+## M1 — Runtime + image + Service/DNS contracts ✅
 
 ### M1.1 — runtime proto + image manifest + PodBox ✅
 **Deliverables**
@@ -117,12 +119,12 @@ and `runtimed`'s M0 was a standalone Seatbelt prototype. First `apis` code lands
 - ✅ `M1.1-a3` `proto.Equal` round-trip holds for every generated message (incl. `PodStatus`, `PodBox`) — *method: unit*
 - ✅ `M1.1-a4` zero `k3sm.io/*` imports; `SignaturePolicy` zero value is UNSPECIFIED (fail-closed) — *method: build*
 
-### M1.2 — Service-proxy + DNS-shim shared types ⬜
+### M1.2 — Service-proxy + DNS-shim shared types ✅
 **Deliverables**
-- ⬜ `M1.2-d1` cross-boundary types for the Service proxy (ServiceVIP, endpoint tuple) + DNS-shim config.
+- ✅ `M1.2-d1` cross-boundary types for the Service proxy + DNS-shim config — pure-Go package `netv1` (`k3sm.io/apis/net/v1`): `ServiceVIP`/`ServicePort`/`Protocol` (TCP/UDP) for the userspace proxy, `Endpoint` (IP/Port/Ready) the proxy load-balances to, `DNSConfig` (CoreDNS VIP, cluster domain, search domains, ndots) the `getaddrinfo` shim consumes. Plain Go structs (NOT proto), additive-only, camelCase JSON tags, small `Validate`/`WithDefaults` helpers, zero `k3sm.io/*` imports.
 
 **Acceptance (exit gate)**
-- ⬜ `M1.2-a1` builds pure-Go; consumed by a darwin-net compile-check — *method: build*
+- ✅ `M1.2-a1` builds pure-Go (`CGO_ENABLED=0`, standalone `GOWORK=off` + under `go.work`); table-driven `-race` tests (construction, validation, JSON round-trip/field-name pins); ready for the `darwin-net` proxy + shim compile-check — *method: build*
 
 ## M2 — gRPC daemon surface + resource/metrics types ⬜
 Decomposed when M1 closes. Headline: extend `runtime/v1` for the **root daemon split** runtimed
@@ -139,6 +141,8 @@ Headline: version/freeze the v1 protos + CRDs for public consumption; ensure `go
 resolves via the vanity path (the GitHub-Pages `go-import` recipe, DESIGN §6a); doc completeness.
 
 ## Next
-M1.1 is closed: `runtime/v1` (`service Runtime`, `PodBox`, `PodStatus`, `ImageManifest`,
-`SignaturePolicy`) is the contract `runtimed:M1` and `k3sm:M1` now implement against. Next is
-**M1.2** — the Service-proxy + DNS-shim shared Go types for `darwin-net`.
+M1 is closed. `runtime/v1` (`service Runtime`, `PodBox`, `PodStatus`, `ImageManifest`,
+`SignaturePolicy`) is the contract `runtimed:M1` and `k3sm:M1` implement against, and `net/v1`
+(`ServiceVIP`, `Endpoint`, `DNSConfig`) is the cross-boundary type set `darwin-net:M1` (userspace
+Service proxy + `getaddrinfo` DNS-shim) and `k3sm:M1` (the server that hosts them) consume. Next is
+**M2** — the gRPC daemon surface + resource/metrics types (decomposed now that M1 is done).
