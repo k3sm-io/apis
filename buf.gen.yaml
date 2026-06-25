@@ -1,0 +1,28 @@
+version: v2
+# Plugins run as LOCAL binaries pinned by hack/gen.sh (it `go install`s exact versions
+# onto PATH before invoking buf). Pinned versions — keep in lockstep with go.mod:
+#   protoc-gen-go      v1.36.11  (google.golang.org/protobuf)
+#   protoc-gen-go-grpc v1.5.1    (google.golang.org/grpc/cmd/protoc-gen-go-grpc)
+managed:
+  enabled: true
+  # Do NOT rewrite go_package for the well-known / googleapis imports — they must
+  # resolve to their canonical Go modules (google.golang.org/protobuf and
+  # .../genproto/googleapis/rpc), which grpc already pulls in. Only OUR protos
+  # get the k3sm.io/apis prefix.
+  disable:
+    - file_option: go_package_prefix
+      module: buf.build/googleapis/googleapis
+  override:
+    # Base go_package; per-file `option go_package` still wins where set.
+    - file_option: go_package_prefix
+      value: k3sm.io/apis
+plugins:
+  - local: protoc-gen-go
+    out: .
+    opt:
+      - paths=source_relative
+  - local: protoc-gen-go-grpc
+    out: .
+    opt:
+      - paths=source_relative
+      - require_unimplemented_servers=true
