@@ -77,45 +77,81 @@ phases:
     subphases:
       - id: M2.1
         title: pod-spec fidelity proto additions (additive only; field numbers STABLE)
+        status: done
+        completed: 2026-06-25
+        depends_on: []
+        notes: >-
+          The M2 provider↔runtimed split is a SAME-BINARY, same-node hard cut:
+          the provider and its node's runtimed are the same k3sm build, restarted
+          together via `launchctl kickstart`. Behavior-bearing fields therefore
+          need NO version negotiation — there is no independent-upgrade skew
+          window, and GetRuntimeInfoResponse.api_version is an inert constant
+          (no negotiation surface is built on it). Allocation rule: M2.1 fields
+          take the next FREE sequential numbers below 100 on each message
+          (PodBox 15..18; Container 9..15; EnvVar 3; ContainerStatus 11..12);
+          the reserved 100..199 (PodBox) / 100..149 (siblings) bands are
+          UNTOUCHED, earmarked for M2.2 (resource/metrics) so the two never
+          collide.
+        deliverables:
+          - id: M2.1-d1
+            done: true
+            desc: "PodBox.volumes (field 15) — a repeated Volume carrying the pod-level volume sources stockkitty mounts: configMap, secret, emptyDir, downwardAPI, projected. ProjectedVolumeSource includes ServiceAccountTokenProjection{audience, expirationSeconds, path} (bound token — the in-pod-kubectl path) plus configMap/secret/downwardAPI projections. The source union is modeled as optional message fields (the ContainerState pointer-union precedent), not a oneof. Volume payloads are materialized by runtimed:M2 inside the pod data-volume; the proto carries only the source spec."
+          - id: M2.1-d2
+            done: true
+            desc: "Container.volume_mounts (field 9) — a repeated VolumeMount{name, mountPath, readOnly, subPath} referencing PodBox.volumes by name. Secrets/SA-token mounts get a read-only sub-scope runtimed-side."
+          - id: M2.1-d3
+            done: true
+            desc: "Container probe specs (fields 11/12/13 liveness/readiness/startup) — each a Probe{initialDelaySeconds, periodSeconds, timeoutSeconds, successThreshold, failureThreshold} with the handler modeled as THREE optional message fields (http_get/tcp_socket/exec, NOT a oneof — matching ContainerState; 'exactly one set' documented). HTTPGetAction{path, port IntOrString, scheme, host, httpHeaders}; TCPSocketAction{port IntOrString, host}; ExecAction{command}. Adds Container.ports (field 10) — a repeated ContainerPort{name, containerPort, protocol} named-port table so named probe ports + named Service targetPorts resolve, and IntOrString{intVal, strVal} mirroring intstr.IntOrString. Probes are provider-served (k3sm:M2) and drive ContainerStatus.ready + Service endpoints."
+          - id: M2.1-d4
+            done: true
+            desc: "securityContext — Container.security_context (field 14) is a SecurityContext{runAsUser int64, runAsGroup int64, runAsNonRoot bool} (container scope); fsGroup is NOT here. PodBox.pod_security_context (field 16) is a PodSecurityContext{fsGroup int64, runAsUser int64, runAsGroup int64} — fsGroup lives at pod scope only. Net-new privilege-drop runtimed-side (setgid→initgroups→setuid before sandbox_apply; fsGroup chown root-side before the drop)."
+          - id: M2.1-d5
+            done: true
+            desc: "Container env extensions — Container.env_from (field 15) is a repeated EnvFromSource{prefix, configMapRef ConfigMapEnvSource, secretRef SecretEnvSource}; EnvVar gains value_from (field 3) = EnvVarSource{fieldRef ObjectFieldSelector, configMapKeyRef ConfigMapKeySelector, secretKeyRef SecretKeySelector} (the corev1 union; fieldRef = ObjectFieldSelector{apiVersion, fieldPath} covers spec.nodeName/status.podIP/metadata.name). EnvVar keeps name=1/value=2; value-vs-valueFrom mutual exclusion documented. Provider translates downward-API field refs (k3sm:M2)."
+          - id: M2.1-d6
+            done: true
+            desc: "PodBox.image_pull_secrets (field 18) — a repeated LocalObjectReference{name} of Secrets carrying private-registry credentials. runtimed confines the credential to the pull client (never written to the pod dir); signature policy enforced before ad-hoc-sign."
+          - id: M2.1-d7
+            done: true
+            desc: "PodBox.termination_grace_period_seconds (field 17, int64) — the SOURCE value the provider derives DeletePodRequest.grace_period_seconds from (that RPC field already exists). Net-new runtimed SIGTERM → per-PID grace timer raced against the kqueue reaper → SIGKILL."
+          - id: M2.1-d8
+            done: true
+            desc: "CRITICAL lossless-mirror pairing — ContainerStatus.volume_mounts (field 11) = repeated VolumeMountStatus{name, mountPath, readOnly} and ContainerStatus.user (field 12) = ContainerUser{linux LinuxContainerUser}, LinuxContainerUser{uid int64, gid int64, supplementalGroups repeated int64} (the EFFECTIVE uid/gid/groups the privilege-drop produces). Only the corev1 status surface for M2.1 spec fields is added; resources/allocatedResources are M2.2 (reserved band). Without this pairing kubectl Pod state degrades crossing the runtime boundary."
+        acceptance:
+          - id: M2.1-a1
+            met: true
+            check: proto compiles (buf generate is reproducible — no diff) and buf breaking (WIRE_JSON) against buf/baseline.binpb is CLEAN — additive-only, no field renumber, no reserved-number reuse (reserved bands untouched)
+            method: unit
+          - id: M2.1-a2
+            met: true
+            check: proto.Equal round-trip (marshal then unmarshal) holds for every new message (one fully-populated case each — every Volume source incl. serviceAccountToken; each Probe handler; SecurityContext/PodSecurityContext; EnvFromSource; EnvVarSource/fieldRef; ContainerPort; ContainerStatus volumeMounts+user) plus full-Container/full-PodBox/full-ContainerStatus cases; -race clean
+            method: unit
+          - id: M2.1-a3
+            met: true
+            check: the module still imports zero k3sm.io/* packages (cycle check) and builds CGO_ENABLED=0 standalone (GOWORK=off) + under go.work
+            method: unit
+      - id: M2.2
+        title: resource-limit + metrics types (reserved 100..199 / 100..149 bands)
         status: todo
         depends_on: []
         deliverables:
-          - id: M2.1-d1
+          - id: M2.2-d1
             done: false
-            desc: "PodBox volumes — add a repeated Volume field carrying the pod-level volume sources stockkitty mounts: configMap, secret, emptyDir, downwardAPI, projected (the projected source includes serviceAccountToken, plus configMap/secret/downwardAPI projections). Allocate within PodBox's OWN reserved band 100..199 (a free number in that range); never reuse a reserved number. Volume payloads (configMap/secret data, downwardAPI field selectors) are materialized by runtimed:M2 inside the pod data-volume; the proto only carries the source spec."
-          - id: M2.1-d2
+            desc: "PodBox resource-limit fields — memory bytes, QoS class, and RLIMITs, allocated within PodBox's OWN reserved band 100..199 (never the low M2.1 numbers). These are the inputs runtimed:M2.2 enforces for OOMKilled (proc_pid_rusage; ri_phys_footprint ≠ RSS) and best-effort CPU QoS (not CFS millicores)."
+          - id: M2.2-d2
             done: false
-            desc: "Container volume_mounts — add a repeated VolumeMount field (name, mountPath, readOnly, subPath, subPathExpr) referencing PodBox.volumes by name. Allocate within Container's OWN reserved band 100..149; secrets/SA-token mounts get a read-only sub-scope runtimed-side."
-          - id: M2.1-d3
+            desc: "ContainerStatus.{resources, allocatedResources} — the status mirror of the M2.2 resource-limit fields, allocated within ContainerStatus's OWN reserved band 100..149 (its reserved comment earmarks resources/allocatedResources). Keeps PodStatus a lossless mirror of corev1 once resources land."
+          - id: M2.2-d3
             done: false
-            desc: "Container probe specs — add liveness/readiness/startup Probe fields, each a Probe message with a handler union (httpGet {path/port/scheme/httpHeaders}, tcpSocket {port}, exec {command}) plus initialDelay/period/timeout/success/failure thresholds. Allocate within Container's 100..149 band. Probes are provider-served (k3sm:M2) and drive ContainerStatus.ready + Service endpoints; behavior-bearing across the M2 provider↔runtimed daemon split, so they ride the GetRuntimeInfoResponse.api_version handshake (consumer-first ordering: tolerant readers in dependents before the producer emits the new shape)."
-          - id: M2.1-d4
-            done: false
-            desc: "Container securityContext — add a SecurityContext message (runAsUser, runAsGroup, fsGroup) on Container/PodBox as appropriate. Allocate within the owning message's reserved band. Behavior-bearing (net-new privilege-drop runtimed-side: setgid→initgroups→setuid before sandbox_apply, fsGroup chown root-side before the drop), so it crosses the daemon split and rides the api_version handshake."
-          - id: M2.1-d5
-            done: false
-            desc: "Container env extensions — add envFrom (repeated EnvFromSource referencing configMapRef/secretRef with optional prefix) and extend the env entry with valueFrom.fieldRef (downward-API: spec.nodeName, status.podIP, metadata.name, etc.). The existing EnvVar message has name=1/value=2; add valueFrom additively (new field number) and add the EnvFromSource message. Provider translates downward-API field refs (k3sm:M2)."
-          - id: M2.1-d6
-            done: false
-            desc: "imagePullSecret reference — add an image_pull_secrets field (repeated reference, e.g. secret name) to PodBox within its 100..199 band. Behavior-bearing (runtimed confines the credential to the pull client, never writing it to the pod dir; signature policy enforced before ad-hoc-sign), so it crosses the daemon split and rides the api_version handshake."
-          - id: M2.1-d7
-            done: false
-            desc: "terminationGracePeriodSeconds — add the spec field on PodBox within its 100..199 band (the SOURCE value the provider derives DeletePodRequest.grace_period_seconds from; that RPC field already exists). Behavior-bearing (net-new runtimed SIGTERM → per-PID grace timer raced against the kqueue reaper → SIGKILL), rides the api_version handshake."
-          - id: M2.1-d8
-            done: false
-            desc: "CRITICAL lossless-mirror pairing — add the matching ContainerStatus fields (volumeMounts, resources) so PodStatus stays a LOSSLESS mirror of corev1.PodStatus: every spec addition that surfaces in status MUST pair with its status field. Allocate within ContainerStatus's OWN reserved band 100..149 (its reserved comment already earmarks resources/allocatedResources/volumeMounts for M2). Without this pairing kubectl Pod state degrades crossing the runtime boundary."
+            desc: "Summary-API / pod-stats message(s) for kubectl top — the metric snapshot type(s) (per-pod/per-container CPU + memory working-set) the provider serves the metrics path from. New message(s); does NOT consume the reserved bands of the lifecycle messages."
         acceptance:
-          - id: M2.1-a1
+          - id: M2.2-a1
             met: false
-            check: proto compiles (buf generate leaves no diff) and buf breaking against the baseline is CLEAN — additive-only, no field renumber, no reserved-number reuse
+            check: additive-only — buf breaking (WIRE_JSON) clean; resource/metrics fields land in the reserved 100..199 (PodBox) / 100..149 (sibling) bands so they never collide with the M2.1 low-number fields
             method: unit
-          - id: M2.1-a2
+          - id: M2.2-a2
             met: false
-            check: proto.Equal round-trip (marshal then unmarshal) holds for every new field on PodBox/Container/ContainerStatus (volumes, volumeMounts, probes, securityContext, envFrom, valueFrom.fieldRef, imagePullSecrets, terminationGracePeriodSeconds, ContainerStatus volumeMounts/resources)
-            method: unit
-          - id: M2.1-a3
-            met: false
-            check: the module still imports zero k3sm.io/* packages (cycle check) and builds CGO_ENABLED=0 standalone (GOWORK=off) + under go.work
+            check: proto.Equal round-trip holds for the new resource-limit fields and the Summary-API/pod-stats message(s); table-driven, -race clean
             method: unit
 
   - id: M3
@@ -215,29 +251,57 @@ and `runtimed`'s M0 was a standalone Seatbelt prototype. First `apis` code lands
 - ✅ `M1.2-a1` builds pure-Go (`CGO_ENABLED=0`, standalone `GOWORK=off` + under `go.work`); table-driven `-race` tests (construction, validation, JSON round-trip/field-name pins); ready for the `darwin-net` proxy + shim compile-check — *method: build*
 
 ## M2 — Pod-spec fidelity proto additions + gRPC daemon surface + resource/metrics types ⬜
-Decomposed now that M1 has landed. Headline: extend `runtime/v1` for the **root daemon split**
-runtimed exposes as a separate process (resource-limit fields, Summary-API metric types,
-`ri_phys_footprint` → `kubectl top`) **and** raise pod-spec fidelity to what the `stockkitty`
-reference workload exercises (`../../docs/stockkitty-readiness.md`). All additions are **additive-only**;
-field numbers are **STABLE** (`buf breaking` WIRE_JSON gate); each addition lands in its message's **own**
-reserved band — `PodBox` reserves `100..199`, the sibling messages (`Container`, `ContainerStatus`,
-`SandboxProfile`, …) reserve `100..149` — and **never** reuses a reserved number.
+Decomposed now that M1 has landed. Headline: raise pod-spec fidelity to what the `stockkitty`
+reference workload exercises (`../../docs/stockkitty-readiness.md`) in **M2.1**, then extend `runtime/v1`
+for the **resource/metrics** surface (`ri_phys_footprint` → `kubectl top`) in **M2.2**. All additions are
+**additive-only**; field numbers are **STABLE** (`buf breaking` WIRE_JSON gate). **Allocation split** so the
+two sub-phases never collide: **M2.1** pod-spec fields take the next **FREE sequential numbers below 100**
+on each message; the **reserved bands** (`PodBox` `100..199`; sibling messages `Container`,
+`ContainerStatus`, `SandboxProfile`, … `100..149`) are **left UNTOUCHED for M2.2** (resource limits +
+metrics) and never reuse a reserved number.
 
-### M2.1 — pod-spec fidelity proto additions ⬜
+> **No `api_version` handshake.** The M2 provider↔runtimed split is a **same-binary, same-node hard cut**:
+> the provider and its node's `runtimed` are the **same `k3sm` build**, restarted together via
+> `launchctl kickstart`. Behavior-bearing fields therefore need **no version negotiation** — there is no
+> independent-upgrade skew window, and `GetRuntimeInfoResponse.api_version` is an inert constant (no
+> negotiation surface is built on it). (Earlier drafts had these fields "ride the `api_version` handshake";
+> that was struck — the field is a constant, not a negotiation point.)
+
+### M2.1 — pod-spec fidelity proto additions ✅
+Field numbers allocated (all below 100; reserved bands untouched): **PodBox** `volumes=15`,
+`pod_security_context=16`, `termination_grace_period_seconds=17`, `image_pull_secrets=18`; **Container**
+`volume_mounts=9`, `ports=10`, `liveness_probe=11`, `readiness_probe=12`, `startup_probe=13`,
+`security_context=14`, `env_from=15`; **EnvVar** `value_from=3`; **ContainerStatus** `volume_mounts=11`,
+`user=12`.
+
 **Deliverables**
-- ⬜ `M2.1-d1` `PodBox.volumes` — a repeated `Volume` carrying the sources stockkitty mounts: `configMap`, `secret`, `emptyDir`, `downwardAPI`, `projected` (the projected source includes `serviceAccountToken` plus configMap/secret/downwardAPI projections). Allocated in `PodBox`'s own `100..199` band. The proto carries only the source spec; `runtimed:M2` materializes payloads inside the pod data-volume.
-- ⬜ `M2.1-d2` `Container.volume_mounts` — a repeated `VolumeMount` (name, mountPath, readOnly, subPath, subPathExpr) referencing `PodBox.volumes` by name; allocated in `Container`'s own `100..149` band. Secrets / SA-token mounts get a read-only sub-scope runtimed-side.
-- ⬜ `M2.1-d3` `Container` probes — `liveness`/`readiness`/`startup` `Probe` fields, each with a handler union (`httpGet`/`tcpSocket`/`exec`) + initialDelay/period/timeout/success/failure thresholds; in `Container`'s `100..149` band. Probes are **provider-served** (`k3sm:M2`) and drive `ContainerStatus.ready` + Service endpoints. **Behavior-bearing** across the M2 provider↔runtimed daemon split → rides the `GetRuntimeInfoResponse.api_version` handshake (**consumer-first** ordering: dependents ship tolerant readers before the producer emits the new shape).
-- ⬜ `M2.1-d4` `Container.securityContext` — a `SecurityContext` (`runAsUser`/`runAsGroup`/`fsGroup`) on `Container`/`PodBox`. **Behavior-bearing** (net-new runtimed privilege-drop: `setgid→initgroups→setuid` **before** `sandbox_apply`; `fsGroup` chown root-side **before** the drop) → rides the `api_version` handshake.
-- ⬜ `M2.1-d5` `Container` env extensions — `envFrom` (repeated `EnvFromSource` → `configMapRef`/`secretRef` + optional prefix) and `env[].valueFrom.fieldRef` (downward-API: `spec.nodeName`/`status.podIP`/`metadata.name`, …). `EnvVar` keeps `name=1`/`value=2`; `valueFrom` is added additively at a new field number. Provider translates the field refs (`k3sm:M2`).
-- ⬜ `M2.1-d6` `PodBox.image_pull_secrets` — a private-registry credential reference (in `PodBox`'s `100..199` band). **Behavior-bearing** (runtimed confines the credential to the pull client, never writing it to the pod dir; signature policy enforced **before** ad-hoc-sign) → rides the `api_version` handshake.
-- ⬜ `M2.1-d7` `PodBox.terminationGracePeriodSeconds` — the spec field (in `PodBox`'s `100..199` band) the provider derives `DeletePodRequest.grace_period_seconds` from (that RPC field already exists). **Behavior-bearing** (net-new runtimed SIGTERM → per-PID grace timer raced against the kqueue reaper → SIGKILL) → rides the `api_version` handshake.
-- ⬜ `M2.1-d8` **CRITICAL lossless-mirror pairing** — the matching `ContainerStatus` fields (`volumeMounts`, `resources`) so `PodStatus` stays a **lossless mirror** of `corev1.PodStatus`: every spec addition that surfaces in status MUST pair with its status field. Allocated in `ContainerStatus`'s own `100..149` band (its `reserved` comment already earmarks `resources, allocatedResources, volumeMounts` for M2). Without the pairing, kubectl Pod state degrades crossing the runtime boundary.
+- ✅ `M2.1-d1` `PodBox.volumes` (15) — a repeated `Volume` carrying the sources stockkitty mounts: `configMap`, `secret`, `emptyDir`, `downwardAPI`, `projected`. `ProjectedVolumeSource` includes `ServiceAccountTokenProjection{audience, expirationSeconds, path}` (bound token — the in-pod-kubectl path) plus configMap/secret/downwardAPI projections. The source union is **optional message fields** (the `ContainerState` pointer-union precedent), not a `oneof`. `runtimed:M2` materializes payloads inside the pod data-volume.
+- ✅ `M2.1-d2` `Container.volume_mounts` (9) — a repeated `VolumeMount{name, mountPath, readOnly, subPath}` referencing `PodBox.volumes` by name. Secrets / SA-token mounts get a read-only sub-scope runtimed-side.
+- ✅ `M2.1-d3` `Container` probes (`liveness_probe=11`/`readiness_probe=12`/`startup_probe=13`) — each a `Probe{initialDelaySeconds, periodSeconds, timeoutSeconds, successThreshold, failureThreshold}` with the handler modeled as **three optional message fields** (`http_get`/`tcp_socket`/`exec`, **not** a `oneof` — matching `ContainerState`; "exactly one set" documented). `HTTPGetAction{path, port IntOrString, scheme, host, httpHeaders}`; `TCPSocketAction{port IntOrString, host}`; `ExecAction{command}`. Adds `Container.ports` (10) = repeated `ContainerPort{name, containerPort, protocol}` (named-port table so named probe ports + named Service targetPorts resolve) and `IntOrString{intVal, strVal}`. Probes are **provider-served** (`k3sm:M2`), driving `ContainerStatus.ready` + Service endpoints.
+- ✅ `M2.1-d4` `securityContext` — `Container.security_context` (14) = `SecurityContext{runAsUser, runAsGroup, runAsNonRoot}` (**container scope; no `fsGroup`**); `PodBox.pod_security_context` (16) = `PodSecurityContext{fsGroup, runAsUser, runAsGroup}` (**`fsGroup` is pod-scope only**). Net-new runtimed privilege-drop: `setgid→initgroups→setuid` **before** `sandbox_apply`; `fsGroup` chown root-side **before** the drop.
+- ✅ `M2.1-d5` `Container` env extensions — `Container.env_from` (15) = repeated `EnvFromSource{prefix, configMapRef, secretRef}`; `EnvVar.value_from` (3) = `EnvVarSource{fieldRef ObjectFieldSelector, configMapKeyRef, secretKeyRef}` (the corev1 union; `fieldRef = ObjectFieldSelector{apiVersion, fieldPath}` covers `spec.nodeName`/`status.podIP`/`metadata.name`). `EnvVar` keeps `name=1`/`value=2`; value-vs-valueFrom mutual exclusion documented.
+- ✅ `M2.1-d6` `PodBox.image_pull_secrets` (18) — repeated `LocalObjectReference{name}`. runtimed confines the credential to the pull client (never written to the pod dir); signature policy enforced **before** ad-hoc-sign.
+- ✅ `M2.1-d7` `PodBox.termination_grace_period_seconds` (17, int64) — the source the provider derives `DeletePodRequest.grace_period_seconds` from (that RPC field already exists). Net-new runtimed SIGTERM → per-PID grace timer raced against the kqueue reaper → SIGKILL.
+- ✅ `M2.1-d8` **CRITICAL lossless-mirror pairing** — `ContainerStatus.volume_mounts` (11) = repeated `VolumeMountStatus{name, mountPath, readOnly}` and `ContainerStatus.user` (12) = `ContainerUser{linux LinuxContainerUser}`, `LinuxContainerUser{uid, gid, supplementalGroups}` (the **effective** identity the privilege-drop produces). Only the corev1 status surface for M2.1 spec fields is added — `resources`/`allocatedResources` are **M2.2** (reserved band). Without the pairing, kubectl Pod state degrades crossing the runtime boundary.
+
+**Acceptance (exit gate)** — all met
+- ✅ `M2.1-a1` `buf generate` is reproducible (no diff) and `buf breaking` (WIRE_JSON) vs `buf/baseline.binpb` is **clean** — additive-only, no renumber, reserved bands untouched — *method: unit*
+- ✅ `M2.1-a2` `proto.Equal` round-trip holds for every new message (one fully-populated case each — every `Volume` source incl. `serviceAccountToken`; each `Probe` handler; `SecurityContext`/`PodSecurityContext`; `EnvFromSource`; `EnvVarSource`/`fieldRef`; `ContainerPort`; `ContainerStatus` `volumeMounts`+`user`) plus full-`Container`/full-`PodBox`/full-`ContainerStatus` cases; `-race` clean — *method: unit*
+- ✅ `M2.1-a3` zero `k3sm.io/*` imports (cycle check); builds `CGO_ENABLED=0` standalone (`GOWORK=off`) + under `go.work` — *method: unit*
+
+### M2.2 — resource-limit + metrics types ⬜
+Owns the **reserved bands** (`PodBox` `100..199`; sibling messages `100..149`) the M2.1 low-number fields
+deliberately avoid, so M2.1 (free numbers) and M2.2 (reserved bands) **never collide**. `depends_on: []`
+(apis-internal). **Not implemented yet — STUB.**
+
+**Deliverables**
+- ⬜ `M2.2-d1` `PodBox` resource-limit fields — memory bytes, QoS class, RLIMITs (in `PodBox`'s `100..199` band). Inputs `runtimed:M2.2` enforces for `OOMKilled` (`proc_pid_rusage`; `ri_phys_footprint` ≠ RSS) and best-effort CPU QoS (not CFS millicores).
+- ⬜ `M2.2-d2` `ContainerStatus.{resources, allocatedResources}` — the status mirror (in `ContainerStatus`'s `100..149` band; its `reserved` comment earmarks them). Keeps `PodStatus` a lossless mirror once resources land.
+- ⬜ `M2.2-d3` Summary-API / pod-stats message(s) for `kubectl top` — per-pod/per-container CPU + memory working-set snapshot type(s) the provider serves the metrics path from. New message(s); does not consume the lifecycle messages' reserved bands.
 
 **Acceptance (exit gate)**
-- ⬜ `M2.1-a1` proto compiles (`buf generate` no diff) and `buf breaking` is **clean** — additive-only, no renumber, no reserved-number reuse — *method: unit*
-- ⬜ `M2.1-a2` `proto.Equal` round-trip holds for every new field on `PodBox`/`Container`/`ContainerStatus` — *method: unit*
-- ⬜ `M2.1-a3` zero `k3sm.io/*` imports (cycle check); builds `CGO_ENABLED=0` standalone (`GOWORK=off`) + under `go.work` — *method: unit*
+- ⬜ `M2.2-a1` additive-only — `buf breaking` (WIRE_JSON) clean; resource/metrics fields land in the reserved `100..199` / `100..149` bands so they never collide with the M2.1 low-number fields — *method: unit*
+- ⬜ `M2.2-a2` `proto.Equal` round-trip holds for the new resource-limit fields and the Summary-API/pod-stats message(s); table-driven, `-race` clean — *method: unit*
 
 ## M3 — Storage volume sources (PV/PVC) + MeshPeer CRD + NodeNetwork + mesh-enroll types ⬜
 Headline: persistent storage for the reference workload (Postgres / compile-artifacts PVCs) **plus** the
@@ -274,7 +338,7 @@ runtimed VZ backend (`runtimed:M5`) and the guest-side networking (`darwin-net:M
 
 ## Dependents of these `apis` sub-phases
 `apis` is **Wave 1**; downstream milestones `depends_on` these ids:
-- `runtimed:M2` + `k3sm:M2` + `darwin-net:M2` ← `apis:M2.1` (the pod-spec fidelity fields; behavior-bearing fields cross the provider↔runtimed split via the `api_version` handshake).
+- `runtimed:M2` + `k3sm:M2` + `darwin-net:M2` ← `apis:M2.1` (the pod-spec fidelity fields). The provider↔runtimed split is a **same-binary, same-node hard cut** (restarted together via `launchctl kickstart`), so behavior-bearing fields need **no** version handshake — there is no independent-upgrade skew window.
 - `runtimed:M3` + `k3sm:M3` ← `apis:M3.1` (PV/PVC source). `darwin-net:M3` NodePort needs **no** `apis` edge (the field already exists).
 - `runtimed:M5` + `darwin-net:M5` ← `apis:M5.1` (the `vm` handler→backend mapping).
 

@@ -205,6 +205,192 @@ func TestRoundTrip(t *testing.T) {
 		Conditions: []*RuntimeCondition{{Type: "SandboxReady", Status: ConditionStatus_CONDITION_STATUS_TRUE, Reason: "OK"}},
 	}, &GetRuntimeInfoResponse{})
 	roundTrip(t, "RuntimeCondition", &RuntimeCondition{Type: "ImageStoreReady", Status: ConditionStatus_CONDITION_STATUS_FALSE, Reason: "Init", Message: "warming"}, &RuntimeCondition{})
+
+	// --- M2.1 pod-spec fidelity additions ---------------------------------
+	// One fully-populated case per new message. These are the fails-before
+	// (the messages did not exist) / passes-after acceptance evidence for
+	// apis:M2.1 — proto.Equal must survive marshal→unmarshal for every field.
+
+	// Container scope: volume mounts, named ports, probes (all three handlers),
+	// security context, envFrom, and env[].valueFrom.fieldRef.
+	roundTrip(t, "VolumeMount", &VolumeMount{
+		Name: "config", MountPath: "/etc/nats", ReadOnly: true, SubPath: "nats.conf",
+	}, &VolumeMount{})
+
+	roundTrip(t, "ContainerPort", &ContainerPort{
+		Name: "http", ContainerPort: 8080, Protocol: "TCP",
+	}, &ContainerPort{})
+
+	roundTrip(t, "IntOrString_int", &IntOrString{IntVal: 8080}, &IntOrString{})
+	roundTrip(t, "IntOrString_str", &IntOrString{StrVal: "http"}, &IntOrString{})
+
+	roundTrip(t, "HTTPHeader", &HTTPHeader{Name: "X-Probe", Value: "1"}, &HTTPHeader{})
+	roundTrip(t, "HTTPGetAction", &HTTPGetAction{
+		Path: "/healthz", Port: &IntOrString{StrVal: "http"}, Scheme: "HTTPS", Host: "127.0.0.1",
+		HttpHeaders: []*HTTPHeader{{Name: "Accept", Value: "application/json"}},
+	}, &HTTPGetAction{})
+	roundTrip(t, "TCPSocketAction", &TCPSocketAction{Port: &IntOrString{IntVal: 6222}, Host: "127.0.0.1"}, &TCPSocketAction{})
+	roundTrip(t, "ExecAction", &ExecAction{Command: []string{"sh", "-c", "test -f /ready"}}, &ExecAction{})
+
+	roundTrip(t, "Probe_httpGet", &Probe{
+		InitialDelaySeconds: 5, PeriodSeconds: 10, TimeoutSeconds: 1, SuccessThreshold: 1, FailureThreshold: 3,
+		HttpGet: &HTTPGetAction{Path: "/healthz", Port: &IntOrString{IntVal: 8080}, Scheme: "HTTP"},
+	}, &Probe{})
+	roundTrip(t, "Probe_tcpSocket", &Probe{
+		InitialDelaySeconds: 0, PeriodSeconds: 5, TimeoutSeconds: 2, SuccessThreshold: 1, FailureThreshold: 6,
+		TcpSocket: &TCPSocketAction{Port: &IntOrString{StrVal: "nats"}},
+	}, &Probe{})
+	roundTrip(t, "Probe_exec", &Probe{
+		PeriodSeconds: 10, FailureThreshold: 3,
+		Exec: &ExecAction{Command: []string{"/bin/true"}},
+	}, &Probe{})
+
+	roundTrip(t, "SecurityContext", &SecurityContext{
+		RunAsUser: 1000, RunAsGroup: 2000, RunAsNonRoot: true,
+	}, &SecurityContext{})
+
+	roundTrip(t, "ConfigMapEnvSource", &ConfigMapEnvSource{Name: "app-config", Optional: true}, &ConfigMapEnvSource{})
+	roundTrip(t, "SecretEnvSource", &SecretEnvSource{Name: "app-secret", Optional: true}, &SecretEnvSource{})
+	roundTrip(t, "EnvFromSource_configMap", &EnvFromSource{Prefix: "CFG_", ConfigMapRef: &ConfigMapEnvSource{Name: "app-config"}}, &EnvFromSource{})
+	roundTrip(t, "EnvFromSource_secret", &EnvFromSource{Prefix: "SEC_", SecretRef: &SecretEnvSource{Name: "app-secret"}}, &EnvFromSource{})
+
+	roundTrip(t, "ObjectFieldSelector", &ObjectFieldSelector{ApiVersion: "v1", FieldPath: "status.podIP"}, &ObjectFieldSelector{})
+	roundTrip(t, "ConfigMapKeySelector", &ConfigMapKeySelector{Name: "app-config", Key: "log.level", Optional: true}, &ConfigMapKeySelector{})
+	roundTrip(t, "SecretKeySelector", &SecretKeySelector{Name: "app-secret", Key: "token", Optional: true}, &SecretKeySelector{})
+	roundTrip(t, "EnvVarSource_fieldRef", &EnvVarSource{FieldRef: &ObjectFieldSelector{ApiVersion: "v1", FieldPath: "spec.nodeName"}}, &EnvVarSource{})
+	roundTrip(t, "EnvVarSource_configMapKeyRef", &EnvVarSource{ConfigMapKeyRef: &ConfigMapKeySelector{Name: "app-config", Key: "k"}}, &EnvVarSource{})
+	roundTrip(t, "EnvVarSource_secretKeyRef", &EnvVarSource{SecretKeyRef: &SecretKeySelector{Name: "app-secret", Key: "k"}}, &EnvVarSource{})
+	roundTrip(t, "EnvVar_valueFrom", &EnvVar{
+		Name: "POD_IP", ValueFrom: &EnvVarSource{FieldRef: &ObjectFieldSelector{ApiVersion: "v1", FieldPath: "status.podIP"}},
+	}, &EnvVar{})
+
+	// Pod scope: every Volume source (incl. projected.serviceAccountToken),
+	// the pod-level security context (fsGroup), grace period, and pull secrets.
+	roundTrip(t, "KeyToPath", &KeyToPath{Key: "nats.conf", Path: "conf/nats.conf", Mode: 0o644}, &KeyToPath{})
+	roundTrip(t, "ConfigMapVolumeSource", &ConfigMapVolumeSource{
+		Name: "nats-config", Items: []*KeyToPath{{Key: "nats.conf", Path: "nats.conf", Mode: 0o600}}, DefaultMode: 0o644, Optional: true,
+	}, &ConfigMapVolumeSource{})
+	roundTrip(t, "SecretVolumeSource", &SecretVolumeSource{
+		SecretName: "git-ssh-key", Items: []*KeyToPath{{Key: "id_ed25519", Path: "ssh/id_ed25519", Mode: 0o400}}, DefaultMode: 0o400, Optional: false,
+	}, &SecretVolumeSource{})
+	roundTrip(t, "EmptyDirVolumeSource", &EmptyDirVolumeSource{Medium: "Memory", SizeLimit: "1Gi"}, &EmptyDirVolumeSource{})
+	roundTrip(t, "DownwardAPIVolumeFile", &DownwardAPIVolumeFile{
+		Path: "labels", FieldRef: &ObjectFieldSelector{ApiVersion: "v1", FieldPath: "metadata.labels"}, Mode: 0o644,
+	}, &DownwardAPIVolumeFile{})
+	roundTrip(t, "DownwardAPIVolumeSource", &DownwardAPIVolumeSource{
+		Items:       []*DownwardAPIVolumeFile{{Path: "podName", FieldRef: &ObjectFieldSelector{FieldPath: "metadata.name"}}},
+		DefaultMode: 0o644,
+	}, &DownwardAPIVolumeSource{})
+	roundTrip(t, "ServiceAccountTokenProjection", &ServiceAccountTokenProjection{
+		Audience: "https://kubernetes.default.svc", ExpirationSeconds: 3600, Path: "token",
+	}, &ServiceAccountTokenProjection{})
+	roundTrip(t, "ConfigMapProjection", &ConfigMapProjection{Name: "ca", Items: []*KeyToPath{{Key: "ca.crt", Path: "ca.crt"}}, Optional: true}, &ConfigMapProjection{})
+	roundTrip(t, "SecretProjection", &SecretProjection{Name: "tls", Items: []*KeyToPath{{Key: "tls.crt", Path: "tls.crt"}}, Optional: false}, &SecretProjection{})
+	roundTrip(t, "DownwardAPIProjection", &DownwardAPIProjection{
+		Items: []*DownwardAPIVolumeFile{{Path: "ns", FieldRef: &ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
+	}, &DownwardAPIProjection{})
+	roundTrip(t, "VolumeProjection_configMap", &VolumeProjection{ConfigMap: &ConfigMapProjection{Name: "ca"}}, &VolumeProjection{})
+	roundTrip(t, "VolumeProjection_secret", &VolumeProjection{Secret: &SecretProjection{Name: "tls"}}, &VolumeProjection{})
+	roundTrip(t, "VolumeProjection_downwardAPI", &VolumeProjection{DownwardApi: &DownwardAPIProjection{Items: []*DownwardAPIVolumeFile{{Path: "name", FieldRef: &ObjectFieldSelector{FieldPath: "metadata.name"}}}}}, &VolumeProjection{})
+	roundTrip(t, "VolumeProjection_serviceAccountToken", &VolumeProjection{
+		ServiceAccountToken: &ServiceAccountTokenProjection{Audience: "api", ExpirationSeconds: 3600, Path: "token"},
+	}, &VolumeProjection{})
+	roundTrip(t, "ProjectedVolumeSource", &ProjectedVolumeSource{
+		Sources: []*VolumeProjection{
+			{ServiceAccountToken: &ServiceAccountTokenProjection{Audience: "https://kubernetes.default.svc", ExpirationSeconds: 3600, Path: "token"}},
+			{ConfigMap: &ConfigMapProjection{Name: "kube-root-ca.crt", Items: []*KeyToPath{{Key: "ca.crt", Path: "ca.crt"}}}},
+			{DownwardApi: &DownwardAPIProjection{Items: []*DownwardAPIVolumeFile{{Path: "namespace", FieldRef: &ObjectFieldSelector{FieldPath: "metadata.namespace"}}}}},
+		},
+		DefaultMode: 0o644,
+	}, &ProjectedVolumeSource{})
+
+	roundTrip(t, "Volume_configMap", &Volume{Name: "config", ConfigMap: &ConfigMapVolumeSource{Name: "nats-config"}}, &Volume{})
+	roundTrip(t, "Volume_secret", &Volume{Name: "ssh", Secret: &SecretVolumeSource{SecretName: "git-ssh-key"}}, &Volume{})
+	roundTrip(t, "Volume_emptyDir", &Volume{Name: "shm", EmptyDir: &EmptyDirVolumeSource{Medium: "Memory", SizeLimit: "256Mi"}}, &Volume{})
+	roundTrip(t, "Volume_downwardAPI", &Volume{Name: "podinfo", DownwardApi: &DownwardAPIVolumeSource{Items: []*DownwardAPIVolumeFile{{Path: "name", FieldRef: &ObjectFieldSelector{FieldPath: "metadata.name"}}}}}, &Volume{})
+	roundTrip(t, "Volume_projected", &Volume{Name: "kube-api-access", Projected: &ProjectedVolumeSource{
+		Sources: []*VolumeProjection{{ServiceAccountToken: &ServiceAccountTokenProjection{Audience: "https://kubernetes.default.svc", ExpirationSeconds: 3600, Path: "token"}}},
+	}}, &Volume{})
+
+	roundTrip(t, "PodSecurityContext", &PodSecurityContext{FsGroup: 999, RunAsUser: 1000, RunAsGroup: 2000}, &PodSecurityContext{})
+	roundTrip(t, "LocalObjectReference", &LocalObjectReference{Name: "regcred"}, &LocalObjectReference{})
+
+	// ContainerStatus lossless-mirror additions: volume mount status + the
+	// effective ContainerUser (resolved uid/gid/supplemental groups).
+	roundTrip(t, "VolumeMountStatus", &VolumeMountStatus{Name: "config", MountPath: "/etc/nats", ReadOnly: true}, &VolumeMountStatus{})
+	roundTrip(t, "LinuxContainerUser", &LinuxContainerUser{Uid: 1000, Gid: 2000, SupplementalGroups: []int64{999, 1000}}, &LinuxContainerUser{})
+	roundTrip(t, "ContainerUser", &ContainerUser{Linux: &LinuxContainerUser{Uid: 1000, Gid: 2000, SupplementalGroups: []int64{999}}}, &ContainerUser{})
+
+	// A Container populated with every M2.1 field at once (named-port table +
+	// probes referencing it by name + mounts + envFrom + valueFrom + secctx).
+	roundTrip(t, "Container_full_M2_1", &Container{
+		Name:    "app",
+		Image:   "registry.example/app@sha256:abc",
+		Command: []string{"/app"},
+		Env: []*EnvVar{
+			{Name: "STATIC", Value: "v"},
+			{Name: "NODE", ValueFrom: &EnvVarSource{FieldRef: &ObjectFieldSelector{ApiVersion: "v1", FieldPath: "spec.nodeName"}}},
+			{Name: "LOG", ValueFrom: &EnvVarSource{ConfigMapKeyRef: &ConfigMapKeySelector{Name: "app-config", Key: "log.level"}}},
+		},
+		VolumeMounts: []*VolumeMount{
+			{Name: "config", MountPath: "/etc/nats", ReadOnly: true},
+			{Name: "kube-api-access", MountPath: "/var/run/secrets/kubernetes.io/serviceaccount", ReadOnly: true},
+		},
+		Ports: []*ContainerPort{
+			{Name: "http", ContainerPort: 8080, Protocol: "TCP"},
+			{Name: "nats", ContainerPort: 4222, Protocol: "TCP"},
+		},
+		LivenessProbe:   &Probe{PeriodSeconds: 10, FailureThreshold: 3, HttpGet: &HTTPGetAction{Path: "/healthz", Port: &IntOrString{StrVal: "http"}}},
+		ReadinessProbe:  &Probe{PeriodSeconds: 5, FailureThreshold: 3, TcpSocket: &TCPSocketAction{Port: &IntOrString{StrVal: "nats"}}},
+		StartupProbe:    &Probe{PeriodSeconds: 2, FailureThreshold: 30, Exec: &ExecAction{Command: []string{"/bin/true"}}},
+		SecurityContext: &SecurityContext{RunAsUser: 1000, RunAsGroup: 2000, RunAsNonRoot: true},
+		EnvFrom: []*EnvFromSource{
+			{Prefix: "CFG_", ConfigMapRef: &ConfigMapEnvSource{Name: "app-config"}},
+			{SecretRef: &SecretEnvSource{Name: "app-secret", Optional: true}},
+		},
+	}, &Container{})
+
+	// A PodBox populated with every M2.1 pod-scope field at once.
+	roundTrip(t, "PodBox_full_M2_1", &PodBox{
+		PodId:      "11111111-2222-3333-4444-555555555555",
+		Namespace:  "default",
+		Name:       "stockkitty",
+		RootfsPath: "/var/lib/k3sm/pods/p1/rootfs",
+		Uid:        501,
+		Gid:        20,
+		Containers: []*Container{{Name: "app", Image: "/app"}},
+		Volumes: []*Volume{
+			{Name: "config", ConfigMap: &ConfigMapVolumeSource{Name: "nats-config"}},
+			{Name: "ssh", Secret: &SecretVolumeSource{SecretName: "git-ssh-key", DefaultMode: 0o400}},
+			{Name: "shm", EmptyDir: &EmptyDirVolumeSource{Medium: "Memory", SizeLimit: "256Mi"}},
+			{Name: "podinfo", DownwardApi: &DownwardAPIVolumeSource{Items: []*DownwardAPIVolumeFile{{Path: "name", FieldRef: &ObjectFieldSelector{FieldPath: "metadata.name"}}}}},
+			{Name: "kube-api-access", Projected: &ProjectedVolumeSource{Sources: []*VolumeProjection{
+				{ServiceAccountToken: &ServiceAccountTokenProjection{Audience: "https://kubernetes.default.svc", ExpirationSeconds: 3600, Path: "token"}},
+				{ConfigMap: &ConfigMapProjection{Name: "kube-root-ca.crt", Items: []*KeyToPath{{Key: "ca.crt", Path: "ca.crt"}}}},
+			}}},
+		},
+		PodSecurityContext:            &PodSecurityContext{FsGroup: 999, RunAsUser: 1000, RunAsGroup: 2000},
+		TerminationGracePeriodSeconds: 30,
+		ImagePullSecrets:              []*LocalObjectReference{{Name: "regcred"}},
+	}, &PodBox{})
+
+	// A ContainerStatus populated with the new lossless-mirror fields.
+	roundTrip(t, "ContainerStatus_full_M2_1", &ContainerStatus{
+		Name:         "app",
+		State:        &ContainerState{Running: &ContainerStateRunning{StartedAt: ts}},
+		Ready:        true,
+		RestartCount: 0,
+		Image:        "/app",
+		ImageId:      "/app",
+		ContainerId:  "c1",
+		Started:      true,
+		StartedSet:   true,
+		VolumeMounts: []*VolumeMountStatus{
+			{Name: "config", MountPath: "/etc/nats", ReadOnly: true},
+			{Name: "kube-api-access", MountPath: "/var/run/secrets/kubernetes.io/serviceaccount", ReadOnly: true},
+		},
+		User: &ContainerUser{Linux: &LinuxContainerUser{Uid: 1000, Gid: 2000, SupplementalGroups: []int64{999, 1000}}},
+	}, &ContainerStatus{})
 }
 
 // TestSignaturePolicyFailClosed asserts the zero value of SignaturePolicy is
