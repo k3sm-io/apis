@@ -119,7 +119,187 @@ message PodBox {
   map<string, string> labels = 13;
   map<string, string> annotations = 14;
 
-  reserved 100 to 199; // M2: resource limits (mem bytes, QoS class, RLIMITs).
+  // volumes are the pod-level volume sources Container.volume_mounts reference
+  // by name. runtimed:M2 materializes payloads inside the pod data-volume; the
+  // proto carries only the source spec. Mirrors corev1.PodSpec.Volumes.
+  repeated Volume volumes = 15;
+
+  // pod_security_context is the pod-scoped privilege configuration. fs_group
+  // lives HERE (pod-level only), not on Container.security_context. Mirrors
+  // corev1.PodSpec.SecurityContext.
+  PodSecurityContext pod_security_context = 16;
+
+  // termination_grace_period_seconds is the SIGTERM→SIGKILL window the provider
+  // derives DeletePodRequest.grace_period_seconds from. Mirrors
+  // corev1.PodSpec.TerminationGracePeriodSeconds.
+  int64 termination_grace_period_seconds = 17;
+
+  // image_pull_secrets are references to Secrets carrying private-registry
+  // credentials. runtimed confines the credential to the pull client.
+  // Mirrors corev1.PodSpec.ImagePullSecrets.
+  repeated LocalObjectReference image_pull_secrets = 18;
+
+  reserved 100 to 199; // M2.2: resource limits (mem bytes, QoS class, RLIMITs).
+}
+
+// Volume is a named pod-level volume with exactly one source set. Mirrors the
+// M2.1 subset of corev1.Volume (configMap / secret / emptyDir / downwardAPI /
+// projected); the source union is modeled as optional message fields, matching
+// the ContainerState pointer-union precedent.
+message Volume {
+  // name is the volume name, referenced by VolumeMount.name. Unique within the
+  // pod.
+  string name = 1;
+
+  // config_map, secret, empty_dir, downward_api, and projected are the source
+  // union: exactly one is set.
+  ConfigMapVolumeSource config_map = 2;
+  SecretVolumeSource secret = 3;
+  EmptyDirVolumeSource empty_dir = 4;
+  DownwardAPIVolumeSource downward_api = 5;
+  ProjectedVolumeSource projected = 6;
+}
+
+// ConfigMapVolumeSource mounts a ConfigMap as files. Mirrors
+// corev1.ConfigMapVolumeSource.
+message ConfigMapVolumeSource {
+  // name is the ConfigMap name.
+  string name = 1;
+  // items, when set, selects specific keys to project (else all keys).
+  repeated KeyToPath items = 2;
+  // default_mode is the default file permission bits (e.g. 0644); 0 means unset.
+  int32 default_mode = 3;
+  // optional, when true, tolerates a missing ConfigMap.
+  bool optional = 4;
+}
+
+// SecretVolumeSource mounts a Secret as files (read-only sub-scope
+// runtimed-side). Mirrors corev1.SecretVolumeSource.
+message SecretVolumeSource {
+  // secret_name is the Secret name.
+  string secret_name = 1;
+  // items, when set, selects specific keys to project (else all keys).
+  repeated KeyToPath items = 2;
+  // default_mode is the default file permission bits; 0 means unset.
+  int32 default_mode = 3;
+  // optional, when true, tolerates a missing Secret.
+  bool optional = 4;
+}
+
+// EmptyDirVolumeSource is an ephemeral scratch volume. Mirrors
+// corev1.EmptyDirVolumeSource (M2.1 subset: medium + size_limit as a string
+// quantity).
+message EmptyDirVolumeSource {
+  // medium is "" (node default) or "Memory".
+  string medium = 1;
+  // size_limit is a resource.Quantity string (e.g. "1Gi"); empty means unset.
+  string size_limit = 2;
+}
+
+// DownwardAPIVolumeSource mounts pod fields as files. Mirrors
+// corev1.DownwardAPIVolumeSource.
+message DownwardAPIVolumeSource {
+  // items are the field projections.
+  repeated DownwardAPIVolumeFile items = 1;
+  // default_mode is the default file permission bits; 0 means unset.
+  int32 default_mode = 2;
+}
+
+// DownwardAPIVolumeFile projects one pod field to a file. Mirrors
+// corev1.DownwardAPIVolumeFile (M2.1 subset: field_ref only, no
+// resourceFieldRef).
+message DownwardAPIVolumeFile {
+  // path is the relative file path to write within the volume.
+  string path = 1;
+  // field_ref selects the pod field (e.g. metadata.name, status.podIP).
+  ObjectFieldSelector field_ref = 2;
+  // mode is the file permission bits for this file; 0 means unset.
+  int32 mode = 3;
+}
+
+// ProjectedVolumeSource combines multiple projection sources into one volume.
+// It MUST carry the serviceAccountToken projection (bound token — the
+// in-pod-kubectl path). Mirrors corev1.ProjectedVolumeSource.
+message ProjectedVolumeSource {
+  // sources are the individual projections, layered into one directory.
+  repeated VolumeProjection sources = 1;
+  // default_mode is the default file permission bits; 0 means unset.
+  int32 default_mode = 2;
+}
+
+// VolumeProjection is one projection within a ProjectedVolumeSource. Exactly
+// one source is set. Mirrors corev1.VolumeProjection (M2.1 subset: configMap /
+// secret / downwardAPI / serviceAccountToken).
+message VolumeProjection {
+  ConfigMapProjection config_map = 1;
+  SecretProjection secret = 2;
+  DownwardAPIProjection downward_api = 3;
+  ServiceAccountTokenProjection service_account_token = 4;
+}
+
+// ConfigMapProjection projects ConfigMap keys into a projected volume. Mirrors
+// corev1.ConfigMapProjection.
+message ConfigMapProjection {
+  string name = 1;
+  repeated KeyToPath items = 2;
+  bool optional = 3;
+}
+
+// SecretProjection projects Secret keys into a projected volume. Mirrors
+// corev1.SecretProjection.
+message SecretProjection {
+  string name = 1;
+  repeated KeyToPath items = 2;
+  bool optional = 3;
+}
+
+// DownwardAPIProjection projects pod fields into a projected volume. Mirrors
+// corev1.DownwardAPIProjection.
+message DownwardAPIProjection {
+  repeated DownwardAPIVolumeFile items = 1;
+}
+
+// ServiceAccountTokenProjection projects a bound ServiceAccount token. The
+// audience + expiration carry the bound-token semantics the in-pod-kubectl path
+// needs. Mirrors corev1.ServiceAccountTokenProjection.
+message ServiceAccountTokenProjection {
+  // audience is the intended audience of the token (default: the apiserver).
+  string audience = 1;
+  // expiration_seconds is the requested token TTL.
+  int64 expiration_seconds = 2;
+  // path is the relative file path to write the token to within the volume.
+  string path = 3;
+}
+
+// KeyToPath maps a ConfigMap/Secret key to a relative file path. Mirrors
+// corev1.KeyToPath.
+message KeyToPath {
+  // key is the source key.
+  string key = 1;
+  // path is the relative file path to write.
+  string path = 2;
+  // mode is the file permission bits; 0 means unset.
+  int32 mode = 3;
+}
+
+// PodSecurityContext is the pod-scoped privilege configuration. fs_group lives
+// HERE (pod-level only). Mirrors the M2.1 subset of corev1.PodSecurityContext.
+// int64 mirrors corev1's *int64; 0 is a valid value (root).
+message PodSecurityContext {
+  // fs_group is the supplemental group applied to volume ownership (chown
+  // root-side before the privilege drop).
+  int64 fs_group = 1;
+  // run_as_user is the default uid for containers lacking their own.
+  int64 run_as_user = 2;
+  // run_as_group is the default gid for containers lacking their own.
+  int64 run_as_group = 3;
+}
+
+// LocalObjectReference references a namespace-local object by name (e.g. an
+// imagePullSecret). Mirrors corev1.LocalObjectReference.
+message LocalObjectReference {
+  // name is the referenced object's name.
+  string name = 1;
 }
 
 // Container is one workload process within a PodBox.
@@ -148,13 +328,233 @@ message Container {
   // stdin keeps stdin open for the container's process.
   bool stdin = 8;
 
-  reserved 100 to 149; // M2: per-container resource limits / probes.
+  // volume_mounts mount PodBox.volumes into the container's view by name.
+  // Mirrors corev1.Container.VolumeMounts.
+  repeated VolumeMount volume_mounts = 9;
+
+  // ports declares named container ports. The named-port table lets named probe
+  // ports and named Service targetPorts resolve. Mirrors
+  // corev1.Container.Ports.
+  repeated ContainerPort ports = 10;
+
+  // liveness_probe, readiness_probe, and startup_probe are the provider-served
+  // health probes. liveness restarts the container on failure; readiness gates
+  // ContainerStatus.ready (and thus Service endpoints); startup gates the
+  // others until it first succeeds. Mirror corev1.Container.{Liveness,
+  // Readiness,Startup}Probe.
+  Probe liveness_probe = 11;
+  Probe readiness_probe = 12;
+  Probe startup_probe = 13;
+
+  // security_context is the container-scoped privilege configuration (uid/gid
+  // drop, run-as-non-root). Pod-scoped fields (fsGroup) live on
+  // PodBox.pod_security_context. Mirrors corev1.Container.SecurityContext.
+  SecurityContext security_context = 14;
+
+  // env_from populates env from whole ConfigMaps/Secrets, with an optional
+  // per-source name prefix. Mirrors corev1.Container.EnvFrom.
+  repeated EnvFromSource env_from = 15;
+
+  reserved 100 to 149; // M2.2: per-container resource limits.
 }
 
-// EnvVar is a single environment variable.
+// EnvVar is a single environment variable. Exactly one of value or value_from
+// is set (corev1 mutual exclusion); an unset value_from means value is literal.
 message EnvVar {
   string name = 1;
+  // value is the literal value. Mutually exclusive with value_from.
   string value = 2;
+  // value_from sources the value from the downward API or a ConfigMap/Secret
+  // key. Mutually exclusive with value. Mirrors corev1.EnvVar.ValueFrom.
+  EnvVarSource value_from = 3;
+}
+
+// VolumeMount mounts a PodBox.volume into a container by name. Mirrors
+// corev1.VolumeMount (M2.1 subset: no mountPropagation/recursiveReadOnly).
+message VolumeMount {
+  // name references a PodBox.volumes[].name.
+  string name = 1;
+  // mount_path is the path inside the container's view to mount at.
+  string mount_path = 2;
+  // read_only mounts the volume read-only (secrets / SA-token get a read-only
+  // sub-scope runtimed-side).
+  bool read_only = 3;
+  // sub_path mounts a single file/dir from within the volume rather than its
+  // root.
+  string sub_path = 4;
+}
+
+// ContainerPort declares a named port a container exposes. Mirrors
+// corev1.ContainerPort (M2.1 subset: name + containerPort + protocol; host_port
+// / host_ip are not modeled — k3sm pods bind the pod IP, not host ports).
+message ContainerPort {
+  // name is the port name, referenced by named probe ports and named Service
+  // targetPorts. Unique within the container.
+  string name = 1;
+  // container_port is the port number the container listens on.
+  int32 container_port = 2;
+  // protocol is "TCP" (default), "UDP", or "SCTP", carried verbatim from
+  // corev1.Protocol.
+  string protocol = 3;
+}
+
+// Probe is a provider-served health check. Exactly one handler (http_get,
+// tcp_socket, exec) is set — modeled as three optional message fields, matching
+// the ContainerState pointer-union precedent. Mirrors corev1.Probe.
+message Probe {
+  // initial_delay_seconds is the delay before the first probe after the
+  // container starts.
+  int32 initial_delay_seconds = 1;
+  // period_seconds is how often to probe.
+  int32 period_seconds = 2;
+  // timeout_seconds is the per-probe timeout.
+  int32 timeout_seconds = 3;
+  // success_threshold is the consecutive successes required to be considered
+  // healthy after a failure (must be 1 for liveness/startup).
+  int32 success_threshold = 4;
+  // failure_threshold is the consecutive failures required to give up.
+  int32 failure_threshold = 5;
+
+  // http_get, tcp_socket, and exec are the handler union: exactly one is set.
+  HTTPGetAction http_get = 6;
+  TCPSocketAction tcp_socket = 7;
+  ExecAction exec = 8;
+}
+
+// HTTPGetAction is an HTTP GET probe handler. Mirrors corev1.HTTPGetAction.
+message HTTPGetAction {
+  // path is the request path.
+  string path = 1;
+  // port is the target port — an int or a named ContainerPort (resolved via the
+  // named-port table).
+  IntOrString port = 2;
+  // scheme is "HTTP" (default) or "HTTPS".
+  string scheme = 3;
+  // host is the host header / target host; empty defaults to the pod IP.
+  string host = 4;
+  // http_headers are extra request headers.
+  repeated HTTPHeader http_headers = 5;
+}
+
+// HTTPHeader is one custom HTTP probe header. Mirrors corev1.HTTPHeader.
+message HTTPHeader {
+  string name = 1;
+  string value = 2;
+}
+
+// TCPSocketAction is a TCP-connect probe handler. Mirrors
+// corev1.TCPSocketAction.
+message TCPSocketAction {
+  // port is the target port — an int or a named ContainerPort.
+  IntOrString port = 1;
+  // host is the target host; empty defaults to the pod IP.
+  string host = 2;
+}
+
+// ExecAction is a command-exec probe handler: the probe succeeds iff the
+// command exits 0. Mirrors corev1.ExecAction.
+message ExecAction {
+  // command is argv run inside the container.
+  repeated string command = 1;
+}
+
+// IntOrString mirrors k8s.io/apimachinery intstr.IntOrString: a value that is
+// either an int (a port number) or a string (a named ContainerPort). Exactly
+// one is meaningful; a non-empty str_val selects the string form, matching the
+// intstr Type discriminator.
+message IntOrString {
+  // int_val is the integer form (e.g. a literal port number).
+  int32 int_val = 1;
+  // str_val is the string form (e.g. a named container port).
+  string str_val = 2;
+}
+
+// SecurityContext is the container-scoped privilege configuration. fsGroup is
+// NOT here — it is pod-scoped (PodSecurityContext.fs_group). Mirrors the M2.1
+// subset of corev1.SecurityContext. The int64 *_as_* fields mirror corev1's
+// *int64 (uid/gid); 0 is a valid value (root), so callers needing "unset" must
+// track presence out of band per their own convention.
+message SecurityContext {
+  // run_as_user is the uid the container process runs as.
+  int64 run_as_user = 1;
+  // run_as_group is the gid the container process runs as.
+  int64 run_as_group = 2;
+  // run_as_non_root, when true, requires the resolved uid to be non-zero.
+  bool run_as_non_root = 3;
+}
+
+// EnvFromSource populates env from a whole ConfigMap or Secret, with an
+// optional name prefix applied to every key. Exactly one of config_map_ref /
+// secret_ref is set. Mirrors corev1.EnvFromSource.
+message EnvFromSource {
+  // prefix is prepended to every env name sourced here.
+  string prefix = 1;
+  // config_map_ref selects a ConfigMap whose keys become env vars.
+  ConfigMapEnvSource config_map_ref = 2;
+  // secret_ref selects a Secret whose keys become env vars.
+  SecretEnvSource secret_ref = 3;
+}
+
+// ConfigMapEnvSource selects a ConfigMap for env_from. Mirrors
+// corev1.ConfigMapEnvSource.
+message ConfigMapEnvSource {
+  // name is the ConfigMap name.
+  string name = 1;
+  // optional, when true, tolerates a missing ConfigMap.
+  bool optional = 2;
+}
+
+// SecretEnvSource selects a Secret for env_from. Mirrors corev1.SecretEnvSource.
+message SecretEnvSource {
+  // name is the Secret name.
+  string name = 1;
+  // optional, when true, tolerates a missing Secret.
+  bool optional = 2;
+}
+
+// EnvVarSource is the source for an EnvVar value (the corev1 union). Exactly one
+// of field_ref / config_map_key_ref / secret_key_ref is set. Mirrors
+// corev1.EnvVarSource (M2.1 subset: no resourceFieldRef).
+message EnvVarSource {
+  // field_ref sources from the downward API (e.g. spec.nodeName, status.podIP,
+  // metadata.name).
+  ObjectFieldSelector field_ref = 1;
+  // config_map_key_ref sources from a single ConfigMap key.
+  ConfigMapKeySelector config_map_key_ref = 2;
+  // secret_key_ref sources from a single Secret key.
+  SecretKeySelector secret_key_ref = 3;
+}
+
+// ObjectFieldSelector selects a downward-API field path. Mirrors
+// corev1.ObjectFieldSelector.
+message ObjectFieldSelector {
+  // api_version is the schema version of field_path (defaults to "v1").
+  string api_version = 1;
+  // field_path is the path to select, e.g. "spec.nodeName", "status.podIP",
+  // "metadata.name".
+  string field_path = 2;
+}
+
+// ConfigMapKeySelector selects one key of a ConfigMap. Mirrors
+// corev1.ConfigMapKeySelector.
+message ConfigMapKeySelector {
+  // name is the ConfigMap name.
+  string name = 1;
+  // key is the key within the ConfigMap.
+  string key = 2;
+  // optional, when true, tolerates a missing ConfigMap/key.
+  bool optional = 3;
+}
+
+// SecretKeySelector selects one key of a Secret. Mirrors
+// corev1.SecretKeySelector.
+message SecretKeySelector {
+  // name is the Secret name.
+  string name = 1;
+  // key is the key within the Secret.
+  string key = 2;
+  // optional, when true, tolerates a missing Secret/key.
+  bool optional = 3;
 }
 
 // SandboxProfile is the input to the per-pod SBPL (Seatbelt) generator. The
@@ -371,7 +771,50 @@ message ContainerStatus {
   bool started = 9;
   bool started_set = 10;
 
-  reserved 100 to 149; // M2: resources, allocatedResources, volumeMounts.
+  // volume_mounts is the status mirror of Container.volume_mounts (the
+  // lossless-mirror pairing for the M2.1 spec field). Mirrors
+  // corev1.ContainerStatus.VolumeMounts.
+  repeated VolumeMountStatus volume_mounts = 11;
+
+  // user is the effective uid/gid the privilege drop produced (the status
+  // mirror of the resolved SecurityContext/PodSecurityContext). Mirrors
+  // corev1.ContainerStatus.User.
+  ContainerUser user = 12;
+
+  reserved 100 to 149; // M2.2: resources, allocatedResources.
+}
+
+// VolumeMountStatus is the status mirror of a VolumeMount. Mirrors
+// corev1.VolumeMountStatus (M2.1 subset: name, mountPath, readOnly).
+message VolumeMountStatus {
+  // name references the VolumeMount/PodBox.volumes name.
+  string name = 1;
+  // mount_path is the resolved mount path.
+  string mount_path = 2;
+  // read_only reflects the effective read-only state.
+  bool read_only = 3;
+}
+
+// ContainerUser is the effective user the container runs as. Mirrors
+// corev1.ContainerUser (M2.1 subset: the linux variant carries the resolved
+// uid/gid/supplementalGroups — the effective identity after the privilege
+// drop).
+message ContainerUser {
+  // linux is the resolved POSIX identity.
+  LinuxContainerUser linux = 1;
+}
+
+// LinuxContainerUser is the resolved POSIX identity (effective uid/gid +
+// supplemental groups) the privilege drop produced. Mirrors
+// corev1.LinuxContainerUser.
+message LinuxContainerUser {
+  // uid is the effective user id.
+  int64 uid = 1;
+  // gid is the effective group id.
+  int64 gid = 2;
+  // supplemental_groups are the effective supplemental group ids (incl.
+  // fs_group).
+  repeated int64 supplemental_groups = 3;
 }
 
 // ContainerState mirrors corev1.ContainerState: exactly one of the three is
