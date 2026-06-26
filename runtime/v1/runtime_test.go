@@ -462,6 +462,43 @@ func TestRoundTrip(t *testing.T) {
 		Error:         errStatus,
 		FailureReason: FailureReason_FAILURE_REASON_NOT_FOUND,
 	}, &RestartContainerResponse{})
+
+	// --- M3.1 persistent-storage volume source --------------------------------
+	// The PV/PVC volume source added to the Volume union (field 7) — the
+	// fails-before (the message did not exist) / passes-after acceptance evidence
+	// for apis:M3.1. proto.Equal must survive marshal→unmarshal.
+	roundTrip(t, "PersistentVolumeClaimVolumeSource", &PersistentVolumeClaimVolumeSource{
+		ClaimName: "postgres-data", ReadOnly: false,
+	}, &PersistentVolumeClaimVolumeSource{})
+	roundTrip(t, "PersistentVolumeClaimVolumeSource_readOnly", &PersistentVolumeClaimVolumeSource{
+		ClaimName: "shared-models", ReadOnly: true,
+	}, &PersistentVolumeClaimVolumeSource{})
+	roundTrip(t, "Volume_persistentVolumeClaim", &Volume{
+		Name: "data", PersistentVolumeClaim: &PersistentVolumeClaimVolumeSource{ClaimName: "postgres-data"},
+	}, &Volume{})
+
+	// A PodBox carrying a PVC-backed volume alongside an ephemeral M2.1 source
+	// (the StatefulSet-storage shape stockkitty's Postgres needs), mounted by a
+	// container — the cross-message M3.1 wire surface.
+	roundTrip(t, "PodBox_persistentVolume_M3_1", &PodBox{
+		PodId:      "11111111-2222-3333-4444-555555555555",
+		Namespace:  "stockkitty",
+		Name:       "postgres-0",
+		RootfsPath: "/var/lib/k3sm/pods/p1/rootfs",
+		Uid:        501,
+		Gid:        20,
+		Containers: []*Container{{
+			Name:  "postgres",
+			Image: "/postgres",
+			VolumeMounts: []*VolumeMount{
+				{Name: "data", MountPath: "/var/lib/postgresql/data"},
+			},
+		}},
+		Volumes: []*Volume{
+			{Name: "data", PersistentVolumeClaim: &PersistentVolumeClaimVolumeSource{ClaimName: "postgres-data"}},
+			{Name: "shm", EmptyDir: &EmptyDirVolumeSource{Medium: "Memory", SizeLimit: "256Mi"}},
+		},
+	}, &PodBox{})
 }
 
 // TestSignaturePolicyFailClosed asserts the zero value of SignaturePolicy is
