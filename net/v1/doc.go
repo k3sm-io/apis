@@ -1,17 +1,27 @@
-// Package netv1 holds the cross-repo Go types for k3sm's userspace pod
-// networking: the data the userspace Service proxy and the getaddrinfo DNS-shim
-// exchange at the repo boundary. It is consumed at compile time by
-// k3sm.io/darwin-net (which implements the proxy and the DYLD getaddrinfo shim)
-// and produced by k3sm.io/k3sm (the server that watches Services/EndpointSlices
-// and hosts CoreDNS) — see k3sm/docs/DESIGN.md §6.
+// Package netv1 holds the cross-repo Go types for k3sm's pod networking. It is
+// consumed at compile time by k3sm.io/darwin-net (the proxy, the DYLD
+// getaddrinfo shim, and the wireguard mesh) and produced by k3sm.io/k3sm (the
+// server that watches Services/EndpointSlices, hosts CoreDNS, and drives the
+// node join) — see k3sm/docs/DESIGN.md §5b/§6. It holds three kinds of contract:
 //
-// Unlike runtime/v1 these are plain Go structs, NOT a protobuf wire contract:
-// they are shared in-process configuration, not RPC messages. They are pure
-// data with no behavior beyond small construction/validation helpers, carry no
-// k3sm.io/* imports, and build pure-Go (CGO_ENABLED=0).
+//   - Service-proxy + DNS-shim config (service.go, dns.go): plain Go structs,
+//     NOT a protobuf wire contract — shared in-process configuration the proxy
+//     and shim round-trip through the watch cache as JSON.
+//   - The MeshPeer CRD (mesh.go): a real, served/watchable net.k3sm.io/v1
+//     Kubernetes custom resource (kine-stored, apiserver-served) carrying a
+//     node's wireguard PUBLIC key + endpoint + podCIDR + symmetric AllowedIPs +
+//     a SchemaVersion. Being a CRD it embeds metav1.TypeMeta + ObjectMeta — the
+//     one reason this module depends on k8s.io/apimachinery (pinned in go.mod in
+//     lockstep with k3sm). Private keys are NEVER carried (DESIGN §5b).
+//   - The mesh-enroll join payloads (mesh.go): plain Go structs the bootstrap
+//     join HTTP exchange marshals, version-stamped from day one.
+//
+// The module still imports zero k3sm.io/* packages; k8s.io/apimachinery is pure
+// Go, so the package builds CGO_ENABLED=0.
 //
 // Stability contract: the surface is ADDITIVE-ONLY. Existing exported fields and
-// the documented enum constants are stable; new optional fields may be appended.
+// the documented constants are stable; new optional fields may be appended.
 // JSON struct tags use camelCase to match the corev1 objects these mirror, so a
-// proxy can round-trip them through the watch cache unchanged.
+// proxy / informer can round-trip them through the watch cache unchanged; the
+// MeshPeer payload's own evolution rides Spec.SchemaVersion within the v1 GVK.
 package netv1
