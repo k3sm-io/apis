@@ -1,7 +1,7 @@
 ---
 repo: apis
 schema: phases/v1
-current_phase: M2
+current_phase: M3
 updated: 2026-06-25
 updated_by: agent
 
@@ -72,7 +72,8 @@ phases:
 
   - id: M2
     title: Pod-spec fidelity proto additions + gRPC daemon surface + resource/metrics types
-    status: todo
+    status: done
+    completed: 2026-06-25
     depends_on: []
     subphases:
       - id: M2.1
@@ -132,25 +133,26 @@ phases:
             method: unit
       - id: M2.2
         title: resource-limit + metrics types (reserved 100..199 / 100..149 bands)
-        status: todo
+        status: done
+        completed: 2026-06-25
         depends_on: []
         deliverables:
           - id: M2.2-d1
-            done: false
+            done: true
             desc: "PodBox resource-limit fields — memory bytes, QoS class, and RLIMITs, allocated within PodBox's OWN reserved band 100..199 (never the low M2.1 numbers). These are the inputs runtimed:M2.2 enforces for OOMKilled (proc_pid_rusage; ri_phys_footprint ≠ RSS) and best-effort CPU QoS (not CFS millicores)."
           - id: M2.2-d2
-            done: false
+            done: true
             desc: "ContainerStatus.{resources, allocatedResources} — the status mirror of the M2.2 resource-limit fields, allocated within ContainerStatus's OWN reserved band 100..149 (its reserved comment earmarks resources/allocatedResources). Keeps PodStatus a lossless mirror of corev1 once resources land."
           - id: M2.2-d3
-            done: false
+            done: true
             desc: "Summary-API / pod-stats message(s) for kubectl top — the metric snapshot type(s) (per-pod/per-container CPU + memory working-set) the provider serves the metrics path from. New message(s); does NOT consume the reserved bands of the lifecycle messages."
         acceptance:
           - id: M2.2-a1
-            met: false
+            met: true
             check: additive-only — buf breaking (WIRE_JSON) clean; resource/metrics fields land in the reserved 100..199 (PodBox) / 100..149 (sibling) bands so they never collide with the M2.1 low-number fields
             method: unit
           - id: M2.2-a2
-            met: false
+            met: true
             check: proto.Equal round-trip holds for the new resource-limit fields and the Summary-API/pod-stats message(s); table-driven, -race clean
             method: unit
 
@@ -250,7 +252,7 @@ and `runtimed`'s M0 was a standalone Seatbelt prototype. First `apis` code lands
 **Acceptance (exit gate)**
 - ✅ `M1.2-a1` builds pure-Go (`CGO_ENABLED=0`, standalone `GOWORK=off` + under `go.work`); table-driven `-race` tests (construction, validation, JSON round-trip/field-name pins); ready for the `darwin-net` proxy + shim compile-check — *method: build*
 
-## M2 — Pod-spec fidelity proto additions + gRPC daemon surface + resource/metrics types ⬜
+## M2 — Pod-spec fidelity proto additions + gRPC daemon surface + resource/metrics types ✅
 Decomposed now that M1 has landed. Headline: raise pod-spec fidelity to what the `stockkitty`
 reference workload exercises (`../../docs/stockkitty-readiness.md`) in **M2.1**, then extend `runtime/v1`
 for the **resource/metrics** surface (`ri_phys_footprint` → `kubectl top`) in **M2.2**. All additions are
@@ -289,19 +291,28 @@ Field numbers allocated (all below 100; reserved bands untouched): **PodBox** `v
 - ✅ `M2.1-a2` `proto.Equal` round-trip holds for every new message (one fully-populated case each — every `Volume` source incl. `serviceAccountToken`; each `Probe` handler; `SecurityContext`/`PodSecurityContext`; `EnvFromSource`; `EnvVarSource`/`fieldRef`; `ContainerPort`; `ContainerStatus` `volumeMounts`+`user`) plus full-`Container`/full-`PodBox`/full-`ContainerStatus` cases; `-race` clean — *method: unit*
 - ✅ `M2.1-a3` zero `k3sm.io/*` imports (cycle check); builds `CGO_ENABLED=0` standalone (`GOWORK=off`) + under `go.work` — *method: unit*
 
-### M2.2 — resource-limit + metrics types ⬜
+### M2.2 — resource-limit + metrics types ✅
 Owns the **reserved bands** (`PodBox` `100..199`; sibling messages `100..149`) the M2.1 low-number fields
 deliberately avoid, so M2.1 (free numbers) and M2.2 (reserved bands) **never collide**. `depends_on: []`
-(apis-internal). **Not implemented yet — STUB.**
+(apis-internal). Field numbers allocated **within** each message's own reserved band, **ceilings
+preserved**: **PodBox** `memory_limit_bytes=100`, `qos_class=101` (typed `QOSClass` enum), `rlimits=102`
+(repeated `ResourceLimit{type,soft,hard}`, OCI-style) → reserved narrowed `100..199`→`103..199`;
+**ContainerStatus** `resources=100` (`ResourceRequirements`), `allocated_resources=101` (`ResourceList`)
+→ reserved narrowed `100..149`→`102..149`. New **standalone** types `PodStats`/`ContainerStats`/`CPUStats`/
+`MemoryStats` (working-set from `ri_phys_footprint`) and shared `ResourceList`/`ResourceRequirements`/
+`ResourceLimit`/`QOSClass` do **not** touch the lifecycle messages' reserved bands. Two additive RPCs
+append to `service Runtime`: **`ListPodStats`** (the `kubectl top` / kubelet-Summary-API metrics path) and
+**`RestartContainer`** (the liveness-restart action the provider's probe runner invokes — the seam that,
+pre-M2.2, only bumped `restart_count` via a nil `restartFunc`).
 
 **Deliverables**
-- ⬜ `M2.2-d1` `PodBox` resource-limit fields — memory bytes, QoS class, RLIMITs (in `PodBox`'s `100..199` band). Inputs `runtimed:M2.2` enforces for `OOMKilled` (`proc_pid_rusage`; `ri_phys_footprint` ≠ RSS) and best-effort CPU QoS (not CFS millicores).
-- ⬜ `M2.2-d2` `ContainerStatus.{resources, allocatedResources}` — the status mirror (in `ContainerStatus`'s `100..149` band; its `reserved` comment earmarks them). Keeps `PodStatus` a lossless mirror once resources land.
-- ⬜ `M2.2-d3` Summary-API / pod-stats message(s) for `kubectl top` — per-pod/per-container CPU + memory working-set snapshot type(s) the provider serves the metrics path from. New message(s); does not consume the lifecycle messages' reserved bands.
+- ✅ `M2.2-d1` `PodBox` resource-limit fields — `memory_limit_bytes` (100, the typed field that **replaces the M2.1 `k3sm.io/memory-limit-bytes` annotation seam** runtimed bridged the limit on), `qos_class` (101, `QOSClass` Guaranteed/Burstable/BestEffort), `rlimits` (102, repeated `ResourceLimit`). Inputs `runtimed:M2.2` enforces for `OOMKilled` (`proc_pid_rusage`; `ri_phys_footprint` ≠ RSS) and best-effort CPU QoS (not CFS millicores).
+- ✅ `M2.2-d2` `ContainerStatus.{resources, allocated_resources}` (100/101) — the status mirror (`ResourceRequirements` limits/requests + a bare `ResourceList`), completing the lossless corev1 mirror now that resources land.
+- ✅ `M2.2-d3` Summary-API / pod-stats messages for `kubectl top` — `PodStats`/`ContainerStats` (per-pod/per-container) with `CPUStats` + `MemoryStats` (`working_set_bytes` from `ri_phys_footprint`), served via the additive `ListPodStats` RPC. Standalone messages; do not consume the lifecycle messages' reserved bands.
 
-**Acceptance (exit gate)**
-- ⬜ `M2.2-a1` additive-only — `buf breaking` (WIRE_JSON) clean; resource/metrics fields land in the reserved `100..199` / `100..149` bands so they never collide with the M2.1 low-number fields — *method: unit*
-- ⬜ `M2.2-a2` `proto.Equal` round-trip holds for the new resource-limit fields and the Summary-API/pod-stats message(s); table-driven, `-race` clean — *method: unit*
+**Acceptance (exit gate)** — all met
+- ✅ `M2.2-a1` additive-only — `buf breaking` (WIRE_JSON) clean vs `buf/baseline.binpb`; resource/metrics fields land in the reserved `100..199` / `100..149` bands (ceilings preserved). Consuming a reserved **message** band narrows its declaration, which buf's `RESERVED_MESSAGE_NO_DELETE` flags; that **one** rule is `except`ed in `buf.yaml` (documented) because converting never-used reserved headroom into a field is wire-safe — every field-level guard (no renumber/retype/delete, stable JSON names) and `RESERVED_ENUM_NO_DELETE` stay ON (verified: a sanity renumber still trips breaking) — *method: unit*
+- ✅ `M2.2-a2` `proto.Equal` round-trip holds for every new field/message (fully-populated cases) **plus** the new RPCs are asserted registered as unary methods on `Runtime_ServiceDesc`; table-driven, `-race` clean — *method: unit*
 
 ## M3 — Storage volume sources (PV/PVC) + MeshPeer CRD + NodeNetwork + mesh-enroll types ⬜
 Headline: persistent storage for the reference workload (Postgres / compile-artifacts PVCs) **plus** the
@@ -343,10 +354,14 @@ runtimed VZ backend (`runtimed:M5`) and the guest-side networking (`darwin-net:M
 - `runtimed:M5` + `darwin-net:M5` ← `apis:M5.1` (the `vm` handler→backend mapping).
 
 ## Next
-M1 is closed. `runtime/v1` (`service Runtime`, `PodBox`, `PodStatus`, `ImageManifest`,
-`SignaturePolicy`) is the contract `runtimed:M1` and `k3sm:M1` implement against, and `net/v1`
-(`ServiceVIP`, `Endpoint`, `DNSConfig`) is the cross-boundary type set `darwin-net:M1` consume. **M2 is
-the active milestone**: its `M2.1` raises pod-spec fidelity (volumes, volumeMounts, probes,
-securityContext, envFrom + `valueFrom.fieldRef`, imagePullSecret, `terminationGracePeriodSeconds`, and
-the paired `ContainerStatus` fields) to what `stockkitty` exercises, alongside the daemon-split
-resource/metrics surface — all additive, field numbers stable, each in its message's own reserved band.
+**M2 is closed** — `M2.1` (pod-spec fidelity) and `M2.2` (resource/metrics types) both landed, all
+additive with stable field numbers. This unblocks the downstream M2 round (a **separate** follow-up, not
+`apis` work):
+- `runtimed:M2` reads the typed `PodBox.memory_limit_bytes`/`qos_class`/`rlimits` (**replacing** the
+  `k3sm.io/memory-limit-bytes` annotation bridge), serves `ListPodStats` from the `proc_pid_rusage`
+  sampler, and implements `RestartContainer`.
+- `k3sm:M2` writes the typed resource limits, wires the probe-runner `restartFunc` to the new
+  `RestartContainer` RPC, and maps `PodStats` onto `kubectl top`.
+
+**M3** is the next `apis` milestone: `M3.1` adds the PV/PVC volume source to `PodBox` (additive within the
+same `100..199` band) — NodePort needs **no** `apis` change (`net/v1 ServicePort.NodePort` already exists).

@@ -22,8 +22,8 @@ option go_package = "k3sm.io/apis/runtime/v1;runtimev1";
 //
 // RPC numbering note: gRPC method names (not numbers) are the wire identity, so
 // there is no numeric range to reserve. The M2 process-split adds resource and
-// metrics RPCs (e.g. UpdatePodResources, ListPodStats) to THIS service —
-// append-only; do not remove or rename the methods below.
+// metrics RPCs to THIS service — append-only; do not remove or rename the
+// methods below. M2.2 appends ListPodStats and RestartContainer.
 service Runtime {
   // CreatePod materializes and starts a PodBox: it creates the per-pod dir,
   // applies the Seatbelt profile, and posix_spawns each container as a native
@@ -70,6 +70,21 @@ service Runtime {
   // split (provider and runtimed as separate processes) uses this for the
   // version-compat handshake across the IPC boundary.
   rpc GetRuntimeInfo(GetRuntimeInfoRequest) returns (GetRuntimeInfoResponse);
+
+  // ListPodStats returns a resource-usage snapshot for pods on the node — the
+  // metrics path behind `kubectl top` / the kubelet Summary API. pod_id empty =
+  // all pods on the node; pod_id set = that one pod. runtimed sources each
+  // sample from proc_pid_rusage (ri_phys_footprint, NOT RSS); the provider
+  // serves the Summary API from them. Added in M2.2 (append-only).
+  rpc ListPodStats(ListPodStatsRequest) returns (ListPodStatsResponse);
+
+  // RestartContainer restarts a single container in a running pod in place
+  // (terminate its process within the grace window, then re-spawn from the same
+  // spec) and increments ContainerStatus.restart_count. A failed liveness probe
+  // drives this — it is the runtime action the provider's probe runner invokes
+  // (the seam that, pre-M2.2, only bumped restart_count via a nil restartFunc).
+  // Added in M2.2 (append-only).
+  rpc RestartContainer(RestartContainerRequest) returns (RestartContainerResponse);
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +154,31 @@ message PodBox {
   // Mirrors corev1.PodSpec.ImagePullSecrets.
   repeated LocalObjectReference image_pull_secrets = 18;
 
-  reserved 100 to 199; // M2.2: resource limits (mem bytes, QoS class, RLIMITs).
+  // --- M2.2 resource limits (allocated from PodBox's reserved 100..199 band;
+  // they never collide with the M2.1 low-number fields above) ---
+
+  // memory_limit_bytes is the resolved per-pod memory limit in bytes (the
+  // provider converts the corev1 resource.Quantity). runtimed:M2.2 compares the
+  // pod's ri_phys_footprint (proc_pid_rusage — NOT RSS) against this to drive
+  // OOMKilled. 0 means no memory limit (BestEffort). This typed field replaces
+  // the M2.1 k3sm.io/memory-limit-bytes annotation seam runtimed bridged it on.
+  int64 memory_limit_bytes = 100;
+
+  // qos_class is the pod's resolved Quality-of-Service class. runtimed uses it
+  // for best-effort CPU policy (k3sm has no CFS millicore enforcement — see
+  // ../../docs/stockkitty-readiness.md); the provider also mirrors it into
+  // PodStatus.qos_class (string). Mirrors corev1 PodStatus.QOSClass as an enum.
+  QOSClass qos_class = 101;
+
+  // rlimits are the POSIX resource limits runtimed applies via setrlimit(2)
+  // before spawning each container process (e.g. RLIMIT_NOFILE, RLIMIT_NPROC).
+  // Modeled OCI-style (a list of typed soft/hard caps) so new limit types are
+  // additive without new fields.
+  repeated ResourceLimit rlimits = 102;
+
+  // 100..102 are now allocated above; 103..199 stay reserved for future
+  // resource/metrics inputs. The band's 199 ceiling is preserved (additive).
+  reserved 103 to 199;
 }
 
 // Volume is a named pod-level volume with exactly one source set. Mirrors the
@@ -781,7 +820,21 @@ message ContainerStatus {
   // corev1.ContainerStatus.User.
   ContainerUser user = 12;
 
-  reserved 100 to 149; // M2.2: resources, allocatedResources.
+  // --- M2.2 resource mirror (allocated from ContainerStatus's reserved
+  // 100..149 band — its reserved comment earmarked these) ---
+
+  // resources is the effective compute ResourceRequirements (limits/requests)
+  // for the container — the status mirror that completes the lossless corev1
+  // mirror now that PodBox carries resource limits. Mirrors
+  // corev1.ContainerStatus.Resources.
+  ResourceRequirements resources = 100;
+
+  // allocated_resources is the compute resources the node allocated to the
+  // container at admission. Mirrors corev1.ContainerStatus.AllocatedResources.
+  ResourceList allocated_resources = 101;
+
+  // 100..101 allocated above; 102..149 stay reserved (149 ceiling preserved).
+  reserved 102 to 149;
 }
 
 // VolumeMountStatus is the status mirror of a VolumeMount. Mirrors
@@ -845,6 +898,124 @@ message ContainerStateTerminated {
   google.protobuf.Timestamp started_at = 5;
   google.protobuf.Timestamp finished_at = 6;
   string container_id = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Resource limits, QoS, and pod stats (M2.2) — the resource/metrics surface
+// for the provider↔runtimed daemon split. PodBox carries the enforcement
+// inputs (memory_limit_bytes / qos_class / rlimits); ContainerStatus mirrors
+// the effective ResourceRequirements; PodStats/ContainerStats are the
+// kubectl-top / kubelet-Summary-API snapshot the provider serves.
+// ---------------------------------------------------------------------------
+
+// QOSClass is a pod's resolved Quality-of-Service class. Mirrors corev1
+// PodQOSClass. runtimed uses it for best-effort CPU scheduling policy (k3sm
+// does not enforce CFS millicores — CPU is best-effort QoS only). UNSPECIFIED
+// means the provider did not classify the pod (treat as BestEffort).
+enum QOSClass {
+  QOS_CLASS_UNSPECIFIED = 0;
+  QOS_CLASS_GUARANTEED = 1;
+  QOS_CLASS_BURSTABLE = 2;
+  QOS_CLASS_BEST_EFFORT = 3;
+}
+
+// ResourceLimit is one POSIX resource limit runtimed applies via setrlimit(2)
+// before spawning a container process. Modeled OCI-style (rlimits[]); type is
+// the limit name carried verbatim (e.g. "RLIMIT_NOFILE", "RLIMIT_NPROC").
+message ResourceLimit {
+  // type is the rlimit name, e.g. "RLIMIT_NOFILE" or "RLIMIT_NPROC".
+  string type = 1;
+  // soft is the soft (enforced, raisable up to hard) limit.
+  uint64 soft = 2;
+  // hard is the hard (ceiling) limit.
+  uint64 hard = 3;
+}
+
+// ResourceList mirrors corev1.ResourceList: a map from resource name (e.g.
+// "cpu", "memory") to a resource.Quantity serialized as its canonical string
+// (e.g. "500m", "1Gi"). Quantities are carried as strings so no precision is
+// lost on the wire (resource.Quantity has no lossless proto scalar).
+message ResourceList {
+  // quantities maps a resource name to its canonical quantity string.
+  map<string, string> quantities = 1;
+}
+
+// ResourceRequirements mirrors corev1.ResourceRequirements: the compute
+// resource limits and requests for a container. k3sm enforces only memory (a
+// hard limit → OOMKilled) and treats CPU as best-effort QoS (no CFS
+// millicores); the full map is carried for lossless kubectl fidelity.
+message ResourceRequirements {
+  // limits is the maximum compute resources allowed.
+  ResourceList limits = 1;
+  // requests is the minimum compute resources required.
+  ResourceList requests = 2;
+}
+
+// PodStats is a point-in-time resource-usage snapshot for one pod — the wire
+// form of runtimed's pod-metrics sample, so the metric is a contract type and
+// not an internal-only struct. The provider serves `kubectl top` / the kubelet
+// Summary API from these. Mirrors the kubelet stats/v1alpha1 PodStats subset
+// k3sm can source from proc_pid_rusage.
+message PodStats {
+  // pod_id is the pod (kube Pod UID) this sample is for.
+  string pod_id = 1;
+  // namespace and name are the kube coordinates (the Summary API PodReference).
+  string namespace = 2;
+  string name = 3;
+  // timestamp is when the pod-level sample was taken.
+  google.protobuf.Timestamp timestamp = 4;
+  // cpu is the pod-level CPU usage (summed across containers).
+  CPUStats cpu = 5;
+  // memory is the pod-level memory usage (summed across containers).
+  MemoryStats memory = 6;
+  // containers are the per-container samples.
+  repeated ContainerStats containers = 7;
+
+  reserved 100 to 149; // M2.2+: network / ephemeral-storage / process stats.
+}
+
+// ContainerStats is a per-container resource-usage snapshot within PodStats.
+// Mirrors the kubelet stats ContainerStats subset.
+message ContainerStats {
+  // name is the container name.
+  string name = 1;
+  // timestamp is when the container sample was taken.
+  google.protobuf.Timestamp timestamp = 2;
+  // cpu is the container CPU usage.
+  CPUStats cpu = 3;
+  // memory is the container memory usage.
+  MemoryStats memory = 4;
+
+  reserved 100 to 149; // M2.2+: rootfs / logs / accelerator stats.
+}
+
+// CPUStats is CPU usage at an instant. Mirrors the kubelet stats CPUStats
+// subset. k3sm sources usage_core_nano_seconds from proc_pid_rusage
+// (ri_user_time + ri_system_time); usage_nano_cores is the rate derived between
+// two consecutive samples.
+message CPUStats {
+  // timestamp is when the CPU sample was taken.
+  google.protobuf.Timestamp timestamp = 1;
+  // usage_nano_cores is the recent CPU usage rate (nanocores; 1e9 == 1 core).
+  uint64 usage_nano_cores = 2;
+  // usage_core_nano_seconds is the cumulative CPU time consumed (nanoseconds).
+  uint64 usage_core_nano_seconds = 3;
+}
+
+// MemoryStats is memory usage at an instant. Mirrors the kubelet stats
+// MemoryStats subset. working_set_bytes is sourced from ri_phys_footprint
+// (proc_pid_rusage) — NOT RSS — the same value runtimed:M2.2 compares against
+// PodBox.memory_limit_bytes for OOMKilled.
+message MemoryStats {
+  // timestamp is when the memory sample was taken.
+  google.protobuf.Timestamp timestamp = 1;
+  // working_set_bytes is the working-set size (ri_phys_footprint) kubectl top
+  // reports and OOMKilled is judged against.
+  uint64 working_set_bytes = 2;
+  // usage_bytes is total current memory usage.
+  uint64 usage_bytes = 3;
+  // rss_bytes is the resident set size, when available.
+  uint64 rss_bytes = 4;
 }
 
 // ---------------------------------------------------------------------------
@@ -1066,6 +1237,45 @@ message RuntimeCondition {
   ConditionStatus status = 2;
   string reason = 3;
   string message = 4;
+}
+
+// ListPodStatsRequest selects which pods to sample. pod_id empty = all pods on
+// the node (the Summary API shape); pod_id set = that single pod.
+message ListPodStatsRequest {
+  string pod_id = 1;
+}
+
+// ListPodStatsResponse carries the per-pod resource-usage snapshots.
+message ListPodStatsResponse {
+  repeated PodStats pod_stats = 1;
+}
+
+// RestartContainerRequest identifies the container to restart in place.
+message RestartContainerRequest {
+  // pod_id is the pod whose container to restart.
+  string pod_id = 1;
+  // container is the container name within the pod.
+  string container = 2;
+  // reason is a human-readable cause (e.g. "liveness probe failed") recorded in
+  // the container's last-termination state.
+  string reason = 3;
+  // grace_period_seconds is the SIGTERM→SIGKILL window for the old process
+  // before re-spawn; 0 means the runtime default.
+  int64 grace_period_seconds = 4;
+  reserved 100 to 149;
+}
+
+// RestartContainerResponse returns the post-restart container status and a
+// structured failure (empty error on success).
+message RestartContainerResponse {
+  // status is the container's status after the restart (restart_count bumped).
+  ContainerStatus status = 1;
+  // error carries a structured failure (e.g. NOT_FOUND for an unknown pod or
+  // container).
+  google.rpc.Status error = 2;
+  // failure_reason gives a typed, switchable cause.
+  FailureReason failure_reason = 3;
+  reserved 100 to 149;
 }
 
 // FailureReason is a typed, switchable cause for a failed pod operation,

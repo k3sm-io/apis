@@ -29,16 +29,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Runtime_CreatePod_FullMethodName      = "/k3sm.runtime.v1.Runtime/CreatePod"
-	Runtime_DeletePod_FullMethodName      = "/k3sm.runtime.v1.Runtime/DeletePod"
-	Runtime_UpdatePod_FullMethodName      = "/k3sm.runtime.v1.Runtime/UpdatePod"
-	Runtime_WatchPodStatus_FullMethodName = "/k3sm.runtime.v1.Runtime/WatchPodStatus"
-	Runtime_GetPodStatus_FullMethodName   = "/k3sm.runtime.v1.Runtime/GetPodStatus"
-	Runtime_GetLogs_FullMethodName        = "/k3sm.runtime.v1.Runtime/GetLogs"
-	Runtime_Exec_FullMethodName           = "/k3sm.runtime.v1.Runtime/Exec"
-	Runtime_Attach_FullMethodName         = "/k3sm.runtime.v1.Runtime/Attach"
-	Runtime_PortForward_FullMethodName    = "/k3sm.runtime.v1.Runtime/PortForward"
-	Runtime_GetRuntimeInfo_FullMethodName = "/k3sm.runtime.v1.Runtime/GetRuntimeInfo"
+	Runtime_CreatePod_FullMethodName        = "/k3sm.runtime.v1.Runtime/CreatePod"
+	Runtime_DeletePod_FullMethodName        = "/k3sm.runtime.v1.Runtime/DeletePod"
+	Runtime_UpdatePod_FullMethodName        = "/k3sm.runtime.v1.Runtime/UpdatePod"
+	Runtime_WatchPodStatus_FullMethodName   = "/k3sm.runtime.v1.Runtime/WatchPodStatus"
+	Runtime_GetPodStatus_FullMethodName     = "/k3sm.runtime.v1.Runtime/GetPodStatus"
+	Runtime_GetLogs_FullMethodName          = "/k3sm.runtime.v1.Runtime/GetLogs"
+	Runtime_Exec_FullMethodName             = "/k3sm.runtime.v1.Runtime/Exec"
+	Runtime_Attach_FullMethodName           = "/k3sm.runtime.v1.Runtime/Attach"
+	Runtime_PortForward_FullMethodName      = "/k3sm.runtime.v1.Runtime/PortForward"
+	Runtime_GetRuntimeInfo_FullMethodName   = "/k3sm.runtime.v1.Runtime/GetRuntimeInfo"
+	Runtime_ListPodStats_FullMethodName     = "/k3sm.runtime.v1.Runtime/ListPodStats"
+	Runtime_RestartContainer_FullMethodName = "/k3sm.runtime.v1.Runtime/RestartContainer"
 )
 
 // RuntimeClient is the client API for Runtime service.
@@ -51,8 +53,8 @@ const (
 //
 // RPC numbering note: gRPC method names (not numbers) are the wire identity, so
 // there is no numeric range to reserve. The M2 process-split adds resource and
-// metrics RPCs (e.g. UpdatePodResources, ListPodStats) to THIS service —
-// append-only; do not remove or rename the methods below.
+// metrics RPCs to THIS service — append-only; do not remove or rename the
+// methods below. M2.2 appends ListPodStats and RestartContainer.
 type RuntimeClient interface {
 	// CreatePod materializes and starts a PodBox: it creates the per-pod dir,
 	// applies the Seatbelt profile, and posix_spawns each container as a native
@@ -90,6 +92,19 @@ type RuntimeClient interface {
 	// split (provider and runtimed as separate processes) uses this for the
 	// version-compat handshake across the IPC boundary.
 	GetRuntimeInfo(ctx context.Context, in *GetRuntimeInfoRequest, opts ...grpc.CallOption) (*GetRuntimeInfoResponse, error)
+	// ListPodStats returns a resource-usage snapshot for pods on the node — the
+	// metrics path behind `kubectl top` / the kubelet Summary API. pod_id empty =
+	// all pods on the node; pod_id set = that one pod. runtimed sources each
+	// sample from proc_pid_rusage (ri_phys_footprint, NOT RSS); the provider
+	// serves the Summary API from them. Added in M2.2 (append-only).
+	ListPodStats(ctx context.Context, in *ListPodStatsRequest, opts ...grpc.CallOption) (*ListPodStatsResponse, error)
+	// RestartContainer restarts a single container in a running pod in place
+	// (terminate its process within the grace window, then re-spawn from the same
+	// spec) and increments ContainerStatus.restart_count. A failed liveness probe
+	// drives this — it is the runtime action the provider's probe runner invokes
+	// (the seam that, pre-M2.2, only bumped restart_count via a nil restartFunc).
+	// Added in M2.2 (append-only).
+	RestartContainer(ctx context.Context, in *RestartContainerRequest, opts ...grpc.CallOption) (*RestartContainerResponse, error)
 }
 
 type runtimeClient struct {
@@ -227,6 +242,26 @@ func (c *runtimeClient) GetRuntimeInfo(ctx context.Context, in *GetRuntimeInfoRe
 	return out, nil
 }
 
+func (c *runtimeClient) ListPodStats(ctx context.Context, in *ListPodStatsRequest, opts ...grpc.CallOption) (*ListPodStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListPodStatsResponse)
+	err := c.cc.Invoke(ctx, Runtime_ListPodStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runtimeClient) RestartContainer(ctx context.Context, in *RestartContainerRequest, opts ...grpc.CallOption) (*RestartContainerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RestartContainerResponse)
+	err := c.cc.Invoke(ctx, Runtime_RestartContainer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RuntimeServer is the server API for Runtime service.
 // All implementations must embed UnimplementedRuntimeServer
 // for forward compatibility.
@@ -237,8 +272,8 @@ func (c *runtimeClient) GetRuntimeInfo(ctx context.Context, in *GetRuntimeInfoRe
 //
 // RPC numbering note: gRPC method names (not numbers) are the wire identity, so
 // there is no numeric range to reserve. The M2 process-split adds resource and
-// metrics RPCs (e.g. UpdatePodResources, ListPodStats) to THIS service —
-// append-only; do not remove or rename the methods below.
+// metrics RPCs to THIS service — append-only; do not remove or rename the
+// methods below. M2.2 appends ListPodStats and RestartContainer.
 type RuntimeServer interface {
 	// CreatePod materializes and starts a PodBox: it creates the per-pod dir,
 	// applies the Seatbelt profile, and posix_spawns each container as a native
@@ -276,6 +311,19 @@ type RuntimeServer interface {
 	// split (provider and runtimed as separate processes) uses this for the
 	// version-compat handshake across the IPC boundary.
 	GetRuntimeInfo(context.Context, *GetRuntimeInfoRequest) (*GetRuntimeInfoResponse, error)
+	// ListPodStats returns a resource-usage snapshot for pods on the node — the
+	// metrics path behind `kubectl top` / the kubelet Summary API. pod_id empty =
+	// all pods on the node; pod_id set = that one pod. runtimed sources each
+	// sample from proc_pid_rusage (ri_phys_footprint, NOT RSS); the provider
+	// serves the Summary API from them. Added in M2.2 (append-only).
+	ListPodStats(context.Context, *ListPodStatsRequest) (*ListPodStatsResponse, error)
+	// RestartContainer restarts a single container in a running pod in place
+	// (terminate its process within the grace window, then re-spawn from the same
+	// spec) and increments ContainerStatus.restart_count. A failed liveness probe
+	// drives this — it is the runtime action the provider's probe runner invokes
+	// (the seam that, pre-M2.2, only bumped restart_count via a nil restartFunc).
+	// Added in M2.2 (append-only).
+	RestartContainer(context.Context, *RestartContainerRequest) (*RestartContainerResponse, error)
 	mustEmbedUnimplementedRuntimeServer()
 }
 
@@ -315,6 +363,12 @@ func (UnimplementedRuntimeServer) PortForward(grpc.BidiStreamingServer[PortForwa
 }
 func (UnimplementedRuntimeServer) GetRuntimeInfo(context.Context, *GetRuntimeInfoRequest) (*GetRuntimeInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetRuntimeInfo not implemented")
+}
+func (UnimplementedRuntimeServer) ListPodStats(context.Context, *ListPodStatsRequest) (*ListPodStatsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListPodStats not implemented")
+}
+func (UnimplementedRuntimeServer) RestartContainer(context.Context, *RestartContainerRequest) (*RestartContainerResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RestartContainer not implemented")
 }
 func (UnimplementedRuntimeServer) mustEmbedUnimplementedRuntimeServer() {}
 func (UnimplementedRuntimeServer) testEmbeddedByValue()                 {}
@@ -470,6 +524,42 @@ func _Runtime_GetRuntimeInfo_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Runtime_ListPodStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListPodStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeServer).ListPodStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Runtime_ListPodStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeServer).ListPodStats(ctx, req.(*ListPodStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Runtime_RestartContainer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RestartContainerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeServer).RestartContainer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Runtime_RestartContainer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeServer).RestartContainer(ctx, req.(*RestartContainerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Runtime_ServiceDesc is the grpc.ServiceDesc for Runtime service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -496,6 +586,14 @@ var Runtime_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetRuntimeInfo",
 			Handler:    _Runtime_GetRuntimeInfo_Handler,
+		},
+		{
+			MethodName: "ListPodStats",
+			Handler:    _Runtime_ListPodStats_Handler,
+		},
+		{
+			MethodName: "RestartContainer",
+			Handler:    _Runtime_RestartContainer_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

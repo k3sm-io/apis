@@ -391,6 +391,77 @@ func TestRoundTrip(t *testing.T) {
 		},
 		User: &ContainerUser{Linux: &LinuxContainerUser{Uid: 1000, Gid: 2000, SupplementalGroups: []int64{999, 1000}}},
 	}, &ContainerStatus{})
+
+	// --- M2.2 resource limits + metrics additions ----------------------------
+	// One fully-populated case per new message/field. These are the fails-before
+	// (the messages/fields did not exist) / passes-after acceptance evidence for
+	// apis:M2.2 — proto.Equal must survive marshal→unmarshal for every new field.
+
+	roundTrip(t, "ResourceLimit", &ResourceLimit{Type: "RLIMIT_NOFILE", Soft: 1024, Hard: 4096}, &ResourceLimit{})
+	roundTrip(t, "ResourceList", &ResourceList{Quantities: map[string]string{"cpu": "500m", "memory": "1Gi"}}, &ResourceList{})
+	roundTrip(t, "ResourceRequirements", &ResourceRequirements{
+		Limits:   &ResourceList{Quantities: map[string]string{"cpu": "1", "memory": "1Gi"}},
+		Requests: &ResourceList{Quantities: map[string]string{"cpu": "500m", "memory": "512Mi"}},
+	}, &ResourceRequirements{})
+
+	roundTrip(t, "CPUStats", &CPUStats{Timestamp: ts, UsageNanoCores: 250_000_000, UsageCoreNanoSeconds: 1_234_567_890}, &CPUStats{})
+	roundTrip(t, "MemoryStats", &MemoryStats{Timestamp: ts, WorkingSetBytes: 64 << 20, UsageBytes: 80 << 20, RssBytes: 48 << 20}, &MemoryStats{})
+	roundTrip(t, "ContainerStats", &ContainerStats{
+		Name: "app", Timestamp: ts,
+		Cpu:    &CPUStats{Timestamp: ts, UsageNanoCores: 100_000_000, UsageCoreNanoSeconds: 5_000_000_000},
+		Memory: &MemoryStats{Timestamp: ts, WorkingSetBytes: 32 << 20},
+	}, &ContainerStats{})
+	roundTrip(t, "PodStats", &PodStats{
+		PodId: "11111111-2222-3333-4444-555555555555", Namespace: "default", Name: "stockkitty", Timestamp: ts,
+		Cpu:    &CPUStats{Timestamp: ts, UsageNanoCores: 250_000_000, UsageCoreNanoSeconds: 9_000_000_000},
+		Memory: &MemoryStats{Timestamp: ts, WorkingSetBytes: 96 << 20, UsageBytes: 128 << 20, RssBytes: 72 << 20},
+		Containers: []*ContainerStats{
+			{Name: "app", Timestamp: ts, Cpu: &CPUStats{UsageNanoCores: 150_000_000}, Memory: &MemoryStats{WorkingSetBytes: 64 << 20}},
+			{Name: "sidecar", Timestamp: ts, Cpu: &CPUStats{UsageNanoCores: 100_000_000}, Memory: &MemoryStats{WorkingSetBytes: 32 << 20}},
+		},
+	}, &PodStats{})
+
+	// PodBox carrying every M2.2 resource-limit field (the typed memory limit +
+	// QoS class + rlimits that replace the M2.1 k3sm.io/memory-limit-bytes
+	// annotation seam runtimed bridged the limit on).
+	roundTrip(t, "PodBox_resources_M2_2", &PodBox{
+		PodId:            "11111111-2222-3333-4444-555555555555",
+		Name:             "stockkitty",
+		RootfsPath:       "/var/lib/k3sm/pods/p1/rootfs",
+		MemoryLimitBytes: 512 << 20,
+		QosClass:         QOSClass_QOS_CLASS_BURSTABLE,
+		Rlimits: []*ResourceLimit{
+			{Type: "RLIMIT_NOFILE", Soft: 1024, Hard: 4096},
+			{Type: "RLIMIT_NPROC", Soft: 256, Hard: 512},
+		},
+	}, &PodBox{})
+
+	// ContainerStatus carrying the M2.2 resource mirror (resources +
+	// allocatedResources) — completes the lossless corev1 mirror.
+	roundTrip(t, "ContainerStatus_resources_M2_2", &ContainerStatus{
+		Name:  "app",
+		State: &ContainerState{Running: &ContainerStateRunning{StartedAt: ts}},
+		Ready: true,
+		Resources: &ResourceRequirements{
+			Limits:   &ResourceList{Quantities: map[string]string{"cpu": "1", "memory": "512Mi"}},
+			Requests: &ResourceList{Quantities: map[string]string{"cpu": "250m", "memory": "256Mi"}},
+		},
+		AllocatedResources: &ResourceList{Quantities: map[string]string{"cpu": "250m", "memory": "256Mi"}},
+	}, &ContainerStatus{})
+
+	// M2.2 RPC request/response messages (the metrics + restart wire surface).
+	roundTrip(t, "ListPodStatsRequest", &ListPodStatsRequest{PodId: "p1"}, &ListPodStatsRequest{})
+	roundTrip(t, "ListPodStatsResponse", &ListPodStatsResponse{PodStats: []*PodStats{
+		{PodId: "p1", Namespace: "default", Name: "n", Timestamp: ts, Memory: &MemoryStats{WorkingSetBytes: 16 << 20}},
+	}}, &ListPodStatsResponse{})
+	roundTrip(t, "RestartContainerRequest", &RestartContainerRequest{
+		PodId: "p1", Container: "app", Reason: "liveness probe failed", GracePeriodSeconds: 30,
+	}, &RestartContainerRequest{})
+	roundTrip(t, "RestartContainerResponse", &RestartContainerResponse{
+		Status:        &ContainerStatus{Name: "app", RestartCount: 1, State: &ContainerState{Running: &ContainerStateRunning{StartedAt: ts}}},
+		Error:         errStatus,
+		FailureReason: FailureReason_FAILURE_REASON_NOT_FOUND,
+	}, &RestartContainerResponse{})
 }
 
 // TestSignaturePolicyFailClosed asserts the zero value of SignaturePolicy is
@@ -435,5 +506,53 @@ func TestSandboxBackendZeroValue(t *testing.T) {
 	t.Parallel()
 	if SandboxBackend_SANDBOX_BACKEND_UNSPECIFIED != 0 {
 		t.Fatalf("SandboxBackend zero value must be UNSPECIFIED, got %d", SandboxBackend_SANDBOX_BACKEND_UNSPECIFIED)
+	}
+}
+
+// TestQOSClassZeroValue asserts the M2.2 QOSClass zero value is UNSPECIFIED:
+// the provider must classify a pod explicitly; an unset class is "not
+// classified" (runtimed treats it as BestEffort), never an accidental
+// Guaranteed. The three real classes must all be non-zero.
+func TestQOSClassZeroValue(t *testing.T) {
+	t.Parallel()
+	if QOSClass_QOS_CLASS_UNSPECIFIED != 0 {
+		t.Fatalf("QOSClass zero value must be UNSPECIFIED, got %d", QOSClass_QOS_CLASS_UNSPECIFIED)
+	}
+	for _, q := range []QOSClass{
+		QOSClass_QOS_CLASS_GUARANTEED,
+		QOSClass_QOS_CLASS_BURSTABLE,
+		QOSClass_QOS_CLASS_BEST_EFFORT,
+	} {
+		if q == 0 {
+			t.Fatalf("QOSClass %v must be non-zero", q)
+		}
+	}
+}
+
+// TestM2_2RPCsRegistered asserts the M2.2 additive RPCs (ListPodStats,
+// RestartContainer) are registered on the generated Runtime gRPC service
+// descriptor as UNARY methods — the wire surface a runtimed server implements
+// and the provider calls. This is the passes-after evidence the new RPCs
+// reached the generated service, not just the .proto, and that they are
+// request/response (not streaming).
+func TestM2_2RPCsRegistered(t *testing.T) {
+	t.Parallel()
+	want := map[string]bool{"ListPodStats": false, "RestartContainer": false}
+	for _, m := range Runtime_ServiceDesc.Methods {
+		if _, ok := want[m.MethodName]; ok {
+			want[m.MethodName] = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("RPC %q is not registered as a unary method on Runtime_ServiceDesc", name)
+		}
+	}
+	// Guard against a regression that turns either into a stream — the M2.2
+	// contract is unary request/response.
+	for _, s := range Runtime_ServiceDesc.Streams {
+		if _, ok := want[s.StreamName]; ok {
+			t.Errorf("RPC %q must be a unary method, but is registered as a stream", s.StreamName)
+		}
 	}
 }
