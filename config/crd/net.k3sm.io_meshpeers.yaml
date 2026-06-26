@@ -1,0 +1,112 @@
+# MeshPeer CRD (net.k3sm.io/v1) — the wireguard mesh-topology contract (apis:M3.2).
+#
+# Hand-authored (apis runs no controller-gen) to match the Go type in
+# k3sm.io/apis/net/v1 (mesh.go). k3sm applies this at server bring-up; darwin-net
+# watches it and reconciles the mesh. Served+stored discipline: a SINGLE version
+# v1 is both served and stored, and the schema is ADDITIVE-ONLY going forward —
+# intra-version payload evolution rides spec.schemaVersion, not a new GVK version.
+#
+# Scope is Cluster: a MeshPeer is node-level mesh topology (one per node, named
+# for the node), not a namespaced workload. It carries the node's PUBLIC key
+# only — private keys never leave the node (DESIGN §5b).
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: meshpeers.net.k3sm.io
+spec:
+  group: net.k3sm.io
+  scope: Cluster
+  names:
+    kind: MeshPeer
+    listKind: MeshPeerList
+    plural: meshpeers
+    singular: meshpeer
+    shortNames:
+      - mp
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      additionalPrinterColumns:
+        - name: Node
+          type: string
+          jsonPath: .spec.nodeName
+        - name: Endpoint
+          type: string
+          jsonPath: .spec.endpoint
+        - name: PodCIDR
+          type: string
+          jsonPath: .spec.podCIDR
+        - name: Reachable
+          type: boolean
+          jsonPath: .status.reachable
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: MeshPeer is one node's wireguard mesh membership (public key + endpoint + podCIDR + symmetric AllowedIPs).
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required:
+                - schemaVersion
+                - nodeName
+                - publicKey
+                - endpoint
+                - podCIDR
+                - allowedIPs
+              properties:
+                schemaVersion:
+                  type: integer
+                  format: int32
+                  description: SchemaVersion stamps the MeshPeer payload version (the wireguard-encoding evolution seam within the v1 GVK).
+                  minimum: 1
+                nodeName:
+                  type: string
+                  description: NodeName is the node this peer represents (equals metadata.name).
+                publicKey:
+                  type: string
+                  description: PublicKey is the node's wireguard PUBLIC key (base64). The private key never leaves the node.
+                endpoint:
+                  type: string
+                  description: Endpoint is the host:port the node's wireguard is reachable at.
+                podCIDR:
+                  type: string
+                  description: PodCIDR is the node's pod /24 (node.spec.podCIDR) — the single source of truth for its pod range.
+                allowedIPs:
+                  type: array
+                  description: AllowedIPs are the symmetric wireguard routes; for correctness they must equal podCIDR.
+                  items:
+                    type: string
+                  minItems: 1
+                meshIP:
+                  type: string
+                  description: MeshIP is the /32 (within podCIDR) the node uses as its mesh-egress source address.
+                persistentKeepaliveSeconds:
+                  type: integer
+                  format: int32
+                  description: PersistentKeepaliveSeconds is the wireguard PersistentKeepalive interval (default 25).
+            status:
+              type: object
+              properties:
+                lastHandshakeTime:
+                  type: string
+                  format: date-time
+                  description: LastHandshakeTime is the most recent successful wireguard handshake observed with this peer.
+                reachable:
+                  type: boolean
+                  description: Reachable reports whether the local node currently has a live tunnel to this peer.
+                observedSchemaVersion:
+                  type: integer
+                  format: int32
+                  description: ObservedSchemaVersion is the spec.schemaVersion the mesh controller last reconciled.

@@ -1,7 +1,7 @@
 ---
 repo: apis
 schema: phases/v1
-current_phase: M3
+current_phase: M4
 updated: 2026-06-25
 updated_by: agent
 
@@ -158,31 +158,73 @@ phases:
 
   - id: M3
     title: Storage volume sources (PV/PVC) + MeshPeer CRD + NodeNetwork + mesh-enroll types
-    status: todo
+    status: done
+    completed: 2026-06-25
     depends_on: []
+    notes: >-
+      Wave 1 of M3 is M3.1 (storage) + M3.2 (mesh contracts); both landed
+      additive-only (stable field numbers, buf breaking WIRE_JSON clean). The
+      M3 re-plan (../../docs/m3-plan.md) split mesh OUT of M3.1 into a new M3.2
+      because darwin-net:M3 (wireguard mesh) and k3sm:M3 (join/mesh-enroll) must
+      depend on the mesh contracts, NOT on the storage source. M3.2 introduces
+      apis's FIRST k8s.io/apimachinery dependency (pinned v0.35.0, lockstep with
+      k3sm/go.mod) for the served MeshPeer CRD; the module still imports zero
+      k3sm.io/* packages and builds CGO_ENABLED=0.
     subphases:
       - id: M3.1
         title: storage volume sources (NodePort needs NO apis change)
-        status: todo
+        status: done
+        completed: 2026-06-25
         depends_on: []
         deliverables:
           - id: M3.1-d1
-            done: false
-            desc: "PV/PVC volume source on PodBox — add a persistentVolumeClaim volume source (a StorageClass-named persistent volume mount) to the M2.1 Volume set, additively within PodBox's 100..199 band. NO new RPC: the existing CreatePod/PodBox mount mechanism (M2.1 volumes + Container.volume_mounts) carries it; runtimed:M3 binds it to a stable per-PVC dir on the same APFS volume as /var/lib/k3sm (empty-create; clonefile only seeds from a template; lifecycle decoupled from pod-dir teardown)."
+            done: true
+            desc: "PV/PVC volume source on PodBox — persistentVolumeClaim added as the durable source to the M2.1 Volume union as PersistentVolumeClaimVolumeSource{claim_name, read_only} on Volume.persistent_volume_claim=7 (the next FREE sequential source number; the M2.1 sources took 2..6 — Volume has no reserved band, so this is a plain additive append, not a reserved-band allocation). NO new RPC: the existing CreatePod/PodBox mount mechanism (M2.1 volumes + Container.volume_mounts) carries it; runtimed:M3 binds it to a stable per-PVC dir on the same APFS volume as /var/lib/k3sm (empty-create; clonefile only seeds from a template; lifecycle decoupled from pod-dir teardown). Mirrors corev1.Volume.PersistentVolumeClaim."
           - id: M3.1-d2
-            done: false
-            desc: "StorageClass / provisioner contract types — add any cross-repo type the APFS local-path provisioner controller (k3sm:M3) and runtimed:M3 need to agree on (e.g. a StorageClass name → provisioner parameters shape), only if the upstream storage.k8s.io objects do not already suffice. Prefer reusing upstream objects; add a k3sm-specific type only where a contract genuinely crosses the repo boundary."
+            done: true
+            desc: "StorageClass / provisioner contract — added the plain-Go package k3sm.io/apis/storage/v1 (storagev1) because the upstream storage.k8s.io StorageClass / core/v1 PersistentVolume objects remain the served API surface (NOT vendored or redefined), but a small agreement DOES cross the k3sm-provisioner ↔ runtimed-binder boundary: LocalPathClass{name, provisioner=k3sm.io/local-path, basePath=/var/lib/k3sm/storage, reclaimPolicy=Retain-only, volumeBindingMode=WaitForFirstConsumer-only} + the stable per-PVC DataDir(namespace, claimName) derivation BOTH repos compute (runtimed resolves it from the PodBox alone, never needing the PV UID) + PVName(pvcUID) (the idempotency key) + NodeTopology{key=kubernetes.io/hostname, nodeName} (the PV node-affinity that pins a local PV — and its StatefulSet pod — to its owning Mac). Plain Go (net/v1 precedent), additive-only, camelCase JSON, Validate/WithDefaults, zero k3sm.io/* imports."
           - id: M3.1-d3
-            done: false
-            desc: "NodePort needs NO apis change — ServicePort.NodePort ALREADY EXISTS in net/v1 (k3sm.io/apis/net/v1, validated, tested). M3 NodePort work is darwin-net proxy (bind *:port, TCP; UDP relay deferred) + k3sm wiring ONLY. Do NOT re-add, rename, or renumber the field; this deliverable is a no-op for apis, recorded so dependents' depends_on resolve and no one re-introduces the field."
+            done: true
+            desc: "NodePort needs NO apis change — ServicePort.NodePort ALREADY EXISTS in net/v1 (k3sm.io/apis/net/v1, validated, tested). M3 NodePort work is darwin-net proxy (bind *:port, TCP; UDP relay deferred) + k3sm wiring ONLY. Confirmed no-op: the field was NOT re-added, renamed, or renumbered; TestNodePortUnchangedM3 pins its presence + JSON name + round-trip so no one re-introduces it. Recorded so dependents' depends_on resolve."
         acceptance:
           - id: M3.1-a1
-            met: false
-            check: additive-only — buf breaking clean (proto) and net/v1 ServicePort.NodePort unchanged; the PV/PVC source compiles and round-trips
+            met: true
+            check: additive-only — buf breaking (WIRE_JSON) clean vs buf/baseline.binpb (proto) and net/v1 ServicePort.NodePort unchanged (git diff main confirms no existing field number/name changed); the PV/PVC source compiles and round-trips, builds CGO_ENABLED=0 standalone + under go.work
             method: unit
           - id: M3.1-a2
-            met: false
-            check: proto.Equal round-trip holds for the new persistentVolumeClaim volume source and any StorageClass/provisioner contract type; tests are table-driven
+            met: true
+            check: proto.Equal round-trip holds for PersistentVolumeClaimVolumeSource + Volume.persistent_volume_claim + a PVC-backed PodBox (runtime/v1); Go JSON round-trip + Validate/WithDefaults hold for the storagev1 LocalPathClass + NodeTopology contract incl. DataDir/PVName derivation; all table-driven, -race clean
+            method: unit
+      - id: M3.2
+        title: mesh contracts — MeshPeer CRD + mesh-enroll payloads (the re-plan's #1 architectural fix)
+        status: done
+        completed: 2026-06-25
+        depends_on: []
+        notes: >-
+          NEW sub-phase from the M3 re-plan: M3.1 produced no mesh type, but
+          darwin-net:M3 (wireguard mesh) and k3sm:M3 (join) depend on one. The
+          MeshPeer CRD carries node PUBLIC keys only (private keys never leave
+          the node — DESIGN §5b). The Go type lives in the existing net/v1
+          package (GVK net.k3sm.io/v1) and pulls apis's FIRST
+          k8s.io/apimachinery dep (pinned v0.35.0, lockstep with k3sm).
+        deliverables:
+          - id: M3.2-d1
+            done: true
+            desc: "MeshPeer CRD (net.k3sm.io/v1) — a real served/watchable, kine-stored Kubernetes custom resource in net/v1 (mesh.go): MeshPeer/MeshPeerList embedding metav1.TypeMeta+ObjectMeta (apis's FIRST k8s.io/apimachinery dependency — pinned v0.35.0 in go.mod, lockstep with k3sm), hand-written DeepCopy*/DeepCopyObject (no code-gen in apis), and a SchemeBuilder/AddToScheme/Resource registration. Cluster-scoped (one per node, named for the node). MeshPeerSpec carries schemaVersion (the wireguard-encoding evolution seam INSIDE the v1 GVK) + nodeName + publicKey + endpoint + podCIDR + symmetric allowedIPs (must equal podCIDR) + meshIP + persistentKeepaliveSeconds; MeshPeerStatus carries lastHandshakeTime/reachable/observedSchemaVersion (status subresource). Authored CRD manifest config/crd/net.k3sm.io_meshpeers.yaml with served+stored discipline (single v1 served+stored, additive-only)."
+          - id: M3.2-d2
+            done: true
+            desc: "mesh-enroll / join payloads — plain Go structs (NOT a CRD, NOT proto) the bootstrap join HTTP exchange marshals (k3sm's join client + supervisor): MeshEnrollRequest{schemaVersion, nodeName, publicKey, endpoint, podCIDR} + MeshEnrollResponse{schemaVersion, nodeName, podCIDR, meshIP, peers []MeshPeerSpec}. Version-stamped from day one (MeshEnrollSchemaVersion=1) so an M4+ node-by-node roll has a compatibility seam; the peer snapshot reuses the canonical MeshPeerSpec. Validate/WithDefaults; zero k3sm.io/* imports."
+          - id: M3.2-d3
+            done: true
+            desc: "NodeNetwork — explicit NO-OP for apis (recorded, like NodePort). No concrete cross-repo NodeNetwork type emerged: the M3 networking work (per-node CoreDNS + infra-VIP exemption in darwin-net:M3.3, and the node-local kubernetes endpoint rewrite in k3sm:M3.3) is darwin-net-internal + a k3sm-owned controller, neither of which needs a new apis type. Do NOT invent one; recorded so dependents' depends_on resolve."
+        acceptance:
+          - id: M3.2-a1
+            met: true
+            check: the MeshPeer CRD type round-trips losslessly (JSON, byte-stable incl. the status metav1.Time + the schemaVersion stamp) and DeepCopy/DeepCopyObject produce independent objects; a table test asserts the registered GVK is net.k3sm.io/v1 (MeshPeer + MeshPeerList) via a runtime.Scheme; builds CGO_ENABLED=0 standalone (GOWORK=off) + under go.work; the module still imports zero k3sm.io/* packages (k8s.io/apimachinery is k8s.io + pure Go)
+            method: unit
+          - id: M3.2-a2
+            met: true
+            check: the mesh-enroll payloads (MeshEnrollRequest/Response) round-trip (JSON) and carry a non-zero SchemaVersion (== MeshEnrollSchemaVersion); MeshPeerSpec + enroll Validate/WithDefaults are table-tested (version-stamp + required fields); -race clean
             method: unit
 
   - id: M4
@@ -314,20 +356,38 @@ pre-M2.2, only bumped `restart_count` via a nil `restartFunc`).
 - ✅ `M2.2-a1` additive-only — `buf breaking` (WIRE_JSON) clean vs `buf/baseline.binpb`; resource/metrics fields land in the reserved `100..199` / `100..149` bands (ceilings preserved). Consuming a reserved **message** band narrows its declaration, which buf's `RESERVED_MESSAGE_NO_DELETE` flags; that **one** rule is `except`ed in `buf.yaml` (documented) because converting never-used reserved headroom into a field is wire-safe — every field-level guard (no renumber/retype/delete, stable JSON names) and `RESERVED_ENUM_NO_DELETE` stay ON (verified: a sanity renumber still trips breaking) — *method: unit*
 - ✅ `M2.2-a2` `proto.Equal` round-trip holds for every new field/message (fully-populated cases) **plus** the new RPCs are asserted registered as unary methods on `Runtime_ServiceDesc`; table-driven, `-race` clean — *method: unit*
 
-## M3 — Storage volume sources (PV/PVC) + MeshPeer CRD + NodeNetwork + mesh-enroll types ⬜
+## M3 — Storage volume sources (PV/PVC) + MeshPeer CRD + NodeNetwork + mesh-enroll types ✅
 Headline: persistent storage for the reference workload (Postgres / compile-artifacts PVCs) **plus** the
-`net.k3sm.io` `MeshPeer` CRD (node public key + endpoint + podCIDR/AllowedIPs), `NodeNetwork`, and the
-mesh-enroll payload that rides `k3sm`'s join (consumed by `darwin-net` mesh, written by `k3sm` join).
+`net.k3sm.io` `MeshPeer` CRD (node public key + endpoint + podCIDR/AllowedIPs) and the mesh-enroll payload
+that rides `k3sm`'s join (consumed by `darwin-net` mesh, written by `k3sm` join). The M3 re-plan
+(`../../docs/m3-plan.md`) **split mesh out of M3.1 into a new M3.2**, because `darwin-net:M3` (wireguard
+mesh) and `k3sm:M3` (join) must depend on the mesh contracts, **not** on the storage source. Both landed
+additive-only (stable field numbers; `buf breaking` WIRE_JSON clean). M3.2 introduces **`apis`'s first
+`k8s.io/apimachinery` dependency** (pinned `v0.35.0`, lockstep with `k3sm/go.mod`) for the served MeshPeer
+CRD; the module still imports zero `k3sm.io/*` packages and builds `CGO_ENABLED=0`.
 
-### M3.1 — storage volume sources (NodePort needs NO `apis` change) ⬜
+### M3.1 — storage volume sources (NodePort needs NO `apis` change) ✅
 **Deliverables**
-- ⬜ `M3.1-d1` PV/PVC volume source on `PodBox` — a `persistentVolumeClaim` source added additively to the M2.1 `Volume` set (in `PodBox`'s `100..199` band). **No new RPC**: the existing `CreatePod`/`PodBox` mount mechanism (M2.1 volumes + `Container.volume_mounts`) carries it. `runtimed:M3` binds it to a stable per-PVC dir on the **same APFS volume** as `/var/lib/k3sm` (empty-create; `clonefile` only *seeds* from a template; lifecycle decoupled from pod-dir teardown).
-- ⬜ `M3.1-d2` StorageClass / provisioner contract types — any cross-repo type the APFS local-path provisioner controller (`k3sm:M3`) and `runtimed:M3` must agree on, **only if** the upstream `storage.k8s.io` objects do not already suffice. Prefer reusing upstream objects; add a k3sm-specific type only where a contract genuinely crosses the repo boundary.
-- ⬜ `M3.1-d3` **NodePort needs NO `apis` change** — `ServicePort.NodePort` **already exists** in `net/v1` (`k3sm.io/apis/net/v1`, validated, tested). M3 NodePort work is `darwin-net` proxy (bind `*:port`, TCP; UDP relay deferred) + `k3sm` wiring **only**. Do **not** re-add, rename, or renumber the field; this is a no-op for `apis`, recorded so dependents' `depends_on` resolve and no one re-introduces the field.
+- ✅ `M3.1-d1` PV/PVC volume source on `PodBox` — `persistentVolumeClaim` added as the durable source to the M2.1 `Volume` union: `PersistentVolumeClaimVolumeSource{claim_name, read_only}` on `Volume.persistent_volume_claim=7` (the next **free sequential** source number; the M2.1 sources took `2..6`, and `Volume` has **no** reserved band, so this is a plain additive append). **No new RPC** — the existing `CreatePod`/`PodBox` mount mechanism (M2.1 volumes + `Container.volume_mounts`) carries it. `runtimed:M3` binds it to a stable per-PVC dir on the **same APFS volume** as `/var/lib/k3sm` (empty-create; `clonefile` only *seeds*; lifecycle decoupled from pod-dir teardown). Mirrors `corev1.Volume.PersistentVolumeClaim`.
+- ✅ `M3.1-d2` StorageClass / provisioner contract — added the plain-Go package **`k3sm.io/apis/storage/v1`** (`storagev1`). The upstream `storage.k8s.io` `StorageClass` / `core/v1` `PersistentVolume` objects remain the served API surface (**not** vendored or redefined), but a small agreement **does** cross the `k3sm`-provisioner ↔ `runtimed`-binder boundary: `LocalPathClass` (`provisioner=k3sm.io/local-path`, `basePath=/var/lib/k3sm/storage`, `reclaimPolicy=Retain`-only, `volumeBindingMode=WaitForFirstConsumer`-only) + the stable `DataDir(namespace, claimName)` derivation **both** repos compute (runtimed resolves it from the `PodBox` alone — it never needs the PV UID) + `PVName(pvcUID)` (the idempotency key) + `NodeTopology{key=kubernetes.io/hostname, nodeName}` (the PV **node-affinity** that pins a local PV — and its StatefulSet pod — to its owning Mac). Plain Go (the `net/v1` precedent), additive-only, camelCase JSON, `Validate`/`WithDefaults`, zero `k3sm.io/*` imports.
+- ✅ `M3.1-d3` **NodePort needs NO `apis` change** — `ServicePort.NodePort` **already exists** in `net/v1` (validated, tested). M3 NodePort work is `darwin-net` proxy (bind `*:port`, TCP; UDP relay deferred) + `k3sm` wiring **only**. **Confirmed no-op**: the field was **not** re-added, renamed, or renumbered; `TestNodePortUnchangedM3` pins its presence + JSON name + round-trip. Recorded so dependents' `depends_on` resolve.
 
-**Acceptance (exit gate)**
-- ⬜ `M3.1-a1` additive-only — `buf breaking` clean and `net/v1 ServicePort.NodePort` unchanged; the PV/PVC source compiles and round-trips — *method: unit*
-- ⬜ `M3.1-a2` `proto.Equal` round-trip holds for the new `persistentVolumeClaim` source and any StorageClass/provisioner contract type; tests are table-driven — *method: unit*
+**Acceptance (exit gate)** — all met
+- ✅ `M3.1-a1` additive-only — `buf breaking` (WIRE_JSON) clean vs `buf/baseline.binpb` and `net/v1 ServicePort.NodePort` unchanged (`git diff main` confirms no existing field number/name changed); builds `CGO_ENABLED=0` standalone + under `go.work` — *method: unit*
+- ✅ `M3.1-a2` `proto.Equal` round-trip holds for `PersistentVolumeClaimVolumeSource` + `Volume.persistent_volume_claim` + a PVC-backed `PodBox`; Go JSON round-trip + `Validate`/`WithDefaults` hold for the `storagev1` `LocalPathClass` + `NodeTopology` (incl. `DataDir`/`PVName`); table-driven, `-race` clean — *method: unit*
+
+### M3.2 — mesh contracts: MeshPeer CRD + mesh-enroll payloads ✅
+The re-plan's **#1 architectural fix**: M3.1 produced no mesh type, but `darwin-net:M3` and `k3sm:M3`
+depend on one. Public keys only — **private keys never leave the node** (DESIGN §5b).
+
+**Deliverables**
+- ✅ `M3.2-d1` **`MeshPeer` CRD (`net.k3sm.io/v1`)** — a real served/watchable, kine-stored Kubernetes custom resource in `net/v1` (`mesh.go`): `MeshPeer`/`MeshPeerList` embedding `metav1.TypeMeta`+`ObjectMeta` (**`apis`'s first `k8s.io/apimachinery` dependency** — pinned `v0.35.0`, lockstep with `k3sm`), hand-written `DeepCopy*`/`DeepCopyObject` (no code-gen in `apis`), and a `SchemeBuilder`/`AddToScheme`/`Resource` registration. **Cluster-scoped** (one per node, named for the node). `MeshPeerSpec`: `schemaVersion` (the wireguard-encoding evolution seam **inside** the `v1` GVK) + `nodeName` + `publicKey` + `endpoint` + `podCIDR` + symmetric `allowedIPs` (must equal `podCIDR`) + `meshIP` + `persistentKeepaliveSeconds`; `MeshPeerStatus`: `lastHandshakeTime`/`reachable`/`observedSchemaVersion` (status subresource). Authored manifest `config/crd/net.k3sm.io_meshpeers.yaml` (single `v1` **served+stored**, additive-only).
+- ✅ `M3.2-d2` **mesh-enroll / join payloads** — plain Go structs (NOT a CRD, NOT proto) the bootstrap join HTTP exchange marshals (`k3sm`'s join client + supervisor): `MeshEnrollRequest{schemaVersion, nodeName, publicKey, endpoint, podCIDR}` + `MeshEnrollResponse{schemaVersion, nodeName, podCIDR, meshIP, peers []MeshPeerSpec}`. **Version-stamped from day one** (`MeshEnrollSchemaVersion=1`) so an M4+ node-by-node roll has a compatibility seam; the peer snapshot reuses the canonical `MeshPeerSpec`. `Validate`/`WithDefaults`.
+- ✅ `M3.2-d3` **`NodeNetwork` — explicit NO-OP** for `apis` (recorded, like NodePort). No concrete cross-repo `NodeNetwork` type emerged: the M3 networking work (per-node CoreDNS + infra-VIP exemption in `darwin-net:M3.3`, the node-local `kubernetes` endpoint rewrite in `k3sm:M3.3`) is `darwin-net`-internal + a `k3sm`-owned controller — neither needs a new `apis` type. Do **not** invent one.
+
+**Acceptance (exit gate)** — all met
+- ✅ `M3.2-a1` the `MeshPeer` CRD type round-trips losslessly (JSON, byte-stable incl. the status `metav1.Time` + the `schemaVersion` stamp) and `DeepCopy`/`DeepCopyObject` produce independent objects; a table test asserts the registered **GVK is `net.k3sm.io/v1`** (`MeshPeer` + `MeshPeerList`) via a `runtime.Scheme`; builds `CGO_ENABLED=0` standalone + under `go.work`; the module still imports zero `k3sm.io/*` packages — *method: unit*
+- ✅ `M3.2-a2` the mesh-enroll payloads round-trip (JSON) and carry a non-zero `SchemaVersion`; `MeshPeerSpec` + enroll `Validate`/`WithDefaults` are table-tested (version-stamp + required fields); `-race` clean — *method: unit*
 
 ## M4 — API-stability freeze ⬜
 Headline: version/freeze the v1 protos + CRDs for public consumption; ensure `go get k3sm.io/apis`
@@ -350,18 +410,20 @@ runtimed VZ backend (`runtimed:M5`) and the guest-side networking (`darwin-net:M
 ## Dependents of these `apis` sub-phases
 `apis` is **Wave 1**; downstream milestones `depends_on` these ids:
 - `runtimed:M2` + `k3sm:M2` + `darwin-net:M2` ← `apis:M2.1` (the pod-spec fidelity fields). The provider↔runtimed split is a **same-binary, same-node hard cut** (restarted together via `launchctl kickstart`), so behavior-bearing fields need **no** version handshake — there is no independent-upgrade skew window.
-- `runtimed:M3` + `k3sm:M3` ← `apis:M3.1` (PV/PVC source). `darwin-net:M3` NodePort needs **no** `apis` edge (the field already exists).
+- **Storage** — `runtimed:M3` (APFS PV binder) + `k3sm:M3` (local-path provisioner / StatefulSet) ← `apis:M3.1` (the PV/PVC volume source + the `storage/v1` provisioner contract). `darwin-net:M3` NodePort needs **no** `apis` edge (`net/v1 ServicePort.NodePort` already exists).
+- **Mesh** — `darwin-net:M3` (wireguard mesh) + `k3sm:M3` (join / mesh-enroll write) ← **`apis:M3.2`** (the `MeshPeer` CRD + the mesh-enroll join payloads), **NOT** `apis:M3.1`. `NodeNetwork` is a recorded no-op (no edge).
 - `runtimed:M5` + `darwin-net:M5` ← `apis:M5.1` (the `vm` handler→backend mapping).
 
 ## Next
-**M2 is closed** — `M2.1` (pod-spec fidelity) and `M2.2` (resource/metrics types) both landed, all
-additive with stable field numbers. This unblocks the downstream M2 round (a **separate** follow-up, not
-`apis` work):
-- `runtimed:M2` reads the typed `PodBox.memory_limit_bytes`/`qos_class`/`rlimits` (**replacing** the
-  `k3sm.io/memory-limit-bytes` annotation bridge), serves `ListPodStats` from the `proc_pid_rusage`
-  sampler, and implements `RestartContainer`.
-- `k3sm:M2` writes the typed resource limits, wires the probe-runner `restartFunc` to the new
-  `RestartContainer` RPC, and maps `PodStats` onto `kubectl top`.
+**M3 is closed (Wave 1)** — `M3.1` (PV/PVC volume source + the `storage/v1` provisioner contract) and
+`M3.2` (the `MeshPeer` CRD + mesh-enroll join payloads) both landed, additive-only with stable field
+numbers. M3.1 + M3.2 are the **only** `apis` M3 work (the re-plan's `apis` Wave 1 — there is no `apis`
+M3.3). This unblocks the downstream M3 round (a **separate** follow-up, not `apis` work):
+- `runtimed:M3` binds `PodBox.volumes[].persistent_volume_claim` to a stable per-PVC APFS dir (resolving
+  the path via `storage/v1` `DataDir`, `ReclaimPolicy: Retain`); `k3sm:M3` runs the local-path provisioner
+  (PV name via `PVName`, `nodeAffinity` via `NodeTopology`, `WaitForFirstConsumer`) + StatefulSet.
+- `darwin-net:M3` watches the `MeshPeer` CRD and reconciles the wireguard mesh; `k3sm:M3` mints the join,
+  writes each node's own `MeshPeer`, and serves the mesh-enroll exchange (`MeshEnrollRequest`/`Response`).
 
-**M3** is the next `apis` milestone: `M3.1` adds the PV/PVC volume source to `PodBox` (additive within the
-same `100..199` band) — NodePort needs **no** `apis` change (`net/v1 ServicePort.NodePort` already exists).
+**M4** is the next `apis` milestone (API-stability freeze): freeze the `v1` protos + the `net.k3sm.io`
+CRDs (now incl. `MeshPeer`) for public consumption and resolve the vanity import path.
