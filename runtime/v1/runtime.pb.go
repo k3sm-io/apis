@@ -266,6 +266,62 @@ func (ConditionStatus) EnumDescriptor() ([]byte, []int) {
 	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{3}
 }
 
+// QOSClass is a pod's resolved Quality-of-Service class. Mirrors corev1
+// PodQOSClass. runtimed uses it for best-effort CPU scheduling policy (k3sm
+// does not enforce CFS millicores — CPU is best-effort QoS only). UNSPECIFIED
+// means the provider did not classify the pod (treat as BestEffort).
+type QOSClass int32
+
+const (
+	QOSClass_QOS_CLASS_UNSPECIFIED QOSClass = 0
+	QOSClass_QOS_CLASS_GUARANTEED  QOSClass = 1
+	QOSClass_QOS_CLASS_BURSTABLE   QOSClass = 2
+	QOSClass_QOS_CLASS_BEST_EFFORT QOSClass = 3
+)
+
+// Enum value maps for QOSClass.
+var (
+	QOSClass_name = map[int32]string{
+		0: "QOS_CLASS_UNSPECIFIED",
+		1: "QOS_CLASS_GUARANTEED",
+		2: "QOS_CLASS_BURSTABLE",
+		3: "QOS_CLASS_BEST_EFFORT",
+	}
+	QOSClass_value = map[string]int32{
+		"QOS_CLASS_UNSPECIFIED": 0,
+		"QOS_CLASS_GUARANTEED":  1,
+		"QOS_CLASS_BURSTABLE":   2,
+		"QOS_CLASS_BEST_EFFORT": 3,
+	}
+)
+
+func (x QOSClass) Enum() *QOSClass {
+	p := new(QOSClass)
+	*p = x
+	return p
+}
+
+func (x QOSClass) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (QOSClass) Descriptor() protoreflect.EnumDescriptor {
+	return file_runtime_v1_runtime_proto_enumTypes[4].Descriptor()
+}
+
+func (QOSClass) Type() protoreflect.EnumType {
+	return &file_runtime_v1_runtime_proto_enumTypes[4]
+}
+
+func (x QOSClass) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use QOSClass.Descriptor instead.
+func (QOSClass) EnumDescriptor() ([]byte, []int) {
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{4}
+}
+
 // PodStatusEventType distinguishes adds/updates from deletes on the watch.
 type PodStatusEventType int32
 
@@ -303,11 +359,11 @@ func (x PodStatusEventType) String() string {
 }
 
 func (PodStatusEventType) Descriptor() protoreflect.EnumDescriptor {
-	return file_runtime_v1_runtime_proto_enumTypes[4].Descriptor()
+	return file_runtime_v1_runtime_proto_enumTypes[5].Descriptor()
 }
 
 func (PodStatusEventType) Type() protoreflect.EnumType {
-	return &file_runtime_v1_runtime_proto_enumTypes[4]
+	return &file_runtime_v1_runtime_proto_enumTypes[5]
 }
 
 func (x PodStatusEventType) Number() protoreflect.EnumNumber {
@@ -316,7 +372,7 @@ func (x PodStatusEventType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PodStatusEventType.Descriptor instead.
 func (PodStatusEventType) EnumDescriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{4}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{5}
 }
 
 // LogStream identifies a container output stream.
@@ -353,11 +409,11 @@ func (x LogStream) String() string {
 }
 
 func (LogStream) Descriptor() protoreflect.EnumDescriptor {
-	return file_runtime_v1_runtime_proto_enumTypes[5].Descriptor()
+	return file_runtime_v1_runtime_proto_enumTypes[6].Descriptor()
 }
 
 func (LogStream) Type() protoreflect.EnumType {
-	return &file_runtime_v1_runtime_proto_enumTypes[5]
+	return &file_runtime_v1_runtime_proto_enumTypes[6]
 }
 
 func (x LogStream) Number() protoreflect.EnumNumber {
@@ -366,7 +422,7 @@ func (x LogStream) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use LogStream.Descriptor instead.
 func (LogStream) EnumDescriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{5}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{6}
 }
 
 // FailureReason is a typed, switchable cause for a failed pod operation,
@@ -443,11 +499,11 @@ func (x FailureReason) String() string {
 }
 
 func (FailureReason) Descriptor() protoreflect.EnumDescriptor {
-	return file_runtime_v1_runtime_proto_enumTypes[6].Descriptor()
+	return file_runtime_v1_runtime_proto_enumTypes[7].Descriptor()
 }
 
 func (FailureReason) Type() protoreflect.EnumType {
-	return &file_runtime_v1_runtime_proto_enumTypes[6]
+	return &file_runtime_v1_runtime_proto_enumTypes[7]
 }
 
 func (x FailureReason) Number() protoreflect.EnumNumber {
@@ -456,7 +512,7 @@ func (x FailureReason) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use FailureReason.Descriptor instead.
 func (FailureReason) EnumDescriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{6}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{7}
 }
 
 // PodBox is everything the runtime needs to instantiate one pod as a native
@@ -510,8 +566,24 @@ type PodBox struct {
 	// credentials. runtimed confines the credential to the pull client.
 	// Mirrors corev1.PodSpec.ImagePullSecrets.
 	ImagePullSecrets []*LocalObjectReference `protobuf:"bytes,18,rep,name=image_pull_secrets,json=imagePullSecrets,proto3" json:"image_pull_secrets,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// memory_limit_bytes is the resolved per-pod memory limit in bytes (the
+	// provider converts the corev1 resource.Quantity). runtimed:M2.2 compares the
+	// pod's ri_phys_footprint (proc_pid_rusage — NOT RSS) against this to drive
+	// OOMKilled. 0 means no memory limit (BestEffort). This typed field replaces
+	// the M2.1 k3sm.io/memory-limit-bytes annotation seam runtimed bridged it on.
+	MemoryLimitBytes int64 `protobuf:"varint,100,opt,name=memory_limit_bytes,json=memoryLimitBytes,proto3" json:"memory_limit_bytes,omitempty"`
+	// qos_class is the pod's resolved Quality-of-Service class. runtimed uses it
+	// for best-effort CPU policy (k3sm has no CFS millicore enforcement — see
+	// ../../docs/stockkitty-readiness.md); the provider also mirrors it into
+	// PodStatus.qos_class (string). Mirrors corev1 PodStatus.QOSClass as an enum.
+	QosClass QOSClass `protobuf:"varint,101,opt,name=qos_class,json=qosClass,proto3,enum=k3sm.runtime.v1.QOSClass" json:"qos_class,omitempty"`
+	// rlimits are the POSIX resource limits runtimed applies via setrlimit(2)
+	// before spawning each container process (e.g. RLIMIT_NOFILE, RLIMIT_NPROC).
+	// Modeled OCI-style (a list of typed soft/hard caps) so new limit types are
+	// additive without new fields.
+	Rlimits       []*ResourceLimit `protobuf:"bytes,102,rep,name=rlimits,proto3" json:"rlimits,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PodBox) Reset() {
@@ -666,6 +738,27 @@ func (x *PodBox) GetTerminationGracePeriodSeconds() int64 {
 func (x *PodBox) GetImagePullSecrets() []*LocalObjectReference {
 	if x != nil {
 		return x.ImagePullSecrets
+	}
+	return nil
+}
+
+func (x *PodBox) GetMemoryLimitBytes() int64 {
+	if x != nil {
+		return x.MemoryLimitBytes
+	}
+	return 0
+}
+
+func (x *PodBox) GetQosClass() QOSClass {
+	if x != nil {
+		return x.QosClass
+	}
+	return QOSClass_QOS_CLASS_UNSPECIFIED
+}
+
+func (x *PodBox) GetRlimits() []*ResourceLimit {
+	if x != nil {
+		return x.Rlimits
 	}
 	return nil
 }
@@ -3551,9 +3644,17 @@ type ContainerStatus struct {
 	// user is the effective uid/gid the privilege drop produced (the status
 	// mirror of the resolved SecurityContext/PodSecurityContext). Mirrors
 	// corev1.ContainerStatus.User.
-	User          *ContainerUser `protobuf:"bytes,12,opt,name=user,proto3" json:"user,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	User *ContainerUser `protobuf:"bytes,12,opt,name=user,proto3" json:"user,omitempty"`
+	// resources is the effective compute ResourceRequirements (limits/requests)
+	// for the container — the status mirror that completes the lossless corev1
+	// mirror now that PodBox carries resource limits. Mirrors
+	// corev1.ContainerStatus.Resources.
+	Resources *ResourceRequirements `protobuf:"bytes,100,opt,name=resources,proto3" json:"resources,omitempty"`
+	// allocated_resources is the compute resources the node allocated to the
+	// container at admission. Mirrors corev1.ContainerStatus.AllocatedResources.
+	AllocatedResources *ResourceList `protobuf:"bytes,101,opt,name=allocated_resources,json=allocatedResources,proto3" json:"allocated_resources,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *ContainerStatus) Reset() {
@@ -3666,6 +3767,20 @@ func (x *ContainerStatus) GetVolumeMounts() []*VolumeMountStatus {
 func (x *ContainerStatus) GetUser() *ContainerUser {
 	if x != nil {
 		return x.User
+	}
+	return nil
+}
+
+func (x *ContainerStatus) GetResources() *ResourceRequirements {
+	if x != nil {
+		return x.Resources
+	}
+	return nil
+}
+
+func (x *ContainerStatus) GetAllocatedResources() *ResourceList {
+	if x != nil {
+		return x.AllocatedResources
 	}
 	return nil
 }
@@ -4104,6 +4219,500 @@ func (x *ContainerStateTerminated) GetContainerId() string {
 	return ""
 }
 
+// ResourceLimit is one POSIX resource limit runtimed applies via setrlimit(2)
+// before spawning a container process. Modeled OCI-style (rlimits[]); type is
+// the limit name carried verbatim (e.g. "RLIMIT_NOFILE", "RLIMIT_NPROC").
+type ResourceLimit struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// type is the rlimit name, e.g. "RLIMIT_NOFILE" or "RLIMIT_NPROC".
+	Type string `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	// soft is the soft (enforced, raisable up to hard) limit.
+	Soft uint64 `protobuf:"varint,2,opt,name=soft,proto3" json:"soft,omitempty"`
+	// hard is the hard (ceiling) limit.
+	Hard          uint64 `protobuf:"varint,3,opt,name=hard,proto3" json:"hard,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResourceLimit) Reset() {
+	*x = ResourceLimit{}
+	mi := &file_runtime_v1_runtime_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResourceLimit) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResourceLimit) ProtoMessage() {}
+
+func (x *ResourceLimit) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_runtime_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResourceLimit.ProtoReflect.Descriptor instead.
+func (*ResourceLimit) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *ResourceLimit) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *ResourceLimit) GetSoft() uint64 {
+	if x != nil {
+		return x.Soft
+	}
+	return 0
+}
+
+func (x *ResourceLimit) GetHard() uint64 {
+	if x != nil {
+		return x.Hard
+	}
+	return 0
+}
+
+// ResourceList mirrors corev1.ResourceList: a map from resource name (e.g.
+// "cpu", "memory") to a resource.Quantity serialized as its canonical string
+// (e.g. "500m", "1Gi"). Quantities are carried as strings so no precision is
+// lost on the wire (resource.Quantity has no lossless proto scalar).
+type ResourceList struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// quantities maps a resource name to its canonical quantity string.
+	Quantities    map[string]string `protobuf:"bytes,1,rep,name=quantities,proto3" json:"quantities,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResourceList) Reset() {
+	*x = ResourceList{}
+	mi := &file_runtime_v1_runtime_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResourceList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResourceList) ProtoMessage() {}
+
+func (x *ResourceList) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_runtime_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResourceList.ProtoReflect.Descriptor instead.
+func (*ResourceList) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *ResourceList) GetQuantities() map[string]string {
+	if x != nil {
+		return x.Quantities
+	}
+	return nil
+}
+
+// ResourceRequirements mirrors corev1.ResourceRequirements: the compute
+// resource limits and requests for a container. k3sm enforces only memory (a
+// hard limit → OOMKilled) and treats CPU as best-effort QoS (no CFS
+// millicores); the full map is carried for lossless kubectl fidelity.
+type ResourceRequirements struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// limits is the maximum compute resources allowed.
+	Limits *ResourceList `protobuf:"bytes,1,opt,name=limits,proto3" json:"limits,omitempty"`
+	// requests is the minimum compute resources required.
+	Requests      *ResourceList `protobuf:"bytes,2,opt,name=requests,proto3" json:"requests,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResourceRequirements) Reset() {
+	*x = ResourceRequirements{}
+	mi := &file_runtime_v1_runtime_proto_msgTypes[50]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResourceRequirements) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResourceRequirements) ProtoMessage() {}
+
+func (x *ResourceRequirements) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_runtime_proto_msgTypes[50]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResourceRequirements.ProtoReflect.Descriptor instead.
+func (*ResourceRequirements) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{50}
+}
+
+func (x *ResourceRequirements) GetLimits() *ResourceList {
+	if x != nil {
+		return x.Limits
+	}
+	return nil
+}
+
+func (x *ResourceRequirements) GetRequests() *ResourceList {
+	if x != nil {
+		return x.Requests
+	}
+	return nil
+}
+
+// PodStats is a point-in-time resource-usage snapshot for one pod — the wire
+// form of runtimed's pod-metrics sample, so the metric is a contract type and
+// not an internal-only struct. The provider serves `kubectl top` / the kubelet
+// Summary API from these. Mirrors the kubelet stats/v1alpha1 PodStats subset
+// k3sm can source from proc_pid_rusage.
+type PodStats struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// pod_id is the pod (kube Pod UID) this sample is for.
+	PodId string `protobuf:"bytes,1,opt,name=pod_id,json=podId,proto3" json:"pod_id,omitempty"`
+	// namespace and name are the kube coordinates (the Summary API PodReference).
+	Namespace string `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Name      string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	// timestamp is when the pod-level sample was taken.
+	Timestamp *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	// cpu is the pod-level CPU usage (summed across containers).
+	Cpu *CPUStats `protobuf:"bytes,5,opt,name=cpu,proto3" json:"cpu,omitempty"`
+	// memory is the pod-level memory usage (summed across containers).
+	Memory *MemoryStats `protobuf:"bytes,6,opt,name=memory,proto3" json:"memory,omitempty"`
+	// containers are the per-container samples.
+	Containers    []*ContainerStats `protobuf:"bytes,7,rep,name=containers,proto3" json:"containers,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PodStats) Reset() {
+	*x = PodStats{}
+	mi := &file_runtime_v1_runtime_proto_msgTypes[51]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PodStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PodStats) ProtoMessage() {}
+
+func (x *PodStats) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_runtime_proto_msgTypes[51]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PodStats.ProtoReflect.Descriptor instead.
+func (*PodStats) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{51}
+}
+
+func (x *PodStats) GetPodId() string {
+	if x != nil {
+		return x.PodId
+	}
+	return ""
+}
+
+func (x *PodStats) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *PodStats) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *PodStats) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
+
+func (x *PodStats) GetCpu() *CPUStats {
+	if x != nil {
+		return x.Cpu
+	}
+	return nil
+}
+
+func (x *PodStats) GetMemory() *MemoryStats {
+	if x != nil {
+		return x.Memory
+	}
+	return nil
+}
+
+func (x *PodStats) GetContainers() []*ContainerStats {
+	if x != nil {
+		return x.Containers
+	}
+	return nil
+}
+
+// ContainerStats is a per-container resource-usage snapshot within PodStats.
+// Mirrors the kubelet stats ContainerStats subset.
+type ContainerStats struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// name is the container name.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// timestamp is when the container sample was taken.
+	Timestamp *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	// cpu is the container CPU usage.
+	Cpu *CPUStats `protobuf:"bytes,3,opt,name=cpu,proto3" json:"cpu,omitempty"`
+	// memory is the container memory usage.
+	Memory        *MemoryStats `protobuf:"bytes,4,opt,name=memory,proto3" json:"memory,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ContainerStats) Reset() {
+	*x = ContainerStats{}
+	mi := &file_runtime_v1_runtime_proto_msgTypes[52]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContainerStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContainerStats) ProtoMessage() {}
+
+func (x *ContainerStats) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_runtime_proto_msgTypes[52]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContainerStats.ProtoReflect.Descriptor instead.
+func (*ContainerStats) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{52}
+}
+
+func (x *ContainerStats) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ContainerStats) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
+
+func (x *ContainerStats) GetCpu() *CPUStats {
+	if x != nil {
+		return x.Cpu
+	}
+	return nil
+}
+
+func (x *ContainerStats) GetMemory() *MemoryStats {
+	if x != nil {
+		return x.Memory
+	}
+	return nil
+}
+
+// CPUStats is CPU usage at an instant. Mirrors the kubelet stats CPUStats
+// subset. k3sm sources usage_core_nano_seconds from proc_pid_rusage
+// (ri_user_time + ri_system_time); usage_nano_cores is the rate derived between
+// two consecutive samples.
+type CPUStats struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// timestamp is when the CPU sample was taken.
+	Timestamp *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	// usage_nano_cores is the recent CPU usage rate (nanocores; 1e9 == 1 core).
+	UsageNanoCores uint64 `protobuf:"varint,2,opt,name=usage_nano_cores,json=usageNanoCores,proto3" json:"usage_nano_cores,omitempty"`
+	// usage_core_nano_seconds is the cumulative CPU time consumed (nanoseconds).
+	UsageCoreNanoSeconds uint64 `protobuf:"varint,3,opt,name=usage_core_nano_seconds,json=usageCoreNanoSeconds,proto3" json:"usage_core_nano_seconds,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *CPUStats) Reset() {
+	*x = CPUStats{}
+	mi := &file_runtime_v1_runtime_proto_msgTypes[53]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CPUStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CPUStats) ProtoMessage() {}
+
+func (x *CPUStats) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_runtime_proto_msgTypes[53]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CPUStats.ProtoReflect.Descriptor instead.
+func (*CPUStats) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{53}
+}
+
+func (x *CPUStats) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
+
+func (x *CPUStats) GetUsageNanoCores() uint64 {
+	if x != nil {
+		return x.UsageNanoCores
+	}
+	return 0
+}
+
+func (x *CPUStats) GetUsageCoreNanoSeconds() uint64 {
+	if x != nil {
+		return x.UsageCoreNanoSeconds
+	}
+	return 0
+}
+
+// MemoryStats is memory usage at an instant. Mirrors the kubelet stats
+// MemoryStats subset. working_set_bytes is sourced from ri_phys_footprint
+// (proc_pid_rusage) — NOT RSS — the same value runtimed:M2.2 compares against
+// PodBox.memory_limit_bytes for OOMKilled.
+type MemoryStats struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// timestamp is when the memory sample was taken.
+	Timestamp *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	// working_set_bytes is the working-set size (ri_phys_footprint) kubectl top
+	// reports and OOMKilled is judged against.
+	WorkingSetBytes uint64 `protobuf:"varint,2,opt,name=working_set_bytes,json=workingSetBytes,proto3" json:"working_set_bytes,omitempty"`
+	// usage_bytes is total current memory usage.
+	UsageBytes uint64 `protobuf:"varint,3,opt,name=usage_bytes,json=usageBytes,proto3" json:"usage_bytes,omitempty"`
+	// rss_bytes is the resident set size, when available.
+	RssBytes      uint64 `protobuf:"varint,4,opt,name=rss_bytes,json=rssBytes,proto3" json:"rss_bytes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MemoryStats) Reset() {
+	*x = MemoryStats{}
+	mi := &file_runtime_v1_runtime_proto_msgTypes[54]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MemoryStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MemoryStats) ProtoMessage() {}
+
+func (x *MemoryStats) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_runtime_proto_msgTypes[54]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MemoryStats.ProtoReflect.Descriptor instead.
+func (*MemoryStats) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{54}
+}
+
+func (x *MemoryStats) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
+
+func (x *MemoryStats) GetWorkingSetBytes() uint64 {
+	if x != nil {
+		return x.WorkingSetBytes
+	}
+	return 0
+}
+
+func (x *MemoryStats) GetUsageBytes() uint64 {
+	if x != nil {
+		return x.UsageBytes
+	}
+	return 0
+}
+
+func (x *MemoryStats) GetRssBytes() uint64 {
+	if x != nil {
+		return x.RssBytes
+	}
+	return 0
+}
+
 // CreatePodRequest carries the PodBox to instantiate.
 type CreatePodRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -4114,7 +4723,7 @@ type CreatePodRequest struct {
 
 func (x *CreatePodRequest) Reset() {
 	*x = CreatePodRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[48]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4126,7 +4735,7 @@ func (x *CreatePodRequest) String() string {
 func (*CreatePodRequest) ProtoMessage() {}
 
 func (x *CreatePodRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[48]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4139,7 +4748,7 @@ func (x *CreatePodRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePodRequest.ProtoReflect.Descriptor instead.
 func (*CreatePodRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{48}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *CreatePodRequest) GetPod() *PodBox {
@@ -4164,7 +4773,7 @@ type CreatePodResponse struct {
 
 func (x *CreatePodResponse) Reset() {
 	*x = CreatePodResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[49]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4176,7 +4785,7 @@ func (x *CreatePodResponse) String() string {
 func (*CreatePodResponse) ProtoMessage() {}
 
 func (x *CreatePodResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[49]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4189,7 +4798,7 @@ func (x *CreatePodResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePodResponse.ProtoReflect.Descriptor instead.
 func (*CreatePodResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{49}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *CreatePodResponse) GetStatus() *PodStatus {
@@ -4225,7 +4834,7 @@ type DeletePodRequest struct {
 
 func (x *DeletePodRequest) Reset() {
 	*x = DeletePodRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[50]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4237,7 +4846,7 @@ func (x *DeletePodRequest) String() string {
 func (*DeletePodRequest) ProtoMessage() {}
 
 func (x *DeletePodRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[50]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4250,7 +4859,7 @@ func (x *DeletePodRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePodRequest.ProtoReflect.Descriptor instead.
 func (*DeletePodRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{50}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *DeletePodRequest) GetPodId() string {
@@ -4278,7 +4887,7 @@ type DeletePodResponse struct {
 
 func (x *DeletePodResponse) Reset() {
 	*x = DeletePodResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[51]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4290,7 +4899,7 @@ func (x *DeletePodResponse) String() string {
 func (*DeletePodResponse) ProtoMessage() {}
 
 func (x *DeletePodResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[51]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4303,7 +4912,7 @@ func (x *DeletePodResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePodResponse.ProtoReflect.Descriptor instead.
 func (*DeletePodResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{51}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *DeletePodResponse) GetError() *status.Status {
@@ -4331,7 +4940,7 @@ type UpdatePodRequest struct {
 
 func (x *UpdatePodRequest) Reset() {
 	*x = UpdatePodRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[52]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4343,7 +4952,7 @@ func (x *UpdatePodRequest) String() string {
 func (*UpdatePodRequest) ProtoMessage() {}
 
 func (x *UpdatePodRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[52]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4356,7 +4965,7 @@ func (x *UpdatePodRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePodRequest.ProtoReflect.Descriptor instead.
 func (*UpdatePodRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{52}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *UpdatePodRequest) GetPod() *PodBox {
@@ -4378,7 +4987,7 @@ type UpdatePodResponse struct {
 
 func (x *UpdatePodResponse) Reset() {
 	*x = UpdatePodResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[53]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4390,7 +4999,7 @@ func (x *UpdatePodResponse) String() string {
 func (*UpdatePodResponse) ProtoMessage() {}
 
 func (x *UpdatePodResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[53]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4403,7 +5012,7 @@ func (x *UpdatePodResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePodResponse.ProtoReflect.Descriptor instead.
 func (*UpdatePodResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{53}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *UpdatePodResponse) GetStatus() *PodStatus {
@@ -4438,7 +5047,7 @@ type WatchPodStatusRequest struct {
 
 func (x *WatchPodStatusRequest) Reset() {
 	*x = WatchPodStatusRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[54]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4450,7 +5059,7 @@ func (x *WatchPodStatusRequest) String() string {
 func (*WatchPodStatusRequest) ProtoMessage() {}
 
 func (x *WatchPodStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[54]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4463,7 +5072,7 @@ func (x *WatchPodStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchPodStatusRequest.ProtoReflect.Descriptor instead.
 func (*WatchPodStatusRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{54}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *WatchPodStatusRequest) GetPodId() string {
@@ -4484,7 +5093,7 @@ type PodStatusEvent struct {
 
 func (x *PodStatusEvent) Reset() {
 	*x = PodStatusEvent{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[55]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4496,7 +5105,7 @@ func (x *PodStatusEvent) String() string {
 func (*PodStatusEvent) ProtoMessage() {}
 
 func (x *PodStatusEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[55]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4509,7 +5118,7 @@ func (x *PodStatusEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PodStatusEvent.ProtoReflect.Descriptor instead.
 func (*PodStatusEvent) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{55}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *PodStatusEvent) GetType() PodStatusEventType {
@@ -4536,7 +5145,7 @@ type GetPodStatusRequest struct {
 
 func (x *GetPodStatusRequest) Reset() {
 	*x = GetPodStatusRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[56]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4548,7 +5157,7 @@ func (x *GetPodStatusRequest) String() string {
 func (*GetPodStatusRequest) ProtoMessage() {}
 
 func (x *GetPodStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[56]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4561,7 +5170,7 @@ func (x *GetPodStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPodStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetPodStatusRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{56}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *GetPodStatusRequest) GetPodId() string {
@@ -4582,7 +5191,7 @@ type GetPodStatusResponse struct {
 
 func (x *GetPodStatusResponse) Reset() {
 	*x = GetPodStatusResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[57]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4594,7 +5203,7 @@ func (x *GetPodStatusResponse) String() string {
 func (*GetPodStatusResponse) ProtoMessage() {}
 
 func (x *GetPodStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[57]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4607,7 +5216,7 @@ func (x *GetPodStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPodStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetPodStatusResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{57}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *GetPodStatusResponse) GetStatus() *PodStatus {
@@ -4647,7 +5256,7 @@ type GetLogsRequest struct {
 
 func (x *GetLogsRequest) Reset() {
 	*x = GetLogsRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[58]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4659,7 +5268,7 @@ func (x *GetLogsRequest) String() string {
 func (*GetLogsRequest) ProtoMessage() {}
 
 func (x *GetLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[58]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4672,7 +5281,7 @@ func (x *GetLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLogsRequest.ProtoReflect.Descriptor instead.
 func (*GetLogsRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{58}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *GetLogsRequest) GetPodId() string {
@@ -4746,7 +5355,7 @@ type LogEntry struct {
 
 func (x *LogEntry) Reset() {
 	*x = LogEntry{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[59]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4758,7 +5367,7 @@ func (x *LogEntry) String() string {
 func (*LogEntry) ProtoMessage() {}
 
 func (x *LogEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[59]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4771,7 +5380,7 @@ func (x *LogEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogEntry.ProtoReflect.Descriptor instead.
 func (*LogEntry) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{59}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *LogEntry) GetLine() []byte {
@@ -4817,7 +5426,7 @@ type ExecRequest struct {
 
 func (x *ExecRequest) Reset() {
 	*x = ExecRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[60]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4829,7 +5438,7 @@ func (x *ExecRequest) String() string {
 func (*ExecRequest) ProtoMessage() {}
 
 func (x *ExecRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[60]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4842,7 +5451,7 @@ func (x *ExecRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecRequest.ProtoReflect.Descriptor instead.
 func (*ExecRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{60}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *ExecRequest) GetPodId() string {
@@ -4921,7 +5530,7 @@ type ExecResponse struct {
 
 func (x *ExecResponse) Reset() {
 	*x = ExecResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[61]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4933,7 +5542,7 @@ func (x *ExecResponse) String() string {
 func (*ExecResponse) ProtoMessage() {}
 
 func (x *ExecResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[61]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4946,7 +5555,7 @@ func (x *ExecResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecResponse.ProtoReflect.Descriptor instead.
 func (*ExecResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{61}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *ExecResponse) GetStdout() []byte {
@@ -4981,7 +5590,7 @@ type ExecResult struct {
 
 func (x *ExecResult) Reset() {
 	*x = ExecResult{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[62]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4993,7 +5602,7 @@ func (x *ExecResult) String() string {
 func (*ExecResult) ProtoMessage() {}
 
 func (x *ExecResult) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[62]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5006,7 +5615,7 @@ func (x *ExecResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecResult.ProtoReflect.Descriptor instead.
 func (*ExecResult) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{62}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *ExecResult) GetExitCode() int32 {
@@ -5040,7 +5649,7 @@ type AttachRequest struct {
 
 func (x *AttachRequest) Reset() {
 	*x = AttachRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[63]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5052,7 +5661,7 @@ func (x *AttachRequest) String() string {
 func (*AttachRequest) ProtoMessage() {}
 
 func (x *AttachRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[63]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5065,7 +5674,7 @@ func (x *AttachRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachRequest.ProtoReflect.Descriptor instead.
 func (*AttachRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{63}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *AttachRequest) GetPodId() string {
@@ -5136,7 +5745,7 @@ type AttachResponse struct {
 
 func (x *AttachResponse) Reset() {
 	*x = AttachResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[64]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5148,7 +5757,7 @@ func (x *AttachResponse) String() string {
 func (*AttachResponse) ProtoMessage() {}
 
 func (x *AttachResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[64]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5161,7 +5770,7 @@ func (x *AttachResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachResponse.ProtoReflect.Descriptor instead.
 func (*AttachResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{64}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *AttachResponse) GetStdout() []byte {
@@ -5204,7 +5813,7 @@ type PortForwardRequest struct {
 
 func (x *PortForwardRequest) Reset() {
 	*x = PortForwardRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[65]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5216,7 +5825,7 @@ func (x *PortForwardRequest) String() string {
 func (*PortForwardRequest) ProtoMessage() {}
 
 func (x *PortForwardRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[65]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5229,7 +5838,7 @@ func (x *PortForwardRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PortForwardRequest.ProtoReflect.Descriptor instead.
 func (*PortForwardRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{65}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *PortForwardRequest) GetPodId() string {
@@ -5280,7 +5889,7 @@ type PortForwardResponse struct {
 
 func (x *PortForwardResponse) Reset() {
 	*x = PortForwardResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[66]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5292,7 +5901,7 @@ func (x *PortForwardResponse) String() string {
 func (*PortForwardResponse) ProtoMessage() {}
 
 func (x *PortForwardResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[66]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5305,7 +5914,7 @@ func (x *PortForwardResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PortForwardResponse.ProtoReflect.Descriptor instead.
 func (*PortForwardResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{66}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *PortForwardResponse) GetConnectionId() uint64 {
@@ -5347,7 +5956,7 @@ type TerminalSize struct {
 
 func (x *TerminalSize) Reset() {
 	*x = TerminalSize{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[67]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5359,7 +5968,7 @@ func (x *TerminalSize) String() string {
 func (*TerminalSize) ProtoMessage() {}
 
 func (x *TerminalSize) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[67]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5372,7 +5981,7 @@ func (x *TerminalSize) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TerminalSize.ProtoReflect.Descriptor instead.
 func (*TerminalSize) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{67}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *TerminalSize) GetWidth() uint32 {
@@ -5398,7 +6007,7 @@ type GetRuntimeInfoRequest struct {
 
 func (x *GetRuntimeInfoRequest) Reset() {
 	*x = GetRuntimeInfoRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[68]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5410,7 +6019,7 @@ func (x *GetRuntimeInfoRequest) String() string {
 func (*GetRuntimeInfoRequest) ProtoMessage() {}
 
 func (x *GetRuntimeInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[68]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5423,7 +6032,7 @@ func (x *GetRuntimeInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRuntimeInfoRequest.ProtoReflect.Descriptor instead.
 func (*GetRuntimeInfoRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{68}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{75}
 }
 
 // GetRuntimeInfoResponse reports the daemon version + health for the M2 process
@@ -5445,7 +6054,7 @@ type GetRuntimeInfoResponse struct {
 
 func (x *GetRuntimeInfoResponse) Reset() {
 	*x = GetRuntimeInfoResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[69]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5457,7 +6066,7 @@ func (x *GetRuntimeInfoResponse) String() string {
 func (*GetRuntimeInfoResponse) ProtoMessage() {}
 
 func (x *GetRuntimeInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[69]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5470,7 +6079,7 @@ func (x *GetRuntimeInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRuntimeInfoResponse.ProtoReflect.Descriptor instead.
 func (*GetRuntimeInfoResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{69}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *GetRuntimeInfoResponse) GetRuntimeName() string {
@@ -5521,7 +6130,7 @@ type RuntimeCondition struct {
 
 func (x *RuntimeCondition) Reset() {
 	*x = RuntimeCondition{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[70]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5533,7 +6142,7 @@ func (x *RuntimeCondition) String() string {
 func (*RuntimeCondition) ProtoMessage() {}
 
 func (x *RuntimeCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[70]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5546,7 +6155,7 @@ func (x *RuntimeCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeCondition.ProtoReflect.Descriptor instead.
 func (*RuntimeCondition) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{70}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *RuntimeCondition) GetType() string {
@@ -5577,11 +6186,243 @@ func (x *RuntimeCondition) GetMessage() string {
 	return ""
 }
 
+// ListPodStatsRequest selects which pods to sample. pod_id empty = all pods on
+// the node (the Summary API shape); pod_id set = that single pod.
+type ListPodStatsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PodId         string                 `protobuf:"bytes,1,opt,name=pod_id,json=podId,proto3" json:"pod_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListPodStatsRequest) Reset() {
+	*x = ListPodStatsRequest{}
+	mi := &file_runtime_v1_runtime_proto_msgTypes[78]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListPodStatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListPodStatsRequest) ProtoMessage() {}
+
+func (x *ListPodStatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_runtime_proto_msgTypes[78]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListPodStatsRequest.ProtoReflect.Descriptor instead.
+func (*ListPodStatsRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{78}
+}
+
+func (x *ListPodStatsRequest) GetPodId() string {
+	if x != nil {
+		return x.PodId
+	}
+	return ""
+}
+
+// ListPodStatsResponse carries the per-pod resource-usage snapshots.
+type ListPodStatsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PodStats      []*PodStats            `protobuf:"bytes,1,rep,name=pod_stats,json=podStats,proto3" json:"pod_stats,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListPodStatsResponse) Reset() {
+	*x = ListPodStatsResponse{}
+	mi := &file_runtime_v1_runtime_proto_msgTypes[79]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListPodStatsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListPodStatsResponse) ProtoMessage() {}
+
+func (x *ListPodStatsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_runtime_proto_msgTypes[79]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListPodStatsResponse.ProtoReflect.Descriptor instead.
+func (*ListPodStatsResponse) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{79}
+}
+
+func (x *ListPodStatsResponse) GetPodStats() []*PodStats {
+	if x != nil {
+		return x.PodStats
+	}
+	return nil
+}
+
+// RestartContainerRequest identifies the container to restart in place.
+type RestartContainerRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// pod_id is the pod whose container to restart.
+	PodId string `protobuf:"bytes,1,opt,name=pod_id,json=podId,proto3" json:"pod_id,omitempty"`
+	// container is the container name within the pod.
+	Container string `protobuf:"bytes,2,opt,name=container,proto3" json:"container,omitempty"`
+	// reason is a human-readable cause (e.g. "liveness probe failed") recorded in
+	// the container's last-termination state.
+	Reason string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	// grace_period_seconds is the SIGTERM→SIGKILL window for the old process
+	// before re-spawn; 0 means the runtime default.
+	GracePeriodSeconds int64 `protobuf:"varint,4,opt,name=grace_period_seconds,json=gracePeriodSeconds,proto3" json:"grace_period_seconds,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *RestartContainerRequest) Reset() {
+	*x = RestartContainerRequest{}
+	mi := &file_runtime_v1_runtime_proto_msgTypes[80]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RestartContainerRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RestartContainerRequest) ProtoMessage() {}
+
+func (x *RestartContainerRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_runtime_proto_msgTypes[80]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RestartContainerRequest.ProtoReflect.Descriptor instead.
+func (*RestartContainerRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{80}
+}
+
+func (x *RestartContainerRequest) GetPodId() string {
+	if x != nil {
+		return x.PodId
+	}
+	return ""
+}
+
+func (x *RestartContainerRequest) GetContainer() string {
+	if x != nil {
+		return x.Container
+	}
+	return ""
+}
+
+func (x *RestartContainerRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *RestartContainerRequest) GetGracePeriodSeconds() int64 {
+	if x != nil {
+		return x.GracePeriodSeconds
+	}
+	return 0
+}
+
+// RestartContainerResponse returns the post-restart container status and a
+// structured failure (empty error on success).
+type RestartContainerResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// status is the container's status after the restart (restart_count bumped).
+	Status *ContainerStatus `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	// error carries a structured failure (e.g. NOT_FOUND for an unknown pod or
+	// container).
+	Error *status.Status `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	// failure_reason gives a typed, switchable cause.
+	FailureReason FailureReason `protobuf:"varint,3,opt,name=failure_reason,json=failureReason,proto3,enum=k3sm.runtime.v1.FailureReason" json:"failure_reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RestartContainerResponse) Reset() {
+	*x = RestartContainerResponse{}
+	mi := &file_runtime_v1_runtime_proto_msgTypes[81]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RestartContainerResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RestartContainerResponse) ProtoMessage() {}
+
+func (x *RestartContainerResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_runtime_proto_msgTypes[81]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RestartContainerResponse.ProtoReflect.Descriptor instead.
+func (*RestartContainerResponse) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{81}
+}
+
+func (x *RestartContainerResponse) GetStatus() *ContainerStatus {
+	if x != nil {
+		return x.Status
+	}
+	return nil
+}
+
+func (x *RestartContainerResponse) GetError() *status.Status {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+func (x *RestartContainerResponse) GetFailureReason() FailureReason {
+	if x != nil {
+		return x.FailureReason
+	}
+	return FailureReason_FAILURE_REASON_UNSPECIFIED
+}
+
 var File_runtime_v1_runtime_proto protoreflect.FileDescriptor
 
 const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\n" +
-	"\x18runtime/v1/runtime.proto\x12\x0fk3sm.runtime.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17google/rpc/status.proto\"\x91\b\n" +
+	"\x18runtime/v1/runtime.proto\x12\x0fk3sm.runtime.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17google/rpc/status.proto\"\xb1\t\n" +
 	"\x06PodBox\x12\x15\n" +
 	"\x06pod_id\x18\x01 \x01(\tR\x05podId\x12\x1c\n" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x12\n" +
@@ -5604,13 +6445,16 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\avolumes\x18\x0f \x03(\v2\x17.k3sm.runtime.v1.VolumeR\avolumes\x12U\n" +
 	"\x14pod_security_context\x18\x10 \x01(\v2#.k3sm.runtime.v1.PodSecurityContextR\x12podSecurityContext\x12G\n" +
 	" termination_grace_period_seconds\x18\x11 \x01(\x03R\x1dterminationGracePeriodSeconds\x12S\n" +
-	"\x12image_pull_secrets\x18\x12 \x03(\v2%.k3sm.runtime.v1.LocalObjectReferenceR\x10imagePullSecrets\x1a9\n" +
+	"\x12image_pull_secrets\x18\x12 \x03(\v2%.k3sm.runtime.v1.LocalObjectReferenceR\x10imagePullSecrets\x12,\n" +
+	"\x12memory_limit_bytes\x18d \x01(\x03R\x10memoryLimitBytes\x126\n" +
+	"\tqos_class\x18e \x01(\x0e2\x19.k3sm.runtime.v1.QOSClassR\bqosClass\x128\n" +
+	"\arlimits\x18f \x03(\v2\x1e.k3sm.runtime.v1.ResourceLimitR\arlimits\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a>\n" +
 	"\x10AnnotationsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x05\bd\x10\xc8\x01\"\xf7\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x05\bg\x10\xc8\x01\"\xf7\x02\n" +
 	"\x06Volume\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12E\n" +
 	"\n" +
@@ -5830,7 +6674,7 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\x0flast_probe_time\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\rlastProbeTime\x12L\n" +
 	"\x14last_transition_time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x12lastTransitionTime\x12\x16\n" +
 	"\x06reason\x18\x05 \x01(\tR\x06reason\x12\x18\n" +
-	"\amessage\x18\x06 \x01(\tR\amessage\"\x81\x04\n" +
+	"\amessage\x18\x06 \x01(\tR\amessage\"\x96\x05\n" +
 	"\x0fContainerStatus\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x125\n" +
 	"\x05state\x18\x02 \x01(\v2\x1f.k3sm.runtime.v1.ContainerStateR\x05state\x12U\n" +
@@ -5845,7 +6689,9 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	" \x01(\bR\n" +
 	"startedSet\x12G\n" +
 	"\rvolume_mounts\x18\v \x03(\v2\".k3sm.runtime.v1.VolumeMountStatusR\fvolumeMounts\x122\n" +
-	"\x04user\x18\f \x01(\v2\x1e.k3sm.runtime.v1.ContainerUserR\x04userJ\x05\bd\x10\x96\x01\"c\n" +
+	"\x04user\x18\f \x01(\v2\x1e.k3sm.runtime.v1.ContainerUserR\x04user\x12C\n" +
+	"\tresources\x18d \x01(\v2%.k3sm.runtime.v1.ResourceRequirementsR\tresources\x12N\n" +
+	"\x13allocated_resources\x18e \x01(\v2\x1d.k3sm.runtime.v1.ResourceListR\x12allocatedResourcesJ\x05\bf\x10\x96\x01\"c\n" +
 	"\x11VolumeMountStatus\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
@@ -5878,7 +6724,46 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"started_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12;\n" +
 	"\vfinished_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"finishedAt\x12!\n" +
-	"\fcontainer_id\x18\a \x01(\tR\vcontainerId\"D\n" +
+	"\fcontainer_id\x18\a \x01(\tR\vcontainerId\"K\n" +
+	"\rResourceLimit\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x12\n" +
+	"\x04soft\x18\x02 \x01(\x04R\x04soft\x12\x12\n" +
+	"\x04hard\x18\x03 \x01(\x04R\x04hard\"\x9c\x01\n" +
+	"\fResourceList\x12M\n" +
+	"\n" +
+	"quantities\x18\x01 \x03(\v2-.k3sm.runtime.v1.ResourceList.QuantitiesEntryR\n" +
+	"quantities\x1a=\n" +
+	"\x0fQuantitiesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x88\x01\n" +
+	"\x14ResourceRequirements\x125\n" +
+	"\x06limits\x18\x01 \x01(\v2\x1d.k3sm.runtime.v1.ResourceListR\x06limits\x129\n" +
+	"\brequests\x18\x02 \x01(\v2\x1d.k3sm.runtime.v1.ResourceListR\brequests\"\xb8\x02\n" +
+	"\bPodStats\x12\x15\n" +
+	"\x06pod_id\x18\x01 \x01(\tR\x05podId\x12\x1c\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x128\n" +
+	"\ttimestamp\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12+\n" +
+	"\x03cpu\x18\x05 \x01(\v2\x19.k3sm.runtime.v1.CPUStatsR\x03cpu\x124\n" +
+	"\x06memory\x18\x06 \x01(\v2\x1c.k3sm.runtime.v1.MemoryStatsR\x06memory\x12?\n" +
+	"\n" +
+	"containers\x18\a \x03(\v2\x1f.k3sm.runtime.v1.ContainerStatsR\n" +
+	"containersJ\x05\bd\x10\x96\x01\"\xc8\x01\n" +
+	"\x0eContainerStats\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x128\n" +
+	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12+\n" +
+	"\x03cpu\x18\x03 \x01(\v2\x19.k3sm.runtime.v1.CPUStatsR\x03cpu\x124\n" +
+	"\x06memory\x18\x04 \x01(\v2\x1c.k3sm.runtime.v1.MemoryStatsR\x06memoryJ\x05\bd\x10\x96\x01\"\xa5\x01\n" +
+	"\bCPUStats\x128\n" +
+	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12(\n" +
+	"\x10usage_nano_cores\x18\x02 \x01(\x04R\x0eusageNanoCores\x125\n" +
+	"\x17usage_core_nano_seconds\x18\x03 \x01(\x04R\x14usageCoreNanoSeconds\"\xb1\x01\n" +
+	"\vMemoryStats\x128\n" +
+	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12*\n" +
+	"\x11working_set_bytes\x18\x02 \x01(\x04R\x0fworkingSetBytes\x12\x1f\n" +
+	"\vusage_bytes\x18\x03 \x01(\x04R\n" +
+	"usageBytes\x12\x1b\n" +
+	"\trss_bytes\x18\x04 \x01(\x04R\brssBytes\"D\n" +
 	"\x10CreatePodRequest\x12)\n" +
 	"\x03pod\x18\x01 \x01(\v2\x17.k3sm.runtime.v1.PodBoxR\x03podJ\x05\bd\x10\x96\x01\"\xbf\x01\n" +
 	"\x11CreatePodResponse\x122\n" +
@@ -5986,7 +6871,20 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x128\n" +
 	"\x06status\x18\x02 \x01(\x0e2 .k3sm.runtime.v1.ConditionStatusR\x06status\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\x12\x18\n" +
-	"\amessage\x18\x04 \x01(\tR\amessage*\xae\x01\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\",\n" +
+	"\x13ListPodStatsRequest\x12\x15\n" +
+	"\x06pod_id\x18\x01 \x01(\tR\x05podId\"N\n" +
+	"\x14ListPodStatsResponse\x126\n" +
+	"\tpod_stats\x18\x01 \x03(\v2\x19.k3sm.runtime.v1.PodStatsR\bpodStats\"\x9f\x01\n" +
+	"\x17RestartContainerRequest\x12\x15\n" +
+	"\x06pod_id\x18\x01 \x01(\tR\x05podId\x12\x1c\n" +
+	"\tcontainer\x18\x02 \x01(\tR\tcontainer\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\x120\n" +
+	"\x14grace_period_seconds\x18\x04 \x01(\x03R\x12gracePeriodSecondsJ\x05\bd\x10\x96\x01\"\xcc\x01\n" +
+	"\x18RestartContainerResponse\x128\n" +
+	"\x06status\x18\x01 \x01(\v2 .k3sm.runtime.v1.ContainerStatusR\x06status\x12(\n" +
+	"\x05error\x18\x02 \x01(\v2\x12.google.rpc.StatusR\x05error\x12E\n" +
+	"\x0efailure_reason\x18\x03 \x01(\x0e2\x1e.k3sm.runtime.v1.FailureReasonR\rfailureReasonJ\x05\bd\x10\x96\x01*\xae\x01\n" +
 	"\x0eSandboxBackend\x12\x1f\n" +
 	"\x1bSANDBOX_BACKEND_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dSANDBOX_BACKEND_SEATBELT_EXEC\x10\x01\x12#\n" +
@@ -6009,7 +6907,12 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\x1cCONDITION_STATUS_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15CONDITION_STATUS_TRUE\x10\x01\x12\x1a\n" +
 	"\x16CONDITION_STATUS_FALSE\x10\x02\x12\x1c\n" +
-	"\x18CONDITION_STATUS_UNKNOWN\x10\x03*\xa3\x01\n" +
+	"\x18CONDITION_STATUS_UNKNOWN\x10\x03*s\n" +
+	"\bQOSClass\x12\x19\n" +
+	"\x15QOS_CLASS_UNSPECIFIED\x10\x00\x12\x18\n" +
+	"\x14QOS_CLASS_GUARANTEED\x10\x01\x12\x17\n" +
+	"\x13QOS_CLASS_BURSTABLE\x10\x02\x12\x19\n" +
+	"\x15QOS_CLASS_BEST_EFFORT\x10\x03*\xa3\x01\n" +
 	"\x12PodStatusEventType\x12%\n" +
 	"!POD_STATUS_EVENT_TYPE_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bPOD_STATUS_EVENT_TYPE_ADDED\x10\x01\x12\"\n" +
@@ -6032,7 +6935,7 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\x1cFAILURE_REASON_NOT_UPDATABLE\x10\t\x12%\n" +
 	"!FAILURE_REASON_RESOURCE_EXHAUSTED\x10\n" +
 	"\x12\x1b\n" +
-	"\x17FAILURE_REASON_INTERNAL\x10\v2\xe1\x06\n" +
+	"\x17FAILURE_REASON_INTERNAL\x10\v2\xa7\b\n" +
 	"\aRuntime\x12R\n" +
 	"\tCreatePod\x12!.k3sm.runtime.v1.CreatePodRequest\x1a\".k3sm.runtime.v1.CreatePodResponse\x12R\n" +
 	"\tDeletePod\x12!.k3sm.runtime.v1.DeletePodRequest\x1a\".k3sm.runtime.v1.DeletePodResponse\x12R\n" +
@@ -6043,7 +6946,9 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\x04Exec\x12\x1c.k3sm.runtime.v1.ExecRequest\x1a\x1d.k3sm.runtime.v1.ExecResponse(\x010\x01\x12M\n" +
 	"\x06Attach\x12\x1e.k3sm.runtime.v1.AttachRequest\x1a\x1f.k3sm.runtime.v1.AttachResponse(\x010\x01\x12\\\n" +
 	"\vPortForward\x12#.k3sm.runtime.v1.PortForwardRequest\x1a$.k3sm.runtime.v1.PortForwardResponse(\x010\x01\x12a\n" +
-	"\x0eGetRuntimeInfo\x12&.k3sm.runtime.v1.GetRuntimeInfoRequest\x1a'.k3sm.runtime.v1.GetRuntimeInfoResponseB\xa4\x01\n" +
+	"\x0eGetRuntimeInfo\x12&.k3sm.runtime.v1.GetRuntimeInfoRequest\x1a'.k3sm.runtime.v1.GetRuntimeInfoResponse\x12[\n" +
+	"\fListPodStats\x12$.k3sm.runtime.v1.ListPodStatsRequest\x1a%.k3sm.runtime.v1.ListPodStatsResponse\x12g\n" +
+	"\x10RestartContainer\x12(.k3sm.runtime.v1.RestartContainerRequest\x1a).k3sm.runtime.v1.RestartContainerResponseB\xa4\x01\n" +
 	"\x13com.k3sm.runtime.v1B\fRuntimeProtoP\x01Z!k3sm.io/apis/runtime/v1;runtimev1\xa2\x02\x03KRX\xaa\x02\x0fK3sm.Runtime.V1\xca\x02\x0fK3sm\\Runtime\\V1\xe2\x02\x1bK3sm\\Runtime\\V1\\GPBMetadata\xea\x02\x11K3sm::Runtime::V1b\x06proto3"
 
 var (
@@ -6058,217 +6963,254 @@ func file_runtime_v1_runtime_proto_rawDescGZIP() []byte {
 	return file_runtime_v1_runtime_proto_rawDescData
 }
 
-var file_runtime_v1_runtime_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_runtime_v1_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 75)
+var file_runtime_v1_runtime_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
+var file_runtime_v1_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 87)
 var file_runtime_v1_runtime_proto_goTypes = []any{
 	(SandboxBackend)(0),                   // 0: k3sm.runtime.v1.SandboxBackend
 	(SignaturePolicy)(0),                  // 1: k3sm.runtime.v1.SignaturePolicy
 	(PodPhase)(0),                         // 2: k3sm.runtime.v1.PodPhase
 	(ConditionStatus)(0),                  // 3: k3sm.runtime.v1.ConditionStatus
-	(PodStatusEventType)(0),               // 4: k3sm.runtime.v1.PodStatusEventType
-	(LogStream)(0),                        // 5: k3sm.runtime.v1.LogStream
-	(FailureReason)(0),                    // 6: k3sm.runtime.v1.FailureReason
-	(*PodBox)(nil),                        // 7: k3sm.runtime.v1.PodBox
-	(*Volume)(nil),                        // 8: k3sm.runtime.v1.Volume
-	(*ConfigMapVolumeSource)(nil),         // 9: k3sm.runtime.v1.ConfigMapVolumeSource
-	(*SecretVolumeSource)(nil),            // 10: k3sm.runtime.v1.SecretVolumeSource
-	(*EmptyDirVolumeSource)(nil),          // 11: k3sm.runtime.v1.EmptyDirVolumeSource
-	(*DownwardAPIVolumeSource)(nil),       // 12: k3sm.runtime.v1.DownwardAPIVolumeSource
-	(*DownwardAPIVolumeFile)(nil),         // 13: k3sm.runtime.v1.DownwardAPIVolumeFile
-	(*ProjectedVolumeSource)(nil),         // 14: k3sm.runtime.v1.ProjectedVolumeSource
-	(*VolumeProjection)(nil),              // 15: k3sm.runtime.v1.VolumeProjection
-	(*ConfigMapProjection)(nil),           // 16: k3sm.runtime.v1.ConfigMapProjection
-	(*SecretProjection)(nil),              // 17: k3sm.runtime.v1.SecretProjection
-	(*DownwardAPIProjection)(nil),         // 18: k3sm.runtime.v1.DownwardAPIProjection
-	(*ServiceAccountTokenProjection)(nil), // 19: k3sm.runtime.v1.ServiceAccountTokenProjection
-	(*KeyToPath)(nil),                     // 20: k3sm.runtime.v1.KeyToPath
-	(*PodSecurityContext)(nil),            // 21: k3sm.runtime.v1.PodSecurityContext
-	(*LocalObjectReference)(nil),          // 22: k3sm.runtime.v1.LocalObjectReference
-	(*Container)(nil),                     // 23: k3sm.runtime.v1.Container
-	(*EnvVar)(nil),                        // 24: k3sm.runtime.v1.EnvVar
-	(*VolumeMount)(nil),                   // 25: k3sm.runtime.v1.VolumeMount
-	(*ContainerPort)(nil),                 // 26: k3sm.runtime.v1.ContainerPort
-	(*Probe)(nil),                         // 27: k3sm.runtime.v1.Probe
-	(*HTTPGetAction)(nil),                 // 28: k3sm.runtime.v1.HTTPGetAction
-	(*HTTPHeader)(nil),                    // 29: k3sm.runtime.v1.HTTPHeader
-	(*TCPSocketAction)(nil),               // 30: k3sm.runtime.v1.TCPSocketAction
-	(*ExecAction)(nil),                    // 31: k3sm.runtime.v1.ExecAction
-	(*IntOrString)(nil),                   // 32: k3sm.runtime.v1.IntOrString
-	(*SecurityContext)(nil),               // 33: k3sm.runtime.v1.SecurityContext
-	(*EnvFromSource)(nil),                 // 34: k3sm.runtime.v1.EnvFromSource
-	(*ConfigMapEnvSource)(nil),            // 35: k3sm.runtime.v1.ConfigMapEnvSource
-	(*SecretEnvSource)(nil),               // 36: k3sm.runtime.v1.SecretEnvSource
-	(*EnvVarSource)(nil),                  // 37: k3sm.runtime.v1.EnvVarSource
-	(*ObjectFieldSelector)(nil),           // 38: k3sm.runtime.v1.ObjectFieldSelector
-	(*ConfigMapKeySelector)(nil),          // 39: k3sm.runtime.v1.ConfigMapKeySelector
-	(*SecretKeySelector)(nil),             // 40: k3sm.runtime.v1.SecretKeySelector
-	(*SandboxProfile)(nil),                // 41: k3sm.runtime.v1.SandboxProfile
-	(*ImageManifest)(nil),                 // 42: k3sm.runtime.v1.ImageManifest
-	(*Descriptor)(nil),                    // 43: k3sm.runtime.v1.Descriptor
-	(*Platform)(nil),                      // 44: k3sm.runtime.v1.Platform
-	(*PodStatus)(nil),                     // 45: k3sm.runtime.v1.PodStatus
-	(*PodCondition)(nil),                  // 46: k3sm.runtime.v1.PodCondition
-	(*ContainerStatus)(nil),               // 47: k3sm.runtime.v1.ContainerStatus
-	(*VolumeMountStatus)(nil),             // 48: k3sm.runtime.v1.VolumeMountStatus
-	(*ContainerUser)(nil),                 // 49: k3sm.runtime.v1.ContainerUser
-	(*LinuxContainerUser)(nil),            // 50: k3sm.runtime.v1.LinuxContainerUser
-	(*ContainerState)(nil),                // 51: k3sm.runtime.v1.ContainerState
-	(*ContainerStateWaiting)(nil),         // 52: k3sm.runtime.v1.ContainerStateWaiting
-	(*ContainerStateRunning)(nil),         // 53: k3sm.runtime.v1.ContainerStateRunning
-	(*ContainerStateTerminated)(nil),      // 54: k3sm.runtime.v1.ContainerStateTerminated
-	(*CreatePodRequest)(nil),              // 55: k3sm.runtime.v1.CreatePodRequest
-	(*CreatePodResponse)(nil),             // 56: k3sm.runtime.v1.CreatePodResponse
-	(*DeletePodRequest)(nil),              // 57: k3sm.runtime.v1.DeletePodRequest
-	(*DeletePodResponse)(nil),             // 58: k3sm.runtime.v1.DeletePodResponse
-	(*UpdatePodRequest)(nil),              // 59: k3sm.runtime.v1.UpdatePodRequest
-	(*UpdatePodResponse)(nil),             // 60: k3sm.runtime.v1.UpdatePodResponse
-	(*WatchPodStatusRequest)(nil),         // 61: k3sm.runtime.v1.WatchPodStatusRequest
-	(*PodStatusEvent)(nil),                // 62: k3sm.runtime.v1.PodStatusEvent
-	(*GetPodStatusRequest)(nil),           // 63: k3sm.runtime.v1.GetPodStatusRequest
-	(*GetPodStatusResponse)(nil),          // 64: k3sm.runtime.v1.GetPodStatusResponse
-	(*GetLogsRequest)(nil),                // 65: k3sm.runtime.v1.GetLogsRequest
-	(*LogEntry)(nil),                      // 66: k3sm.runtime.v1.LogEntry
-	(*ExecRequest)(nil),                   // 67: k3sm.runtime.v1.ExecRequest
-	(*ExecResponse)(nil),                  // 68: k3sm.runtime.v1.ExecResponse
-	(*ExecResult)(nil),                    // 69: k3sm.runtime.v1.ExecResult
-	(*AttachRequest)(nil),                 // 70: k3sm.runtime.v1.AttachRequest
-	(*AttachResponse)(nil),                // 71: k3sm.runtime.v1.AttachResponse
-	(*PortForwardRequest)(nil),            // 72: k3sm.runtime.v1.PortForwardRequest
-	(*PortForwardResponse)(nil),           // 73: k3sm.runtime.v1.PortForwardResponse
-	(*TerminalSize)(nil),                  // 74: k3sm.runtime.v1.TerminalSize
-	(*GetRuntimeInfoRequest)(nil),         // 75: k3sm.runtime.v1.GetRuntimeInfoRequest
-	(*GetRuntimeInfoResponse)(nil),        // 76: k3sm.runtime.v1.GetRuntimeInfoResponse
-	(*RuntimeCondition)(nil),              // 77: k3sm.runtime.v1.RuntimeCondition
-	nil,                                   // 78: k3sm.runtime.v1.PodBox.LabelsEntry
-	nil,                                   // 79: k3sm.runtime.v1.PodBox.AnnotationsEntry
-	nil,                                   // 80: k3sm.runtime.v1.ImageManifest.AnnotationsEntry
-	nil,                                   // 81: k3sm.runtime.v1.Descriptor.AnnotationsEntry
-	(*timestamppb.Timestamp)(nil),         // 82: google.protobuf.Timestamp
-	(*status.Status)(nil),                 // 83: google.rpc.Status
+	(QOSClass)(0),                         // 4: k3sm.runtime.v1.QOSClass
+	(PodStatusEventType)(0),               // 5: k3sm.runtime.v1.PodStatusEventType
+	(LogStream)(0),                        // 6: k3sm.runtime.v1.LogStream
+	(FailureReason)(0),                    // 7: k3sm.runtime.v1.FailureReason
+	(*PodBox)(nil),                        // 8: k3sm.runtime.v1.PodBox
+	(*Volume)(nil),                        // 9: k3sm.runtime.v1.Volume
+	(*ConfigMapVolumeSource)(nil),         // 10: k3sm.runtime.v1.ConfigMapVolumeSource
+	(*SecretVolumeSource)(nil),            // 11: k3sm.runtime.v1.SecretVolumeSource
+	(*EmptyDirVolumeSource)(nil),          // 12: k3sm.runtime.v1.EmptyDirVolumeSource
+	(*DownwardAPIVolumeSource)(nil),       // 13: k3sm.runtime.v1.DownwardAPIVolumeSource
+	(*DownwardAPIVolumeFile)(nil),         // 14: k3sm.runtime.v1.DownwardAPIVolumeFile
+	(*ProjectedVolumeSource)(nil),         // 15: k3sm.runtime.v1.ProjectedVolumeSource
+	(*VolumeProjection)(nil),              // 16: k3sm.runtime.v1.VolumeProjection
+	(*ConfigMapProjection)(nil),           // 17: k3sm.runtime.v1.ConfigMapProjection
+	(*SecretProjection)(nil),              // 18: k3sm.runtime.v1.SecretProjection
+	(*DownwardAPIProjection)(nil),         // 19: k3sm.runtime.v1.DownwardAPIProjection
+	(*ServiceAccountTokenProjection)(nil), // 20: k3sm.runtime.v1.ServiceAccountTokenProjection
+	(*KeyToPath)(nil),                     // 21: k3sm.runtime.v1.KeyToPath
+	(*PodSecurityContext)(nil),            // 22: k3sm.runtime.v1.PodSecurityContext
+	(*LocalObjectReference)(nil),          // 23: k3sm.runtime.v1.LocalObjectReference
+	(*Container)(nil),                     // 24: k3sm.runtime.v1.Container
+	(*EnvVar)(nil),                        // 25: k3sm.runtime.v1.EnvVar
+	(*VolumeMount)(nil),                   // 26: k3sm.runtime.v1.VolumeMount
+	(*ContainerPort)(nil),                 // 27: k3sm.runtime.v1.ContainerPort
+	(*Probe)(nil),                         // 28: k3sm.runtime.v1.Probe
+	(*HTTPGetAction)(nil),                 // 29: k3sm.runtime.v1.HTTPGetAction
+	(*HTTPHeader)(nil),                    // 30: k3sm.runtime.v1.HTTPHeader
+	(*TCPSocketAction)(nil),               // 31: k3sm.runtime.v1.TCPSocketAction
+	(*ExecAction)(nil),                    // 32: k3sm.runtime.v1.ExecAction
+	(*IntOrString)(nil),                   // 33: k3sm.runtime.v1.IntOrString
+	(*SecurityContext)(nil),               // 34: k3sm.runtime.v1.SecurityContext
+	(*EnvFromSource)(nil),                 // 35: k3sm.runtime.v1.EnvFromSource
+	(*ConfigMapEnvSource)(nil),            // 36: k3sm.runtime.v1.ConfigMapEnvSource
+	(*SecretEnvSource)(nil),               // 37: k3sm.runtime.v1.SecretEnvSource
+	(*EnvVarSource)(nil),                  // 38: k3sm.runtime.v1.EnvVarSource
+	(*ObjectFieldSelector)(nil),           // 39: k3sm.runtime.v1.ObjectFieldSelector
+	(*ConfigMapKeySelector)(nil),          // 40: k3sm.runtime.v1.ConfigMapKeySelector
+	(*SecretKeySelector)(nil),             // 41: k3sm.runtime.v1.SecretKeySelector
+	(*SandboxProfile)(nil),                // 42: k3sm.runtime.v1.SandboxProfile
+	(*ImageManifest)(nil),                 // 43: k3sm.runtime.v1.ImageManifest
+	(*Descriptor)(nil),                    // 44: k3sm.runtime.v1.Descriptor
+	(*Platform)(nil),                      // 45: k3sm.runtime.v1.Platform
+	(*PodStatus)(nil),                     // 46: k3sm.runtime.v1.PodStatus
+	(*PodCondition)(nil),                  // 47: k3sm.runtime.v1.PodCondition
+	(*ContainerStatus)(nil),               // 48: k3sm.runtime.v1.ContainerStatus
+	(*VolumeMountStatus)(nil),             // 49: k3sm.runtime.v1.VolumeMountStatus
+	(*ContainerUser)(nil),                 // 50: k3sm.runtime.v1.ContainerUser
+	(*LinuxContainerUser)(nil),            // 51: k3sm.runtime.v1.LinuxContainerUser
+	(*ContainerState)(nil),                // 52: k3sm.runtime.v1.ContainerState
+	(*ContainerStateWaiting)(nil),         // 53: k3sm.runtime.v1.ContainerStateWaiting
+	(*ContainerStateRunning)(nil),         // 54: k3sm.runtime.v1.ContainerStateRunning
+	(*ContainerStateTerminated)(nil),      // 55: k3sm.runtime.v1.ContainerStateTerminated
+	(*ResourceLimit)(nil),                 // 56: k3sm.runtime.v1.ResourceLimit
+	(*ResourceList)(nil),                  // 57: k3sm.runtime.v1.ResourceList
+	(*ResourceRequirements)(nil),          // 58: k3sm.runtime.v1.ResourceRequirements
+	(*PodStats)(nil),                      // 59: k3sm.runtime.v1.PodStats
+	(*ContainerStats)(nil),                // 60: k3sm.runtime.v1.ContainerStats
+	(*CPUStats)(nil),                      // 61: k3sm.runtime.v1.CPUStats
+	(*MemoryStats)(nil),                   // 62: k3sm.runtime.v1.MemoryStats
+	(*CreatePodRequest)(nil),              // 63: k3sm.runtime.v1.CreatePodRequest
+	(*CreatePodResponse)(nil),             // 64: k3sm.runtime.v1.CreatePodResponse
+	(*DeletePodRequest)(nil),              // 65: k3sm.runtime.v1.DeletePodRequest
+	(*DeletePodResponse)(nil),             // 66: k3sm.runtime.v1.DeletePodResponse
+	(*UpdatePodRequest)(nil),              // 67: k3sm.runtime.v1.UpdatePodRequest
+	(*UpdatePodResponse)(nil),             // 68: k3sm.runtime.v1.UpdatePodResponse
+	(*WatchPodStatusRequest)(nil),         // 69: k3sm.runtime.v1.WatchPodStatusRequest
+	(*PodStatusEvent)(nil),                // 70: k3sm.runtime.v1.PodStatusEvent
+	(*GetPodStatusRequest)(nil),           // 71: k3sm.runtime.v1.GetPodStatusRequest
+	(*GetPodStatusResponse)(nil),          // 72: k3sm.runtime.v1.GetPodStatusResponse
+	(*GetLogsRequest)(nil),                // 73: k3sm.runtime.v1.GetLogsRequest
+	(*LogEntry)(nil),                      // 74: k3sm.runtime.v1.LogEntry
+	(*ExecRequest)(nil),                   // 75: k3sm.runtime.v1.ExecRequest
+	(*ExecResponse)(nil),                  // 76: k3sm.runtime.v1.ExecResponse
+	(*ExecResult)(nil),                    // 77: k3sm.runtime.v1.ExecResult
+	(*AttachRequest)(nil),                 // 78: k3sm.runtime.v1.AttachRequest
+	(*AttachResponse)(nil),                // 79: k3sm.runtime.v1.AttachResponse
+	(*PortForwardRequest)(nil),            // 80: k3sm.runtime.v1.PortForwardRequest
+	(*PortForwardResponse)(nil),           // 81: k3sm.runtime.v1.PortForwardResponse
+	(*TerminalSize)(nil),                  // 82: k3sm.runtime.v1.TerminalSize
+	(*GetRuntimeInfoRequest)(nil),         // 83: k3sm.runtime.v1.GetRuntimeInfoRequest
+	(*GetRuntimeInfoResponse)(nil),        // 84: k3sm.runtime.v1.GetRuntimeInfoResponse
+	(*RuntimeCondition)(nil),              // 85: k3sm.runtime.v1.RuntimeCondition
+	(*ListPodStatsRequest)(nil),           // 86: k3sm.runtime.v1.ListPodStatsRequest
+	(*ListPodStatsResponse)(nil),          // 87: k3sm.runtime.v1.ListPodStatsResponse
+	(*RestartContainerRequest)(nil),       // 88: k3sm.runtime.v1.RestartContainerRequest
+	(*RestartContainerResponse)(nil),      // 89: k3sm.runtime.v1.RestartContainerResponse
+	nil,                                   // 90: k3sm.runtime.v1.PodBox.LabelsEntry
+	nil,                                   // 91: k3sm.runtime.v1.PodBox.AnnotationsEntry
+	nil,                                   // 92: k3sm.runtime.v1.ImageManifest.AnnotationsEntry
+	nil,                                   // 93: k3sm.runtime.v1.Descriptor.AnnotationsEntry
+	nil,                                   // 94: k3sm.runtime.v1.ResourceList.QuantitiesEntry
+	(*timestamppb.Timestamp)(nil),         // 95: google.protobuf.Timestamp
+	(*status.Status)(nil),                 // 96: google.rpc.Status
 }
 var file_runtime_v1_runtime_proto_depIdxs = []int32{
-	23,  // 0: k3sm.runtime.v1.PodBox.init_containers:type_name -> k3sm.runtime.v1.Container
-	23,  // 1: k3sm.runtime.v1.PodBox.containers:type_name -> k3sm.runtime.v1.Container
-	41,  // 2: k3sm.runtime.v1.PodBox.sandbox_profile:type_name -> k3sm.runtime.v1.SandboxProfile
+	24,  // 0: k3sm.runtime.v1.PodBox.init_containers:type_name -> k3sm.runtime.v1.Container
+	24,  // 1: k3sm.runtime.v1.PodBox.containers:type_name -> k3sm.runtime.v1.Container
+	42,  // 2: k3sm.runtime.v1.PodBox.sandbox_profile:type_name -> k3sm.runtime.v1.SandboxProfile
 	1,   // 3: k3sm.runtime.v1.PodBox.signature_policy:type_name -> k3sm.runtime.v1.SignaturePolicy
-	78,  // 4: k3sm.runtime.v1.PodBox.labels:type_name -> k3sm.runtime.v1.PodBox.LabelsEntry
-	79,  // 5: k3sm.runtime.v1.PodBox.annotations:type_name -> k3sm.runtime.v1.PodBox.AnnotationsEntry
-	8,   // 6: k3sm.runtime.v1.PodBox.volumes:type_name -> k3sm.runtime.v1.Volume
-	21,  // 7: k3sm.runtime.v1.PodBox.pod_security_context:type_name -> k3sm.runtime.v1.PodSecurityContext
-	22,  // 8: k3sm.runtime.v1.PodBox.image_pull_secrets:type_name -> k3sm.runtime.v1.LocalObjectReference
-	9,   // 9: k3sm.runtime.v1.Volume.config_map:type_name -> k3sm.runtime.v1.ConfigMapVolumeSource
-	10,  // 10: k3sm.runtime.v1.Volume.secret:type_name -> k3sm.runtime.v1.SecretVolumeSource
-	11,  // 11: k3sm.runtime.v1.Volume.empty_dir:type_name -> k3sm.runtime.v1.EmptyDirVolumeSource
-	12,  // 12: k3sm.runtime.v1.Volume.downward_api:type_name -> k3sm.runtime.v1.DownwardAPIVolumeSource
-	14,  // 13: k3sm.runtime.v1.Volume.projected:type_name -> k3sm.runtime.v1.ProjectedVolumeSource
-	20,  // 14: k3sm.runtime.v1.ConfigMapVolumeSource.items:type_name -> k3sm.runtime.v1.KeyToPath
-	20,  // 15: k3sm.runtime.v1.SecretVolumeSource.items:type_name -> k3sm.runtime.v1.KeyToPath
-	13,  // 16: k3sm.runtime.v1.DownwardAPIVolumeSource.items:type_name -> k3sm.runtime.v1.DownwardAPIVolumeFile
-	38,  // 17: k3sm.runtime.v1.DownwardAPIVolumeFile.field_ref:type_name -> k3sm.runtime.v1.ObjectFieldSelector
-	15,  // 18: k3sm.runtime.v1.ProjectedVolumeSource.sources:type_name -> k3sm.runtime.v1.VolumeProjection
-	16,  // 19: k3sm.runtime.v1.VolumeProjection.config_map:type_name -> k3sm.runtime.v1.ConfigMapProjection
-	17,  // 20: k3sm.runtime.v1.VolumeProjection.secret:type_name -> k3sm.runtime.v1.SecretProjection
-	18,  // 21: k3sm.runtime.v1.VolumeProjection.downward_api:type_name -> k3sm.runtime.v1.DownwardAPIProjection
-	19,  // 22: k3sm.runtime.v1.VolumeProjection.service_account_token:type_name -> k3sm.runtime.v1.ServiceAccountTokenProjection
-	20,  // 23: k3sm.runtime.v1.ConfigMapProjection.items:type_name -> k3sm.runtime.v1.KeyToPath
-	20,  // 24: k3sm.runtime.v1.SecretProjection.items:type_name -> k3sm.runtime.v1.KeyToPath
-	13,  // 25: k3sm.runtime.v1.DownwardAPIProjection.items:type_name -> k3sm.runtime.v1.DownwardAPIVolumeFile
-	24,  // 26: k3sm.runtime.v1.Container.env:type_name -> k3sm.runtime.v1.EnvVar
-	25,  // 27: k3sm.runtime.v1.Container.volume_mounts:type_name -> k3sm.runtime.v1.VolumeMount
-	26,  // 28: k3sm.runtime.v1.Container.ports:type_name -> k3sm.runtime.v1.ContainerPort
-	27,  // 29: k3sm.runtime.v1.Container.liveness_probe:type_name -> k3sm.runtime.v1.Probe
-	27,  // 30: k3sm.runtime.v1.Container.readiness_probe:type_name -> k3sm.runtime.v1.Probe
-	27,  // 31: k3sm.runtime.v1.Container.startup_probe:type_name -> k3sm.runtime.v1.Probe
-	33,  // 32: k3sm.runtime.v1.Container.security_context:type_name -> k3sm.runtime.v1.SecurityContext
-	34,  // 33: k3sm.runtime.v1.Container.env_from:type_name -> k3sm.runtime.v1.EnvFromSource
-	37,  // 34: k3sm.runtime.v1.EnvVar.value_from:type_name -> k3sm.runtime.v1.EnvVarSource
-	28,  // 35: k3sm.runtime.v1.Probe.http_get:type_name -> k3sm.runtime.v1.HTTPGetAction
-	30,  // 36: k3sm.runtime.v1.Probe.tcp_socket:type_name -> k3sm.runtime.v1.TCPSocketAction
-	31,  // 37: k3sm.runtime.v1.Probe.exec:type_name -> k3sm.runtime.v1.ExecAction
-	32,  // 38: k3sm.runtime.v1.HTTPGetAction.port:type_name -> k3sm.runtime.v1.IntOrString
-	29,  // 39: k3sm.runtime.v1.HTTPGetAction.http_headers:type_name -> k3sm.runtime.v1.HTTPHeader
-	32,  // 40: k3sm.runtime.v1.TCPSocketAction.port:type_name -> k3sm.runtime.v1.IntOrString
-	35,  // 41: k3sm.runtime.v1.EnvFromSource.config_map_ref:type_name -> k3sm.runtime.v1.ConfigMapEnvSource
-	36,  // 42: k3sm.runtime.v1.EnvFromSource.secret_ref:type_name -> k3sm.runtime.v1.SecretEnvSource
-	38,  // 43: k3sm.runtime.v1.EnvVarSource.field_ref:type_name -> k3sm.runtime.v1.ObjectFieldSelector
-	39,  // 44: k3sm.runtime.v1.EnvVarSource.config_map_key_ref:type_name -> k3sm.runtime.v1.ConfigMapKeySelector
-	40,  // 45: k3sm.runtime.v1.EnvVarSource.secret_key_ref:type_name -> k3sm.runtime.v1.SecretKeySelector
-	0,   // 46: k3sm.runtime.v1.SandboxProfile.backend:type_name -> k3sm.runtime.v1.SandboxBackend
-	43,  // 47: k3sm.runtime.v1.ImageManifest.config:type_name -> k3sm.runtime.v1.Descriptor
-	43,  // 48: k3sm.runtime.v1.ImageManifest.layers:type_name -> k3sm.runtime.v1.Descriptor
-	80,  // 49: k3sm.runtime.v1.ImageManifest.annotations:type_name -> k3sm.runtime.v1.ImageManifest.AnnotationsEntry
-	81,  // 50: k3sm.runtime.v1.Descriptor.annotations:type_name -> k3sm.runtime.v1.Descriptor.AnnotationsEntry
-	44,  // 51: k3sm.runtime.v1.Descriptor.platform:type_name -> k3sm.runtime.v1.Platform
-	2,   // 52: k3sm.runtime.v1.PodStatus.phase:type_name -> k3sm.runtime.v1.PodPhase
-	46,  // 53: k3sm.runtime.v1.PodStatus.conditions:type_name -> k3sm.runtime.v1.PodCondition
-	82,  // 54: k3sm.runtime.v1.PodStatus.start_time:type_name -> google.protobuf.Timestamp
-	47,  // 55: k3sm.runtime.v1.PodStatus.init_container_statuses:type_name -> k3sm.runtime.v1.ContainerStatus
-	47,  // 56: k3sm.runtime.v1.PodStatus.container_statuses:type_name -> k3sm.runtime.v1.ContainerStatus
-	47,  // 57: k3sm.runtime.v1.PodStatus.ephemeral_container_statuses:type_name -> k3sm.runtime.v1.ContainerStatus
-	3,   // 58: k3sm.runtime.v1.PodCondition.status:type_name -> k3sm.runtime.v1.ConditionStatus
-	82,  // 59: k3sm.runtime.v1.PodCondition.last_probe_time:type_name -> google.protobuf.Timestamp
-	82,  // 60: k3sm.runtime.v1.PodCondition.last_transition_time:type_name -> google.protobuf.Timestamp
-	51,  // 61: k3sm.runtime.v1.ContainerStatus.state:type_name -> k3sm.runtime.v1.ContainerState
-	51,  // 62: k3sm.runtime.v1.ContainerStatus.last_termination_state:type_name -> k3sm.runtime.v1.ContainerState
-	48,  // 63: k3sm.runtime.v1.ContainerStatus.volume_mounts:type_name -> k3sm.runtime.v1.VolumeMountStatus
-	49,  // 64: k3sm.runtime.v1.ContainerStatus.user:type_name -> k3sm.runtime.v1.ContainerUser
-	50,  // 65: k3sm.runtime.v1.ContainerUser.linux:type_name -> k3sm.runtime.v1.LinuxContainerUser
-	52,  // 66: k3sm.runtime.v1.ContainerState.waiting:type_name -> k3sm.runtime.v1.ContainerStateWaiting
-	53,  // 67: k3sm.runtime.v1.ContainerState.running:type_name -> k3sm.runtime.v1.ContainerStateRunning
-	54,  // 68: k3sm.runtime.v1.ContainerState.terminated:type_name -> k3sm.runtime.v1.ContainerStateTerminated
-	82,  // 69: k3sm.runtime.v1.ContainerStateRunning.started_at:type_name -> google.protobuf.Timestamp
-	82,  // 70: k3sm.runtime.v1.ContainerStateTerminated.started_at:type_name -> google.protobuf.Timestamp
-	82,  // 71: k3sm.runtime.v1.ContainerStateTerminated.finished_at:type_name -> google.protobuf.Timestamp
-	7,   // 72: k3sm.runtime.v1.CreatePodRequest.pod:type_name -> k3sm.runtime.v1.PodBox
-	45,  // 73: k3sm.runtime.v1.CreatePodResponse.status:type_name -> k3sm.runtime.v1.PodStatus
-	83,  // 74: k3sm.runtime.v1.CreatePodResponse.error:type_name -> google.rpc.Status
-	6,   // 75: k3sm.runtime.v1.CreatePodResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
-	83,  // 76: k3sm.runtime.v1.DeletePodResponse.error:type_name -> google.rpc.Status
-	6,   // 77: k3sm.runtime.v1.DeletePodResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
-	7,   // 78: k3sm.runtime.v1.UpdatePodRequest.pod:type_name -> k3sm.runtime.v1.PodBox
-	45,  // 79: k3sm.runtime.v1.UpdatePodResponse.status:type_name -> k3sm.runtime.v1.PodStatus
-	83,  // 80: k3sm.runtime.v1.UpdatePodResponse.error:type_name -> google.rpc.Status
-	6,   // 81: k3sm.runtime.v1.UpdatePodResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
-	4,   // 82: k3sm.runtime.v1.PodStatusEvent.type:type_name -> k3sm.runtime.v1.PodStatusEventType
-	45,  // 83: k3sm.runtime.v1.PodStatusEvent.status:type_name -> k3sm.runtime.v1.PodStatus
-	45,  // 84: k3sm.runtime.v1.GetPodStatusResponse.status:type_name -> k3sm.runtime.v1.PodStatus
-	83,  // 85: k3sm.runtime.v1.GetPodStatusResponse.error:type_name -> google.rpc.Status
-	82,  // 86: k3sm.runtime.v1.GetLogsRequest.since_time:type_name -> google.protobuf.Timestamp
-	82,  // 87: k3sm.runtime.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
-	5,   // 88: k3sm.runtime.v1.LogEntry.stream:type_name -> k3sm.runtime.v1.LogStream
-	74,  // 89: k3sm.runtime.v1.ExecRequest.resize:type_name -> k3sm.runtime.v1.TerminalSize
-	69,  // 90: k3sm.runtime.v1.ExecResponse.exit:type_name -> k3sm.runtime.v1.ExecResult
-	83,  // 91: k3sm.runtime.v1.ExecResult.error:type_name -> google.rpc.Status
-	74,  // 92: k3sm.runtime.v1.AttachRequest.resize:type_name -> k3sm.runtime.v1.TerminalSize
-	69,  // 93: k3sm.runtime.v1.AttachResponse.exit:type_name -> k3sm.runtime.v1.ExecResult
-	83,  // 94: k3sm.runtime.v1.PortForwardResponse.error:type_name -> google.rpc.Status
-	77,  // 95: k3sm.runtime.v1.GetRuntimeInfoResponse.conditions:type_name -> k3sm.runtime.v1.RuntimeCondition
-	3,   // 96: k3sm.runtime.v1.RuntimeCondition.status:type_name -> k3sm.runtime.v1.ConditionStatus
-	55,  // 97: k3sm.runtime.v1.Runtime.CreatePod:input_type -> k3sm.runtime.v1.CreatePodRequest
-	57,  // 98: k3sm.runtime.v1.Runtime.DeletePod:input_type -> k3sm.runtime.v1.DeletePodRequest
-	59,  // 99: k3sm.runtime.v1.Runtime.UpdatePod:input_type -> k3sm.runtime.v1.UpdatePodRequest
-	61,  // 100: k3sm.runtime.v1.Runtime.WatchPodStatus:input_type -> k3sm.runtime.v1.WatchPodStatusRequest
-	63,  // 101: k3sm.runtime.v1.Runtime.GetPodStatus:input_type -> k3sm.runtime.v1.GetPodStatusRequest
-	65,  // 102: k3sm.runtime.v1.Runtime.GetLogs:input_type -> k3sm.runtime.v1.GetLogsRequest
-	67,  // 103: k3sm.runtime.v1.Runtime.Exec:input_type -> k3sm.runtime.v1.ExecRequest
-	70,  // 104: k3sm.runtime.v1.Runtime.Attach:input_type -> k3sm.runtime.v1.AttachRequest
-	72,  // 105: k3sm.runtime.v1.Runtime.PortForward:input_type -> k3sm.runtime.v1.PortForwardRequest
-	75,  // 106: k3sm.runtime.v1.Runtime.GetRuntimeInfo:input_type -> k3sm.runtime.v1.GetRuntimeInfoRequest
-	56,  // 107: k3sm.runtime.v1.Runtime.CreatePod:output_type -> k3sm.runtime.v1.CreatePodResponse
-	58,  // 108: k3sm.runtime.v1.Runtime.DeletePod:output_type -> k3sm.runtime.v1.DeletePodResponse
-	60,  // 109: k3sm.runtime.v1.Runtime.UpdatePod:output_type -> k3sm.runtime.v1.UpdatePodResponse
-	62,  // 110: k3sm.runtime.v1.Runtime.WatchPodStatus:output_type -> k3sm.runtime.v1.PodStatusEvent
-	64,  // 111: k3sm.runtime.v1.Runtime.GetPodStatus:output_type -> k3sm.runtime.v1.GetPodStatusResponse
-	66,  // 112: k3sm.runtime.v1.Runtime.GetLogs:output_type -> k3sm.runtime.v1.LogEntry
-	68,  // 113: k3sm.runtime.v1.Runtime.Exec:output_type -> k3sm.runtime.v1.ExecResponse
-	71,  // 114: k3sm.runtime.v1.Runtime.Attach:output_type -> k3sm.runtime.v1.AttachResponse
-	73,  // 115: k3sm.runtime.v1.Runtime.PortForward:output_type -> k3sm.runtime.v1.PortForwardResponse
-	76,  // 116: k3sm.runtime.v1.Runtime.GetRuntimeInfo:output_type -> k3sm.runtime.v1.GetRuntimeInfoResponse
-	107, // [107:117] is the sub-list for method output_type
-	97,  // [97:107] is the sub-list for method input_type
-	97,  // [97:97] is the sub-list for extension type_name
-	97,  // [97:97] is the sub-list for extension extendee
-	0,   // [0:97] is the sub-list for field type_name
+	90,  // 4: k3sm.runtime.v1.PodBox.labels:type_name -> k3sm.runtime.v1.PodBox.LabelsEntry
+	91,  // 5: k3sm.runtime.v1.PodBox.annotations:type_name -> k3sm.runtime.v1.PodBox.AnnotationsEntry
+	9,   // 6: k3sm.runtime.v1.PodBox.volumes:type_name -> k3sm.runtime.v1.Volume
+	22,  // 7: k3sm.runtime.v1.PodBox.pod_security_context:type_name -> k3sm.runtime.v1.PodSecurityContext
+	23,  // 8: k3sm.runtime.v1.PodBox.image_pull_secrets:type_name -> k3sm.runtime.v1.LocalObjectReference
+	4,   // 9: k3sm.runtime.v1.PodBox.qos_class:type_name -> k3sm.runtime.v1.QOSClass
+	56,  // 10: k3sm.runtime.v1.PodBox.rlimits:type_name -> k3sm.runtime.v1.ResourceLimit
+	10,  // 11: k3sm.runtime.v1.Volume.config_map:type_name -> k3sm.runtime.v1.ConfigMapVolumeSource
+	11,  // 12: k3sm.runtime.v1.Volume.secret:type_name -> k3sm.runtime.v1.SecretVolumeSource
+	12,  // 13: k3sm.runtime.v1.Volume.empty_dir:type_name -> k3sm.runtime.v1.EmptyDirVolumeSource
+	13,  // 14: k3sm.runtime.v1.Volume.downward_api:type_name -> k3sm.runtime.v1.DownwardAPIVolumeSource
+	15,  // 15: k3sm.runtime.v1.Volume.projected:type_name -> k3sm.runtime.v1.ProjectedVolumeSource
+	21,  // 16: k3sm.runtime.v1.ConfigMapVolumeSource.items:type_name -> k3sm.runtime.v1.KeyToPath
+	21,  // 17: k3sm.runtime.v1.SecretVolumeSource.items:type_name -> k3sm.runtime.v1.KeyToPath
+	14,  // 18: k3sm.runtime.v1.DownwardAPIVolumeSource.items:type_name -> k3sm.runtime.v1.DownwardAPIVolumeFile
+	39,  // 19: k3sm.runtime.v1.DownwardAPIVolumeFile.field_ref:type_name -> k3sm.runtime.v1.ObjectFieldSelector
+	16,  // 20: k3sm.runtime.v1.ProjectedVolumeSource.sources:type_name -> k3sm.runtime.v1.VolumeProjection
+	17,  // 21: k3sm.runtime.v1.VolumeProjection.config_map:type_name -> k3sm.runtime.v1.ConfigMapProjection
+	18,  // 22: k3sm.runtime.v1.VolumeProjection.secret:type_name -> k3sm.runtime.v1.SecretProjection
+	19,  // 23: k3sm.runtime.v1.VolumeProjection.downward_api:type_name -> k3sm.runtime.v1.DownwardAPIProjection
+	20,  // 24: k3sm.runtime.v1.VolumeProjection.service_account_token:type_name -> k3sm.runtime.v1.ServiceAccountTokenProjection
+	21,  // 25: k3sm.runtime.v1.ConfigMapProjection.items:type_name -> k3sm.runtime.v1.KeyToPath
+	21,  // 26: k3sm.runtime.v1.SecretProjection.items:type_name -> k3sm.runtime.v1.KeyToPath
+	14,  // 27: k3sm.runtime.v1.DownwardAPIProjection.items:type_name -> k3sm.runtime.v1.DownwardAPIVolumeFile
+	25,  // 28: k3sm.runtime.v1.Container.env:type_name -> k3sm.runtime.v1.EnvVar
+	26,  // 29: k3sm.runtime.v1.Container.volume_mounts:type_name -> k3sm.runtime.v1.VolumeMount
+	27,  // 30: k3sm.runtime.v1.Container.ports:type_name -> k3sm.runtime.v1.ContainerPort
+	28,  // 31: k3sm.runtime.v1.Container.liveness_probe:type_name -> k3sm.runtime.v1.Probe
+	28,  // 32: k3sm.runtime.v1.Container.readiness_probe:type_name -> k3sm.runtime.v1.Probe
+	28,  // 33: k3sm.runtime.v1.Container.startup_probe:type_name -> k3sm.runtime.v1.Probe
+	34,  // 34: k3sm.runtime.v1.Container.security_context:type_name -> k3sm.runtime.v1.SecurityContext
+	35,  // 35: k3sm.runtime.v1.Container.env_from:type_name -> k3sm.runtime.v1.EnvFromSource
+	38,  // 36: k3sm.runtime.v1.EnvVar.value_from:type_name -> k3sm.runtime.v1.EnvVarSource
+	29,  // 37: k3sm.runtime.v1.Probe.http_get:type_name -> k3sm.runtime.v1.HTTPGetAction
+	31,  // 38: k3sm.runtime.v1.Probe.tcp_socket:type_name -> k3sm.runtime.v1.TCPSocketAction
+	32,  // 39: k3sm.runtime.v1.Probe.exec:type_name -> k3sm.runtime.v1.ExecAction
+	33,  // 40: k3sm.runtime.v1.HTTPGetAction.port:type_name -> k3sm.runtime.v1.IntOrString
+	30,  // 41: k3sm.runtime.v1.HTTPGetAction.http_headers:type_name -> k3sm.runtime.v1.HTTPHeader
+	33,  // 42: k3sm.runtime.v1.TCPSocketAction.port:type_name -> k3sm.runtime.v1.IntOrString
+	36,  // 43: k3sm.runtime.v1.EnvFromSource.config_map_ref:type_name -> k3sm.runtime.v1.ConfigMapEnvSource
+	37,  // 44: k3sm.runtime.v1.EnvFromSource.secret_ref:type_name -> k3sm.runtime.v1.SecretEnvSource
+	39,  // 45: k3sm.runtime.v1.EnvVarSource.field_ref:type_name -> k3sm.runtime.v1.ObjectFieldSelector
+	40,  // 46: k3sm.runtime.v1.EnvVarSource.config_map_key_ref:type_name -> k3sm.runtime.v1.ConfigMapKeySelector
+	41,  // 47: k3sm.runtime.v1.EnvVarSource.secret_key_ref:type_name -> k3sm.runtime.v1.SecretKeySelector
+	0,   // 48: k3sm.runtime.v1.SandboxProfile.backend:type_name -> k3sm.runtime.v1.SandboxBackend
+	44,  // 49: k3sm.runtime.v1.ImageManifest.config:type_name -> k3sm.runtime.v1.Descriptor
+	44,  // 50: k3sm.runtime.v1.ImageManifest.layers:type_name -> k3sm.runtime.v1.Descriptor
+	92,  // 51: k3sm.runtime.v1.ImageManifest.annotations:type_name -> k3sm.runtime.v1.ImageManifest.AnnotationsEntry
+	93,  // 52: k3sm.runtime.v1.Descriptor.annotations:type_name -> k3sm.runtime.v1.Descriptor.AnnotationsEntry
+	45,  // 53: k3sm.runtime.v1.Descriptor.platform:type_name -> k3sm.runtime.v1.Platform
+	2,   // 54: k3sm.runtime.v1.PodStatus.phase:type_name -> k3sm.runtime.v1.PodPhase
+	47,  // 55: k3sm.runtime.v1.PodStatus.conditions:type_name -> k3sm.runtime.v1.PodCondition
+	95,  // 56: k3sm.runtime.v1.PodStatus.start_time:type_name -> google.protobuf.Timestamp
+	48,  // 57: k3sm.runtime.v1.PodStatus.init_container_statuses:type_name -> k3sm.runtime.v1.ContainerStatus
+	48,  // 58: k3sm.runtime.v1.PodStatus.container_statuses:type_name -> k3sm.runtime.v1.ContainerStatus
+	48,  // 59: k3sm.runtime.v1.PodStatus.ephemeral_container_statuses:type_name -> k3sm.runtime.v1.ContainerStatus
+	3,   // 60: k3sm.runtime.v1.PodCondition.status:type_name -> k3sm.runtime.v1.ConditionStatus
+	95,  // 61: k3sm.runtime.v1.PodCondition.last_probe_time:type_name -> google.protobuf.Timestamp
+	95,  // 62: k3sm.runtime.v1.PodCondition.last_transition_time:type_name -> google.protobuf.Timestamp
+	52,  // 63: k3sm.runtime.v1.ContainerStatus.state:type_name -> k3sm.runtime.v1.ContainerState
+	52,  // 64: k3sm.runtime.v1.ContainerStatus.last_termination_state:type_name -> k3sm.runtime.v1.ContainerState
+	49,  // 65: k3sm.runtime.v1.ContainerStatus.volume_mounts:type_name -> k3sm.runtime.v1.VolumeMountStatus
+	50,  // 66: k3sm.runtime.v1.ContainerStatus.user:type_name -> k3sm.runtime.v1.ContainerUser
+	58,  // 67: k3sm.runtime.v1.ContainerStatus.resources:type_name -> k3sm.runtime.v1.ResourceRequirements
+	57,  // 68: k3sm.runtime.v1.ContainerStatus.allocated_resources:type_name -> k3sm.runtime.v1.ResourceList
+	51,  // 69: k3sm.runtime.v1.ContainerUser.linux:type_name -> k3sm.runtime.v1.LinuxContainerUser
+	53,  // 70: k3sm.runtime.v1.ContainerState.waiting:type_name -> k3sm.runtime.v1.ContainerStateWaiting
+	54,  // 71: k3sm.runtime.v1.ContainerState.running:type_name -> k3sm.runtime.v1.ContainerStateRunning
+	55,  // 72: k3sm.runtime.v1.ContainerState.terminated:type_name -> k3sm.runtime.v1.ContainerStateTerminated
+	95,  // 73: k3sm.runtime.v1.ContainerStateRunning.started_at:type_name -> google.protobuf.Timestamp
+	95,  // 74: k3sm.runtime.v1.ContainerStateTerminated.started_at:type_name -> google.protobuf.Timestamp
+	95,  // 75: k3sm.runtime.v1.ContainerStateTerminated.finished_at:type_name -> google.protobuf.Timestamp
+	94,  // 76: k3sm.runtime.v1.ResourceList.quantities:type_name -> k3sm.runtime.v1.ResourceList.QuantitiesEntry
+	57,  // 77: k3sm.runtime.v1.ResourceRequirements.limits:type_name -> k3sm.runtime.v1.ResourceList
+	57,  // 78: k3sm.runtime.v1.ResourceRequirements.requests:type_name -> k3sm.runtime.v1.ResourceList
+	95,  // 79: k3sm.runtime.v1.PodStats.timestamp:type_name -> google.protobuf.Timestamp
+	61,  // 80: k3sm.runtime.v1.PodStats.cpu:type_name -> k3sm.runtime.v1.CPUStats
+	62,  // 81: k3sm.runtime.v1.PodStats.memory:type_name -> k3sm.runtime.v1.MemoryStats
+	60,  // 82: k3sm.runtime.v1.PodStats.containers:type_name -> k3sm.runtime.v1.ContainerStats
+	95,  // 83: k3sm.runtime.v1.ContainerStats.timestamp:type_name -> google.protobuf.Timestamp
+	61,  // 84: k3sm.runtime.v1.ContainerStats.cpu:type_name -> k3sm.runtime.v1.CPUStats
+	62,  // 85: k3sm.runtime.v1.ContainerStats.memory:type_name -> k3sm.runtime.v1.MemoryStats
+	95,  // 86: k3sm.runtime.v1.CPUStats.timestamp:type_name -> google.protobuf.Timestamp
+	95,  // 87: k3sm.runtime.v1.MemoryStats.timestamp:type_name -> google.protobuf.Timestamp
+	8,   // 88: k3sm.runtime.v1.CreatePodRequest.pod:type_name -> k3sm.runtime.v1.PodBox
+	46,  // 89: k3sm.runtime.v1.CreatePodResponse.status:type_name -> k3sm.runtime.v1.PodStatus
+	96,  // 90: k3sm.runtime.v1.CreatePodResponse.error:type_name -> google.rpc.Status
+	7,   // 91: k3sm.runtime.v1.CreatePodResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
+	96,  // 92: k3sm.runtime.v1.DeletePodResponse.error:type_name -> google.rpc.Status
+	7,   // 93: k3sm.runtime.v1.DeletePodResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
+	8,   // 94: k3sm.runtime.v1.UpdatePodRequest.pod:type_name -> k3sm.runtime.v1.PodBox
+	46,  // 95: k3sm.runtime.v1.UpdatePodResponse.status:type_name -> k3sm.runtime.v1.PodStatus
+	96,  // 96: k3sm.runtime.v1.UpdatePodResponse.error:type_name -> google.rpc.Status
+	7,   // 97: k3sm.runtime.v1.UpdatePodResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
+	5,   // 98: k3sm.runtime.v1.PodStatusEvent.type:type_name -> k3sm.runtime.v1.PodStatusEventType
+	46,  // 99: k3sm.runtime.v1.PodStatusEvent.status:type_name -> k3sm.runtime.v1.PodStatus
+	46,  // 100: k3sm.runtime.v1.GetPodStatusResponse.status:type_name -> k3sm.runtime.v1.PodStatus
+	96,  // 101: k3sm.runtime.v1.GetPodStatusResponse.error:type_name -> google.rpc.Status
+	95,  // 102: k3sm.runtime.v1.GetLogsRequest.since_time:type_name -> google.protobuf.Timestamp
+	95,  // 103: k3sm.runtime.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
+	6,   // 104: k3sm.runtime.v1.LogEntry.stream:type_name -> k3sm.runtime.v1.LogStream
+	82,  // 105: k3sm.runtime.v1.ExecRequest.resize:type_name -> k3sm.runtime.v1.TerminalSize
+	77,  // 106: k3sm.runtime.v1.ExecResponse.exit:type_name -> k3sm.runtime.v1.ExecResult
+	96,  // 107: k3sm.runtime.v1.ExecResult.error:type_name -> google.rpc.Status
+	82,  // 108: k3sm.runtime.v1.AttachRequest.resize:type_name -> k3sm.runtime.v1.TerminalSize
+	77,  // 109: k3sm.runtime.v1.AttachResponse.exit:type_name -> k3sm.runtime.v1.ExecResult
+	96,  // 110: k3sm.runtime.v1.PortForwardResponse.error:type_name -> google.rpc.Status
+	85,  // 111: k3sm.runtime.v1.GetRuntimeInfoResponse.conditions:type_name -> k3sm.runtime.v1.RuntimeCondition
+	3,   // 112: k3sm.runtime.v1.RuntimeCondition.status:type_name -> k3sm.runtime.v1.ConditionStatus
+	59,  // 113: k3sm.runtime.v1.ListPodStatsResponse.pod_stats:type_name -> k3sm.runtime.v1.PodStats
+	48,  // 114: k3sm.runtime.v1.RestartContainerResponse.status:type_name -> k3sm.runtime.v1.ContainerStatus
+	96,  // 115: k3sm.runtime.v1.RestartContainerResponse.error:type_name -> google.rpc.Status
+	7,   // 116: k3sm.runtime.v1.RestartContainerResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
+	63,  // 117: k3sm.runtime.v1.Runtime.CreatePod:input_type -> k3sm.runtime.v1.CreatePodRequest
+	65,  // 118: k3sm.runtime.v1.Runtime.DeletePod:input_type -> k3sm.runtime.v1.DeletePodRequest
+	67,  // 119: k3sm.runtime.v1.Runtime.UpdatePod:input_type -> k3sm.runtime.v1.UpdatePodRequest
+	69,  // 120: k3sm.runtime.v1.Runtime.WatchPodStatus:input_type -> k3sm.runtime.v1.WatchPodStatusRequest
+	71,  // 121: k3sm.runtime.v1.Runtime.GetPodStatus:input_type -> k3sm.runtime.v1.GetPodStatusRequest
+	73,  // 122: k3sm.runtime.v1.Runtime.GetLogs:input_type -> k3sm.runtime.v1.GetLogsRequest
+	75,  // 123: k3sm.runtime.v1.Runtime.Exec:input_type -> k3sm.runtime.v1.ExecRequest
+	78,  // 124: k3sm.runtime.v1.Runtime.Attach:input_type -> k3sm.runtime.v1.AttachRequest
+	80,  // 125: k3sm.runtime.v1.Runtime.PortForward:input_type -> k3sm.runtime.v1.PortForwardRequest
+	83,  // 126: k3sm.runtime.v1.Runtime.GetRuntimeInfo:input_type -> k3sm.runtime.v1.GetRuntimeInfoRequest
+	86,  // 127: k3sm.runtime.v1.Runtime.ListPodStats:input_type -> k3sm.runtime.v1.ListPodStatsRequest
+	88,  // 128: k3sm.runtime.v1.Runtime.RestartContainer:input_type -> k3sm.runtime.v1.RestartContainerRequest
+	64,  // 129: k3sm.runtime.v1.Runtime.CreatePod:output_type -> k3sm.runtime.v1.CreatePodResponse
+	66,  // 130: k3sm.runtime.v1.Runtime.DeletePod:output_type -> k3sm.runtime.v1.DeletePodResponse
+	68,  // 131: k3sm.runtime.v1.Runtime.UpdatePod:output_type -> k3sm.runtime.v1.UpdatePodResponse
+	70,  // 132: k3sm.runtime.v1.Runtime.WatchPodStatus:output_type -> k3sm.runtime.v1.PodStatusEvent
+	72,  // 133: k3sm.runtime.v1.Runtime.GetPodStatus:output_type -> k3sm.runtime.v1.GetPodStatusResponse
+	74,  // 134: k3sm.runtime.v1.Runtime.GetLogs:output_type -> k3sm.runtime.v1.LogEntry
+	76,  // 135: k3sm.runtime.v1.Runtime.Exec:output_type -> k3sm.runtime.v1.ExecResponse
+	79,  // 136: k3sm.runtime.v1.Runtime.Attach:output_type -> k3sm.runtime.v1.AttachResponse
+	81,  // 137: k3sm.runtime.v1.Runtime.PortForward:output_type -> k3sm.runtime.v1.PortForwardResponse
+	84,  // 138: k3sm.runtime.v1.Runtime.GetRuntimeInfo:output_type -> k3sm.runtime.v1.GetRuntimeInfoResponse
+	87,  // 139: k3sm.runtime.v1.Runtime.ListPodStats:output_type -> k3sm.runtime.v1.ListPodStatsResponse
+	89,  // 140: k3sm.runtime.v1.Runtime.RestartContainer:output_type -> k3sm.runtime.v1.RestartContainerResponse
+	129, // [129:141] is the sub-list for method output_type
+	117, // [117:129] is the sub-list for method input_type
+	117, // [117:117] is the sub-list for extension type_name
+	117, // [117:117] is the sub-list for extension extendee
+	0,   // [0:117] is the sub-list for field type_name
 }
 
 func init() { file_runtime_v1_runtime_proto_init() }
@@ -6281,8 +7223,8 @@ func file_runtime_v1_runtime_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_runtime_v1_runtime_proto_rawDesc), len(file_runtime_v1_runtime_proto_rawDesc)),
-			NumEnums:      7,
-			NumMessages:   75,
+			NumEnums:      8,
+			NumMessages:   87,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
