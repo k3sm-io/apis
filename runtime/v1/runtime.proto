@@ -190,13 +190,19 @@ message Volume {
   // pod.
   string name = 1;
 
-  // config_map, secret, empty_dir, downward_api, and projected are the source
-  // union: exactly one is set.
+  // config_map, secret, empty_dir, downward_api, projected, and
+  // persistent_volume_claim are the source union: exactly one is set.
   ConfigMapVolumeSource config_map = 2;
   SecretVolumeSource secret = 3;
   EmptyDirVolumeSource empty_dir = 4;
   DownwardAPIVolumeSource downward_api = 5;
   ProjectedVolumeSource projected = 6;
+
+  // persistent_volume_claim mounts a PersistentVolumeClaim — the durable,
+  // pod-lifecycle-decoupled storage source (the others are pod-ephemeral).
+  // Added in M3.1 (the next free sequential source number; the M2.1 sources
+  // took 2..6). Mirrors corev1.Volume.PersistentVolumeClaim.
+  PersistentVolumeClaimVolumeSource persistent_volume_claim = 7;
 }
 
 // ConfigMapVolumeSource mounts a ConfigMap as files. Mirrors
@@ -319,6 +325,22 @@ message KeyToPath {
   string path = 2;
   // mode is the file permission bits; 0 means unset.
   int32 mode = 3;
+}
+
+// PersistentVolumeClaimVolumeSource mounts a PersistentVolumeClaim by name —
+// the durable, pod-lifecycle-decoupled storage source (M3.1). The k3sm APFS
+// local-path provisioner (k3sm:M3) binds the claim to a STABLE per-PVC dir on
+// the same APFS volume as /var/lib/k3sm; runtimed:M3 mounts that dir into the
+// container and does NOT delete it on pod teardown (ReclaimPolicy Retain — the
+// path-derivation + storage root the two repos agree on live in the plain-Go
+// k3sm.io/apis/storage/v1 contract). The proto carries only the claim
+// reference; resolving the claim to its bound PV is the provider's job. Mirrors
+// corev1.PersistentVolumeClaimVolumeSource.
+message PersistentVolumeClaimVolumeSource {
+  // claim_name is the name of the PersistentVolumeClaim in the pod's namespace.
+  string claim_name = 1;
+  // read_only mounts the bound volume read-only (default read-write).
+  bool read_only = 2;
 }
 
 // PodSecurityContext is the pod-scoped privilege configuration. fs_group lives
