@@ -23,3 +23,17 @@ lint:
 breaking:
   use:
     - WIRE_JSON # additive-only: no field renumber, no wire/JSON-incompatible change
+  except:
+    # The per-message 100..199 (PodBox) / 100..149 (sibling) ranges are
+    # DOCUMENTED consumable headroom (docs/PHASES.md M2.1/M2.2): M2.2 resource +
+    # metrics fields land there so they never collide with the sub-100
+    # sequential M2.1 fields. Narrowing a reserved MESSAGE range to allocate a
+    # field within it is therefore BY DESIGN, not a wire break — converting
+    # never-used reserved headroom into a field is wire- and JSON-safe. Every
+    # field-level guard stays ON (FIELD_NO_DELETE, FIELD_SAME_TYPE / _NAME /
+    # _JSON_NAME, FIELD_NO_DELETE_UNLESS_NUMBER_RESERVED) plus
+    # RESERVED_ENUM_NO_DELETE, so no existing field can be renumbered, retyped,
+    # or deleted vs buf/baseline.binpb. No reserved range in this proto stems
+    # from a DELETED field (all are headroom), so this except removes no real
+    # wire protection.
+    - RESERVED_MESSAGE_NO_DELETE
