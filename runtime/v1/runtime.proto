@@ -647,7 +647,29 @@ message SandboxProfile {
   // privileged helper. Threaded as data because runtimed cannot import darwin-net.
   repeated string denied_unix_socket_paths = 6;
 
-  reserved 100 to 149; // M2: fine-grained mach-service / sysctl allow rules.
+  // --- M5.1 VM-backend sizing (allocated from SandboxProfile's reserved
+  // 100..149 band). Read ONLY when backend == SANDBOX_BACKEND_VM: a
+  // Virtualization.framework micro-VM must be given a concrete vCPU count and
+  // RAM size at boot (both VZVirtualMachineConfiguration properties are
+  // mandatory), and neither is derivable from the host-process inputs —
+  // PodBox.memory_limit_bytes is the OOM ceiling (0 for BestEffort, the common
+  // case) and there is no vCPU count elsewhere. Host-process Seatbelt/uidjail
+  // backends ignore these fields. ---
+
+  // vm_vcpus is the number of virtual CPUs the micro-VM boots with
+  // (VZVirtualMachineConfiguration.cpuCount). 0 lets the VM backend choose a
+  // default. Ignored unless backend == SANDBOX_BACKEND_VM.
+  uint32 vm_vcpus = 100;
+
+  // vm_memory_bytes is the micro-VM's allocated RAM in bytes
+  // (VZVirtualMachineConfiguration.memorySize). It is DISTINCT from
+  // PodBox.memory_limit_bytes (the OOM ceiling, which may be 0/unlimited): a VM
+  // must boot with a concrete, positive memory size. 0 lets the VM backend
+  // choose a default. Ignored unless backend == SANDBOX_BACKEND_VM.
+  int64 vm_memory_bytes = 101;
+
+  // 100..101 allocated above; 102..149 stay reserved (149 ceiling preserved).
+  reserved 102 to 149; // future fine-grained mach-service / sysctl allow rules.
 }
 
 // SandboxBackend is the pod isolation mechanism. UNSPECIFIED means the runtime

@@ -1,9 +1,9 @@
 ---
 repo: apis
 schema: phases/v1
-current_phase: M4
-updated: 2026-06-25
-updated_by: agent
+current_phase: M5
+updated: 2026-06-27
+updated_by: orchestrator
 
 phases:
   - id: M0
@@ -235,24 +235,25 @@ phases:
 
   - id: M5
     title: vm RuntimeClass handler mapping (Linux-image micro-VM backend)
-    status: todo
+    status: done
+    completed: 2026-06-27
     depends_on: []
     subphases:
       - id: M5.1
         title: vm RuntimeClass handler-config mapping (reuse SANDBOX_BACKEND_VM; do not fork upstream RuntimeClass)
-        status: todo
+        status: done
         depends_on: []
         deliverables:
           - id: M5.1-d1
-            done: false
+            done: true
             desc: "runtime.k3sm.io handler-config type — a config type that maps the value of the upstream node.k8s.io/v1 RuntimeClass `handler`/`runtimeClassName` (e.g. \"vm\") to a SANDBOX_BACKEND. REUSE the existing SANDBOX_BACKEND_VM enum value (runtime/v1, = 4); do NOT fork, redefine, or vendor the upstream RuntimeClass API. k3sm consumes the standard upstream RuntimeClass object AFTER admission/scheduling and looks up the backend via this handler-config; the type only carries the name→backend mapping (+ any backend params the VZ path needs)."
         acceptance:
           - id: M5.1-a1
-            met: false
+            met: true
             check: additive-only and builds CGO_ENABLED=0 standalone + under go.work; the module still imports zero k3sm.io/* packages and does not vendor or redefine the upstream node.k8s.io RuntimeClass type
             method: unit
           - id: M5.1-a2
-            met: false
+            met: true
             check: the handler-name → SANDBOX_BACKEND mapping is table-tested (\"vm\" → SANDBOX_BACKEND_VM; unknown handler → a defined fallback/error), -race clean
             method: unit
 ---
