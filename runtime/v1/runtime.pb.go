@@ -3122,8 +3122,18 @@ type SandboxProfile struct {
 	// for each, on top of the default-deny, so a same-uid pod cannot drive the
 	// privileged helper. Threaded as data because runtimed cannot import darwin-net.
 	DeniedUnixSocketPaths []string `protobuf:"bytes,6,rep,name=denied_unix_socket_paths,json=deniedUnixSocketPaths,proto3" json:"denied_unix_socket_paths,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// vm_vcpus is the number of virtual CPUs the micro-VM boots with
+	// (VZVirtualMachineConfiguration.cpuCount). 0 lets the VM backend choose a
+	// default. Ignored unless backend == SANDBOX_BACKEND_VM.
+	VmVcpus uint32 `protobuf:"varint,100,opt,name=vm_vcpus,json=vmVcpus,proto3" json:"vm_vcpus,omitempty"`
+	// vm_memory_bytes is the micro-VM's allocated RAM in bytes
+	// (VZVirtualMachineConfiguration.memorySize). It is DISTINCT from
+	// PodBox.memory_limit_bytes (the OOM ceiling, which may be 0/unlimited): a VM
+	// must boot with a concrete, positive memory size. 0 lets the VM backend
+	// choose a default. Ignored unless backend == SANDBOX_BACKEND_VM.
+	VmMemoryBytes int64 `protobuf:"varint,101,opt,name=vm_memory_bytes,json=vmMemoryBytes,proto3" json:"vm_memory_bytes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SandboxProfile) Reset() {
@@ -3196,6 +3206,20 @@ func (x *SandboxProfile) GetDeniedUnixSocketPaths() []string {
 		return x.DeniedUnixSocketPaths
 	}
 	return nil
+}
+
+func (x *SandboxProfile) GetVmVcpus() uint32 {
+	if x != nil {
+		return x.VmVcpus
+	}
+	return 0
+}
+
+func (x *SandboxProfile) GetVmMemoryBytes() int64 {
+	if x != nil {
+		return x.VmMemoryBytes
+	}
+	return 0
 }
 
 // ImageManifest describes an OCI image as an artifact: the config descriptor
@@ -6706,14 +6730,16 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\x11SecretKeySelector\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12\x1a\n" +
-	"\boptional\x18\x03 \x01(\bR\boptional\"\xb0\x02\n" +
+	"\boptional\x18\x03 \x01(\bR\boptional\"\xf3\x02\n" +
 	"\x0eSandboxProfile\x129\n" +
 	"\abackend\x18\x01 \x01(\x0e2\x1f.k3sm.runtime.v1.SandboxBackendR\abackend\x12(\n" +
 	"\x10data_volume_path\x18\x02 \x01(\tR\x0edataVolumePath\x12(\n" +
 	"\x10extra_read_paths\x18\x03 \x03(\tR\x0eextraReadPaths\x12*\n" +
 	"\x11extra_write_paths\x18\x04 \x03(\tR\x0fextraWritePaths\x12#\n" +
 	"\rallow_network\x18\x05 \x01(\bR\fallowNetwork\x127\n" +
-	"\x18denied_unix_socket_paths\x18\x06 \x03(\tR\x15deniedUnixSocketPathsJ\x05\bd\x10\x96\x01\"\xd0\x02\n" +
+	"\x18denied_unix_socket_paths\x18\x06 \x03(\tR\x15deniedUnixSocketPaths\x12\x19\n" +
+	"\bvm_vcpus\x18d \x01(\rR\avmVcpus\x12&\n" +
+	"\x0fvm_memory_bytes\x18e \x01(\x03R\rvmMemoryBytesJ\x05\bf\x10\x96\x01\"\xd0\x02\n" +
 	"\rImageManifest\x12\x1c\n" +
 	"\treference\x18\x01 \x01(\tR\treference\x12\x1d\n" +
 	"\n" +
