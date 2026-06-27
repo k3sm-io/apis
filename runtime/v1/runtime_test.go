@@ -56,11 +56,12 @@ func TestRoundTrip(t *testing.T) {
 	}, &Container{})
 
 	roundTrip(t, "SandboxProfile", &SandboxProfile{
-		Backend:         SandboxBackend_SANDBOX_BACKEND_SEATBELT_INPROC,
-		DataVolumePath:  "/var/lib/k3sm/pods/p1/rootfs",
-		ExtraReadPaths:  []string{"/opt/data"},
-		ExtraWritePaths: []string{"/var/log/app"},
-		AllowNetwork:    true,
+		Backend:               SandboxBackend_SANDBOX_BACKEND_SEATBELT_INPROC,
+		DataVolumePath:        "/var/lib/k3sm/pods/p1/rootfs",
+		ExtraReadPaths:        []string{"/opt/data"},
+		ExtraWritePaths:       []string{"/var/log/app"},
+		AllowNetwork:          true,
+		DeniedUnixSocketPaths: []string{"/var/run/k3sm/netd.sock"},
 	}, &SandboxProfile{})
 
 	roundTrip(t, "PodBox", &PodBox{
@@ -543,6 +544,35 @@ func TestSandboxBackendZeroValue(t *testing.T) {
 	t.Parallel()
 	if SandboxBackend_SANDBOX_BACKEND_UNSPECIFIED != 0 {
 		t.Fatalf("SandboxBackend zero value must be UNSPECIFIED, got %d", SandboxBackend_SANDBOX_BACKEND_UNSPECIFIED)
+	}
+}
+
+// TestSandboxProfileDeniedUnixSocketPaths proves the additive field 6
+// (denied_unix_socket_paths) survives a proto marshal/unmarshal cycle and that
+// its generated getter exists. k3sm fills these AF_UNIX paths (the root
+// k3sm-netd helper socket) and runtimed's SBPL generator emits a per-path deny;
+// the field is the only channel for that path because runtimed cannot import
+// darwin-net. Before field 6 existed this test would not compile — after, it
+// asserts the slice reaches the wire intact.
+func TestSandboxProfileDeniedUnixSocketPaths(t *testing.T) {
+	t.Parallel()
+	want := []string{"/var/run/k3sm/netd.sock", "/var/run/k3sm/netd-2.sock"}
+	b, err := proto.Marshal(&SandboxProfile{DeniedUnixSocketPaths: want})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	out := &SandboxProfile{}
+	if err := proto.Unmarshal(b, out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	got := out.GetDeniedUnixSocketPaths()
+	if len(got) != len(want) {
+		t.Fatalf("denied_unix_socket_paths length: got %d, want %d (%v)", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("denied_unix_socket_paths[%d]: got %q, want %q", i, got[i], want[i])
+		}
 	}
 }
 

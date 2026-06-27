@@ -640,6 +640,13 @@ message SandboxProfile {
   // the runtime scopes network-bind/outbound to the pod IP.
   bool allow_network = 5;
 
+  // denied_unix_socket_paths are AF_UNIX socket paths the pod MUST NOT be able
+  // to connect() — notably the root k3sm-netd helper socket. The SBPL generator
+  // emits an explicit (deny network-outbound (remote unix-socket (path-equal …)))
+  // for each, on top of the default-deny, so a same-uid pod cannot drive the
+  // privileged helper. Threaded as data because runtimed cannot import darwin-net.
+  repeated string denied_unix_socket_paths = 6;
+
   reserved 100 to 149; // M2: fine-grained mach-service / sysctl allow rules.
 }
 
