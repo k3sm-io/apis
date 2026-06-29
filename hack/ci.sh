@@ -11,6 +11,9 @@ echo "==> [apis] gofmt"
 fmt=$(gofmt -l .) || true
 [ -z "$fmt" ] || { echo "gofmt -w needed:"; echo "$fmt"; exit 1; }
 
+echo "==> [apis] license headers"
+hack/verify-boilerplate.sh
+
 if [ -n "$(CGO_ENABLED=$CGO go list ./... 2>/dev/null)" ]; then
 	echo "==> [apis] go vet";   CGO_ENABLED=$CGO go vet ./...
 	echo "==> [apis] go build"; CGO_ENABLED=$CGO go build ./...
