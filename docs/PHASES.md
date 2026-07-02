@@ -2,7 +2,7 @@
 repo: apis
 schema: phases/v1
 current_phase: M5
-updated: 2026-06-27
+updated: 2026-07-02
 updated_by: orchestrator
 
 phases:
@@ -343,6 +343,40 @@ phases:
             met: false
             check: "the module still imports zero k3sm.io/* packages (cycle check); alpha branding is asserted (registered GVK group mlx.k3sm.io, version v1alpha1); the egress annotation constant is NOT in the mlx package"
             method: build
+
+  - id: M10
+    title: Kubernetes conformance hardening (apis slice — native-sidecar Container.restart_policy proto field)
+    status: todo
+    depends_on: []
+    notes: >-
+      apis is Wave 1 of M10 (../../docs/m10-plan.md §M10.2, Res.8 — ORCHESTRATE-ONLY:
+      a wire-affecting runtime/v1 proto change is a named-exception (apis proto change,
+      consumer-first), refused by /go. apis's ONLY M10 work is B73's single additive
+      field: Container.restart_policy (the native-sidecar signal). Verified against
+      main: the Container message (runtime/v1/runtime.proto ~L367) has NO
+      restart_policy field, so the initContainer restartPolicy:Always signal for a
+      native sidecar cannot cross the provider↔runtimed gRPC contract (translate.go:507
+      drops it). NEVER a k3sm.io/* annotation — the signal is a first-class proto field.
+      Every OTHER M10 type (Ingress/IngressClass/NetworkPolicy/ResourceQuota/LimitRange/
+      PSA) is an upstream type the embedded real apiserver already serves, so apis needs
+      no other M10 change. Additive-only, stable field number, next FREE sequential
+      number below 100 on Container (reserved bands untouched); consumer-first per the
+      apis-proto named exception — dependents (k3sm translate + runtimed sidecar
+      lifecycle) ship tolerant readers first, then the field is consumed in M10.2.
+    subphases:
+      - id: M10.2
+        title: Container.restart_policy proto field (native sidecar signal)
+        status: todo
+        depends_on: []
+        deliverables:
+          - id: M10.2-d1
+            done: false
+            desc: "Container.restart_policy — a single additive field on the runtime/v1 Container message (runtime.proto ~L367) carrying the per-container restartPolicy so the native-sidecar signal (initContainer restartPolicy:Always, stable since k8s 1.33) crosses the provider↔runtimed gRPC contract, which today it cannot (the message has no such field; translate.go:507 drops it). Modeled on corev1.Container.RestartPolicy (a ContainerRestartPolicy string/enum; only \"Always\" is meaningful for the sidecar case). Allocated the next FREE sequential field number below 100 on Container (the M2.1/M3.1 stable-number precedent; reserved bands untouched, no renumber). NOT a k3sm.io/* annotation — a first-class proto field (Res.8). Consumer-first per the named exception (apis proto change): dependents ship tolerant readers first; the field is consumed by k3sm translate + runtimed sidecar lifecycle in M10.2. buf breaking runs against the PRE-carve committed baseline FIRST (proves additive — no renumber, no reserved-number reuse), THEN buf/baseline.binpb is regenerated as the new floor (checking against a regenerated baseline is self-comparison and proves nothing — the M8.1 baseline discipline)."
+        acceptance:
+          - id: M10.2-a1
+            met: false
+            check: "CGO_ENABLED=0 build/test standalone (GOWORK=off) + under go.work; buf breaking (WIRE_JSON) runs against the committed pre-carve baseline/binpb FIRST and is clean (additive-only, no field renumber, no reserved-number reuse), THEN buf/baseline.binpb is regenerated as the new floor; buf generate leaves no diff; proto.Equal round-trip golden holds for a Container carrying restart_policy; the field is consumed by k3sm translate + runtimed sidecar lifecycle in M10.2; the module still imports zero k3sm.io/* packages"
+            method: unit
 ---
 
 # apis — Phase roadmap
@@ -532,6 +566,20 @@ resolutions" block is **binding**.
 - ⬜ `M8.1-a2` builds `CGO_ENABLED=0` standalone (`GOWORK=off`) + under `go.work`; the MLXModel DeepCopy golden + JSON round-trip and `proto.Equal` round-trip hold for `GPUFacts` + the new `SandboxProfile` fields; table-driven, `-race` clean — *method: unit*
 - ⬜ `M8.1-a3` the module still imports **zero `k3sm.io/*` packages** (cycle check); alpha branding asserted (GVK group `mlx.k3sm.io`, version `v1alpha1`); the egress annotation constant is **not** in the `mlx` package — *method: build*
 
+## M10 — Kubernetes conformance hardening (apis slice) ⬜
+`apis` is **Wave 1** of M10 (`../../docs/m10-plan.md` §M10.2, **Res. 8** — **orchestrate-only**: a
+wire-affecting `runtime/v1` proto change is a **named exception** (apis proto change, **consumer-first**),
+refused by `/go`). `apis`'s **only** M10 work is B73's single additive field — every other M10 type
+(Ingress/IngressClass/NetworkPolicy/ResourceQuota/LimitRange/PSA) is an upstream type the embedded real
+apiserver already serves, so `apis` needs no other M10 change.
+
+### M10.2 — `Container.restart_policy` proto field (native sidecar signal) ⬜
+**Deliverables**
+- ⬜ `M10.2-d1` **`Container.restart_policy`** — a single additive field on the `runtime/v1` `Container` message (`runtime.proto` ~L367) carrying the per-container `restartPolicy`, so the **native-sidecar signal** (`initContainer` `restartPolicy:Always`, stable since k8s 1.33) crosses the provider↔runtimed gRPC contract — which today it **cannot** (the message has no such field; `translate.go:507` drops it). Modeled on `corev1.Container.RestartPolicy` (only `Always` is meaningful for the sidecar case). Allocated the **next free sequential** field number below 100 on `Container` (the M2.1/M3.1 stable-number precedent; reserved bands untouched, no renumber). **NOT a `k3sm.io/*` annotation** — a first-class proto field (Res. 8). **Consumer-first** per the named exception: dependents (`k3sm` translate + `runtimed` sidecar lifecycle) ship tolerant readers first, then the field is **consumed in M10.2**.
+
+**Acceptance (exit gate)**
+- ⬜ `M10.2-a1` `CGO_ENABLED=0` build/test standalone (`GOWORK=off`) + under `go.work`; **`buf breaking` (WIRE_JSON) runs against the committed pre-carve baseline first** and is clean (additive-only, no field renumber, no reserved-number reuse), **then** `buf/baseline.binpb` is regenerated as the new floor (checking against a regenerated baseline is self-comparison — the M8.1 discipline); `buf generate` leaves no diff; `proto.Equal` round-trip **golden** holds for a `Container` carrying `restart_policy`; the field is **consumed by `k3sm` translate + `runtimed` sidecar lifecycle in M10.2**; the module still imports **zero `k3sm.io/*` packages** — *method: unit*
+
 ## Dependents of these `apis` sub-phases
 `apis` is **Wave 1**; downstream milestones `depends_on` these ids:
 - `runtimed:M2` + `k3sm:M2` + `darwin-net:M2` ← `apis:M2.1` (the pod-spec fidelity fields). The provider↔runtimed split is a **same-binary, same-node hard cut** (restarted together via `launchctl kickstart`), so behavior-bearing fields need **no** version handshake — there is no independent-upgrade skew window.
@@ -540,6 +588,7 @@ resolutions" block is **binding**.
 - `runtimed:M5` + `darwin-net:M5` ← `apis:M5.1` (the `vm` handler→backend mapping).
 - **CI helper** — `runtimed`, `darwin-net`, and `k3sm` all import `apis:M7.2`'s `k3smtest.SkipUnless` (the only DAG-legal home for a helper all three consume); the per-repo `ci.yml` files are independent (no cross-repo edge).
 - **MLX** — `runtimed:M8.2` (Metal SBPL + egress + `GPUFacts`) + `k3sm:M8.3` (node advertisement + translate + VAP) + `k3sm:M8.5` (the `pkg/mlx` operator) ← **`apis:M8.1`** (the `MLXModel` CRD, the `allow_gpu`/`allow_internet_egress`/`GPUFacts` proto fields, the `config/crd` embed, and the constants). `darwin-net` has **no** M8 work (machine-checked via the S1 exit criterion). The egress annotation constant lives in a runtime-area `apis` package, not `mlx/v1alpha1`.
+- **Native sidecars** — `k3sm:M10` (translate wires the sidecar `restartPolicy:Always` signal) + `runtimed:M10` (the sidecar container lifecycle — stays-running + reverse-order teardown) ← **`apis:M10.2`** (the additive `Container.restart_policy` field, m10-plan Res. 8). The provider↔runtimed split is a **same-binary, same-node hard cut**, but the field ships **consumer-first** per the apis-proto named exception (tolerant readers first, then producer). Every other M10 conformance type is an upstream object the embedded real apiserver already serves — **no `apis` edge**.
 
 ## Next
 **M3 is closed (Wave 1)** — `M3.1` (PV/PVC volume source + the `storage/v1` provisioner contract) and
