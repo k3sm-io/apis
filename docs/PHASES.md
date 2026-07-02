@@ -256,6 +256,93 @@ phases:
             met: true
             check: the handler-name → SANDBOX_BACKEND mapping is table-tested (\"vm\" → SANDBOX_BACKEND_VM; unknown handler → a defined fallback/error), -race clean
             method: unit
+
+  - id: M7
+    title: Public open-source launch — release engineering (apis slice — CI + README)
+    status: todo
+    depends_on: []
+    notes: >-
+      apis is a small M7 participant (../../docs/m7-plan.md §M7.2 + "Encoding
+      mechanics"): a public GitHub Actions CI workflow calling the existing
+      hack/ci.sh, plus HOSTING the shared k3smtest.SkipUnless helper + its owned
+      capability taxonomy (m7-plan Phase B Resolution 4 / A10 — apis is the only
+      DAG-legal home a helper runtimed, darwin-net, AND k3sm all import; a leaf copy
+      would drift or force a sideways import). The release-engineering pipeline,
+      signing, user docs, website, and hygiene scrub are k3sm / site-repo work with
+      no apis edge.
+    subphases:
+      - id: M7.2
+        title: public CI workflow + README polish
+        status: todo
+        depends_on: []
+        deliverables:
+          - id: M7.2-d1
+            done: false
+            desc: "Public CI workflow — apis/.github/workflows/ci.yml, a THIN wrapper over the existing hack/ci.sh (no logic duplication; m7-plan §M7.2): CGO_ENABLED=0, macos-15 arm64 runner, gofmt -l / go vet / go build / go test with -race, plus the buf generate-diff + buf breaking gates apis already runs. dco.yml already exists in all five repos, so the red-at-main reason is 'no ci.yml exists', not 'no workflows exist' (m7-plan Res. 18). README refresh: apis's front-door README becomes the public go-gettable contract page (badges, pitch, the k3sm.io/apis vanity path) — apis stays clean / go-gettable (no committed replaces, unlike k3sm)."
+          - id: M7.2-d2
+            done: false
+            desc: "k3smtest.SkipUnless shared test helper + capability taxonomy HOSTED IN apis (m7-plan Phase B Resolution 4 / A10). A new package (k3sm.io/apis/k3smtest) exporting SkipUnless(t, cap) over the ONE owned capability taxonomy (root, lo0, utun, pf, clang, apple-gpu, macos-26, network); when K3SM_CI_REQUIRE names a cap that is absent, the helper is FATAL (not skip) so self-skips turn red, not silent — an env-var helper without the meta-test fails open by construction. apis is the DAG-legal home runtimed, darwin-net, and k3sm all import (a leaf copy would drift or force a sideways import). Pure Go, zero k3sm.io/* imports; the no-raw-t.Skip lint + the meta-test get named homes in the consuming repos."
+        acceptance:
+          - id: M7.2-a1
+            met: false
+            check: "the GitHub Actions run on this repo's PR is green — ci.yml runs gofmt/vet/build/test/-race + the buf gates on a macos-15 arm64 runner, CGO_ENABLED=0"
+            method: build
+          - id: M7.2-a2
+            met: false
+            check: "the SkipUnless meta-test passes — with K3SM_CI_REQUIRE naming a cap in the REQUIRE set that is absent, SkipUnless is FATAL (t.Fatal), not t.Skip; the taxonomy is table-tested; -race clean"
+            method: unit
+
+  - id: M8
+    title: MLX — native Apple-Silicon ML serving (apis slice — MLXModel CRD + proto GPU/egress facts)
+    status: todo
+    depends_on: []
+    notes: >-
+      apis is Wave 1 of M8 (../../docs/m8-plan.md §M8.1, ORCHESTRATE-ONLY — CRD
+      introduction is on the /go refuse list; the reserved-band carve + buf-baseline
+      regenerate is human-reviewed). Hard cut: every change is additive — a NEW
+      alpha CRD group (mlx.k3sm.io/v1alpha1, no existing consumers) and proto fields
+      carved from the EXPLICITLY RESERVED bands of runtime/v1/runtime.proto
+      (SandboxProfile 102..149, GetRuntimeInfoResponse 100..149). The new
+      SandboxProfile booleans default false, so an old runtimed ignores them and an
+      old provider never sets them — no provider↔runtimed phased exception. Phase C
+      encodes ONLY from m8-plan; its "Phase B resolutions" block is BINDING.
+    subphases:
+      - id: M8.1
+        title: MLXModel CRD + proto GPU/egress facts (orchestrate-only wave)
+        status: todo
+        depends_on: []
+        deliverables:
+          - id: M8.1-d1
+            done: false
+            desc: "MLXModel CRD types in a NEW k3sm.io/apis/mlx/v1alpha1 package — hand-written types mirroring the net/v1 MeshPeer precedent (metav1 TypeMeta/ObjectMeta, hand-written DeepCopy*/DeepCopyObject, no code-gen), but EXPLICITLY ALPHA-BRANDED: v1alpha1, incompatible changes allowed + documented in the package doc (a deliberate divergence from MeshPeer's served-v1 posture — the headline user-facing API earns a graduation runway). MLXModelSpec{Model, Revision, Quantization, Memory resource.Quantity (required — the real scheduling constraint), Replicas *int32, Port int32, Runtime{Image,Args}, Cache{Size,StorageClassName}, NodeSelector, Distributed *MLXDistributed}; Status is conditions-first ([]metav1.Condition + observedGeneration + status subresource) with a derived Phase printer column, Endpoint, ResolvedRevision. spec.Distributed is RESERVED (the JACCL seam) — its CEL-rejection test lives in k3sm, NOT here (see M8.1-d5)."
+          - id: M8.1-d2
+            done: false
+            desc: "Additive proto fields carved from the reserved bands of runtime/v1/runtime.proto, following the in-file allocation-comment convention (the M2.2/M5.1 band-carve precedent): SandboxProfile bool allow_gpu = 102 + bool allow_internet_egress = 103 (re-carve to `reserved 104 to 149`, and REWRITE the band comment HONESTLY — the current 'fine-grained mach-service / sysctl allow rules' text fits allow_gpu but not egress; m8-plan Res. 5 keeps the comment truthful when re-carving); GetRuntimeInfoResponse GPUFacts gpu = 100 (message: metal_available, chip_brand, chip_family, mem_bytes, iogpu_wired_limit_bytes (0 = the kernel-default sentinel, modeled explicitly — not 'no limit known'), recommended_max_working_set_bytes, sandbox_gpu_supported (scoped 'the currently-selected backend supports Metal')). RESERVE 101 — not merely earmark it (m8-plan Res. 5): the carve is `reserved 101 to 149;` with the backend-capabilities earmark comment on 101."
+          - id: M8.1-d3
+            done: false
+            desc: "NEW k3sm.io/apis/config/crd //go:embed package — the CRD manifest apis/config/crd/mlx.k3sm.io_mlxmodels.yaml (beside the existing net.k3sm.io_meshpeers.yaml) exported via a new go:embed package with a NAMED PER-CRD ACCESSOR (m8-plan Res. 10), so k3sm's SSA ensure consumes the embedded bytes with NO shadow copy. M8's k3sm crdensure applies mlxmodels ONLY; MeshPeer stays out-of-band as today (adopting it is a named future follow-up with an M3-regression check, not an embed-glob side effect)."
+          - id: M8.1-d4
+            done: false
+            desc: "Exported string constants — in k3sm.io/apis/mlx/v1alpha1: GroupName = \\\"mlx.k3sm.io\\\", ResourceGPU = \\\"mlx.k3sm.io/gpu\\\", LabelGPUPresent = \\\"mlx.k3sm.io/gpu.present\\\" (DISTINCT from the resource name), LabelChip/LabelChipFamily/LabelMemoryGB, plus the chip-slug normalization rule (apple-m4-max, not the raw space-bearing chip_brand — m8-plan Res. 4). BUT the internet-egress annotation constant is k3sm.io/*-domain and parameterizes runtime/v1 SandboxProfile, so it lives in a RUNTIME-AREA apis package, NOT mlx/v1alpha1 (m8-plan Res. 7 — the MLX package holds only mlx.k3sm.io/* constants). No string literals in k3sm/runtimed."
+          - id: M8.1-d5
+            done: false
+            desc: "CEL test placement note (NOT an apis deliverable — recorded, like the NodePort/NodeNetwork no-ops, so nobody adds k8s deps to apis): the spec.distributed-set→rejected CEL contract test lives in k3sm beside pkg/crdensure (which already carries the k8s apiextensions structural-schema dependency set), m8-plan Res. 9. apis keeps ONLY the DeepCopy golden + proto round-trip tests — a faithful CEL test would drag apiextensions machinery into apis's deliberately-minimal graph, violating the zero-heavy-dep posture."
+          - id: M8.1-d6
+            done: false
+            desc: "DESIGN + privilege-model doc edits (named M8.1 deliverables, m8-plan Res. 19 — these ARE apis-milestone work, not k3sm's): ../../k3sm/docs/DESIGN.md §5a (the per-pod internet-egress opt-in widening + the content-addressed-tree materialize note) / §5b, plus ../../docs/privilege-model.md, edited for the egress opt-in and the new mlx.k3sm.io CRD group. Resolves master Amendment 14's m8 half, which m7-plan §M7.1-d3 explicitly defers here."
+        acceptance:
+          - id: M8.1-a1
+            met: false
+            check: "buf breaking runs against the PRE-CARVE committed baseline FIRST (proves the reserved-band carve is additive — no field renumber, no reserved-number reuse, 101 reserved), THEN buf/baseline.binpb is regenerated as the new floor (m8-plan Res. 6 — checking against a regenerated baseline is self-comparison and proves nothing); buf generate leaves no diff; apis/hack/ci.sh green"
+            method: unit
+          - id: M8.1-a2
+            met: false
+            check: "builds CGO_ENABLED=0 standalone (GOWORK=off) + under go.work; the MLXModel DeepCopy golden + JSON round-trip and proto.Equal round-trip hold for GPUFacts + the new SandboxProfile fields (table-driven, -race clean)"
+            method: unit
+          - id: M8.1-a3
+            met: false
+            check: "the module still imports zero k3sm.io/* packages (cycle check); alpha branding is asserted (registered GVK group mlx.k3sm.io, version v1alpha1); the egress annotation constant is NOT in the mlx package"
+            method: build
 ---
 
 # apis — Phase roadmap
@@ -408,12 +495,51 @@ runtimed VZ backend (`runtimed:M5`) and the guest-side networking (`darwin-net:M
 - ⬜ `M5.1-a1` additive-only; builds `CGO_ENABLED=0` standalone + under `go.work`; zero `k3sm.io/*` imports; does **not** vendor or redefine the upstream `node.k8s.io` `RuntimeClass` type — *method: unit*
 - ⬜ `M5.1-a2` the handler-name → `SANDBOX_BACKEND` mapping is table-tested (`vm` → `SANDBOX_BACKEND_VM`; unknown handler → a defined fallback/error), `-race` clean — *method: unit*
 
+## M7 — Public open-source launch: release engineering (apis slice) ⬜
+`apis` is a **small M7 participant** (`../../docs/m7-plan.md` §M7.2 + "Encoding mechanics"): a public
+GitHub Actions CI workflow and the shared test-skip helper. The release-engineering pipeline, signing,
+user docs, website, and hygiene scrub are `k3sm` / site-repo work with **no `apis` edge**.
+
+### M7.2 — public CI workflow + README polish ⬜
+**Deliverables**
+- ⬜ `M7.2-d1` Public CI workflow — `apis/.github/workflows/ci.yml`, a **thin** wrapper over the existing `hack/ci.sh` (no logic duplication): `CGO_ENABLED=0`, macOS-15 arm64 runner, `gofmt -l` / `go vet` / `go build` / `go test -race`, plus the `buf` generate-diff + breaking gates `apis` already runs. `dco.yml` already exists in all five repos, so the red-at-`main` reason is "no `ci.yml` exists" (m7-plan Res. 18). **README refresh** → the public go-gettable contract page; `k3sm.io/apis` stays clean / go-gettable (no committed replaces, unlike `k3sm`).
+- ⬜ `M7.2-d2` **`k3smtest.SkipUnless` shared test helper + capability taxonomy HOSTED IN `apis`** (m7-plan Phase B **Resolution 4** / A10). A new package (`k3sm.io/apis/k3smtest`) exports `SkipUnless(t, cap)` over the **one owned taxonomy** (`root, lo0, utun, pf, clang, apple-gpu, macos-26, network`); when `K3SM_CI_REQUIRE` names an absent cap the helper is **fatal, not skip**, so self-skips turn red, not silent. `apis` is the only **DAG-legal home** `runtimed`, `darwin-net`, and `k3sm` all import (a leaf copy would drift or force a sideways import). Pure Go, zero `k3sm.io/*` imports.
+
+**Acceptance (exit gate)**
+- ⬜ `M7.2-a1` the GitHub Actions run on this repo's PR is **green** — `ci.yml` runs gofmt/vet/build/test/`-race` + the `buf` gates on a macOS-15 arm64 runner, `CGO_ENABLED=0` — *method: build*
+- ⬜ `M7.2-a2` the **`SkipUnless` meta-test passes** — with `K3SM_CI_REQUIRE` naming a REQUIRE-set cap that is absent, `SkipUnless` is `t.Fatal`, not `t.Skip`; the taxonomy is table-tested; `-race` clean — *method: unit*
+
+## M8 — MLX: native Apple-Silicon ML serving (apis slice) ⬜
+`apis` is **Wave 1** of M8 (`../../docs/m8-plan.md` §M8.1, **orchestrate-only** — CRD introduction is on
+the `/go` refuse list). **Hard cut** — additive only: a **new alpha CRD group** (`mlx.k3sm.io/v1alpha1`,
+no existing consumers) and proto fields carved from the **explicitly reserved bands** of
+`runtime/v1/runtime.proto` (`SandboxProfile 102..149`, `GetRuntimeInfoResponse 100..149`). The new
+`SandboxProfile` booleans default false, so an old `runtimed` ignores them and an old provider never sets
+them — no provider↔runtimed phased exception. Phase C encodes **only** from m8-plan; its "Phase B
+resolutions" block is **binding**.
+
+### M8.1 — MLXModel CRD + proto GPU/egress facts (orchestrate-only wave) ⬜
+**Deliverables**
+- ⬜ `M8.1-d1` **MLXModel CRD types in a new `k3sm.io/apis/mlx/v1alpha1` package** — hand-written types mirroring the `net/v1` `MeshPeer` precedent (metav1 `TypeMeta`/`ObjectMeta`, hand-written `DeepCopy*`/`DeepCopyObject`, no code-gen), but **explicitly alpha-branded**: `v1alpha1`, incompatible changes allowed + documented in the package doc (a deliberate divergence from `MeshPeer`'s served-`v1` posture — the headline user-facing API earns a graduation runway). `MLXModelSpec{Model, Revision, Quantization, Memory resource.Quantity (required), Replicas, Port, Runtime{Image,Args}, Cache{Size,StorageClassName}, NodeSelector, Distributed *MLXDistributed}`; status conditions-first (`[]metav1.Condition` + `observedGeneration` + status subresource) with a derived `Phase` printer column, `Endpoint`, `ResolvedRevision`. `spec.Distributed` is **reserved** (the JACCL seam) — its CEL-rejection test lives in **`k3sm`**, not here (see `M8.1-d5`).
+- ⬜ `M8.1-d2` **Additive proto fields from the reserved bands** of `runtime/v1/runtime.proto` (the M2.2/M5.1 band-carve precedent): `SandboxProfile bool allow_gpu = 102` + `bool allow_internet_egress = 103` (re-carve `reserved 104 to 149`, and **rewrite the band comment honestly** — the current "fine-grained mach-service / sysctl allow rules" text fits `allow_gpu` but not egress; m8-plan Res. 5); `GetRuntimeInfoResponse GPUFacts gpu = 100` (`metal_available`, `chip_brand`, `chip_family`, `mem_bytes`, `iogpu_wired_limit_bytes` (0 = kernel-default sentinel, modeled explicitly), `recommended_max_working_set_bytes`, `sandbox_gpu_supported`). **Reserve 101** — not merely earmark it (m8-plan **Res. 5**): `reserved 101 to 149;` with the backend-capabilities earmark comment on 101.
+- ⬜ `M8.1-d3` **New `k3sm.io/apis/config/crd` `//go:embed` package** — the manifest `apis/config/crd/mlx.k3sm.io_mlxmodels.yaml` (beside `net.k3sm.io_meshpeers.yaml`) exported with a **named per-CRD accessor** (m8-plan **Res. 10**), so `k3sm`'s SSA ensure consumes the embedded bytes with **no shadow copy**. `crdensure` applies `mlxmodels` only; `MeshPeer` stays out-of-band (adoption is a named future follow-up, not an embed-glob side effect).
+- ⬜ `M8.1-d4` **Exported string constants** — in `mlx/v1alpha1`: `GroupName="mlx.k3sm.io"`, `ResourceGPU="mlx.k3sm.io/gpu"`, `LabelGPUPresent="mlx.k3sm.io/gpu.present"` (**distinct** from the resource name), `LabelChip`/`LabelChipFamily`/`LabelMemoryGB`, + the chip-slug rule (`apple-m4-max`, not the space-bearing `chip_brand` — m8-plan Res. 4). **But** the internet-egress annotation constant is `k3sm.io/*`-domain and parameterizes `runtime/v1` `SandboxProfile`, so it lives in a **runtime-area `apis` package, NOT `mlx/v1alpha1`** (m8-plan **Res. 7**).
+- ⬜ `M8.1-d5` **CEL test placement note** (not an `apis` deliverable — recorded, like the NodePort/NodeNetwork no-ops, so nobody adds k8s deps to `apis`): the `spec.distributed`→rejected CEL contract test lives in **`k3sm`** beside `pkg/crdensure` (which already carries the apiextensions structural-schema dep set), m8-plan **Res. 9**. `apis` keeps **only** DeepCopy golden + proto round-trip tests.
+- ⬜ `M8.1-d6` **DESIGN + privilege-model doc edits** (named M8.1 deliverables, m8-plan **Res. 19** — these **are** `apis`-milestone work): `../../k3sm/docs/DESIGN.md` §5a (per-pod internet-egress opt-in widening + content-addressed-tree materialize note) / §5b, plus `../../docs/privilege-model.md`, for the egress opt-in and the new `mlx.k3sm.io` CRD group. Resolves master Amendment 14's m8 half, which m7-plan §M7.1-d3 defers here.
+
+**Acceptance (exit gate)**
+- ⬜ `M8.1-a1` `buf breaking` runs against the **pre-carve committed baseline first** (proves the carve is additive — no renumber, no reserved-number reuse, 101 reserved), **then** `buf/baseline.binpb` is regenerated as the new floor (m8-plan **Res. 6** — checking against a regenerated baseline is self-comparison); `buf generate` no-diff; `apis/hack/ci.sh` green — *method: unit*
+- ⬜ `M8.1-a2` builds `CGO_ENABLED=0` standalone (`GOWORK=off`) + under `go.work`; the MLXModel DeepCopy golden + JSON round-trip and `proto.Equal` round-trip hold for `GPUFacts` + the new `SandboxProfile` fields; table-driven, `-race` clean — *method: unit*
+- ⬜ `M8.1-a3` the module still imports **zero `k3sm.io/*` packages** (cycle check); alpha branding asserted (GVK group `mlx.k3sm.io`, version `v1alpha1`); the egress annotation constant is **not** in the `mlx` package — *method: build*
+
 ## Dependents of these `apis` sub-phases
 `apis` is **Wave 1**; downstream milestones `depends_on` these ids:
 - `runtimed:M2` + `k3sm:M2` + `darwin-net:M2` ← `apis:M2.1` (the pod-spec fidelity fields). The provider↔runtimed split is a **same-binary, same-node hard cut** (restarted together via `launchctl kickstart`), so behavior-bearing fields need **no** version handshake — there is no independent-upgrade skew window.
 - **Storage** — `runtimed:M3` (APFS PV binder) + `k3sm:M3` (local-path provisioner / StatefulSet) ← `apis:M3.1` (the PV/PVC volume source + the `storage/v1` provisioner contract). `darwin-net:M3` NodePort needs **no** `apis` edge (`net/v1 ServicePort.NodePort` already exists).
 - **Mesh** — `darwin-net:M3` (wireguard mesh) + `k3sm:M3` (join / mesh-enroll write) ← **`apis:M3.2`** (the `MeshPeer` CRD + the mesh-enroll join payloads), **NOT** `apis:M3.1`. `NodeNetwork` is a recorded no-op (no edge).
 - `runtimed:M5` + `darwin-net:M5` ← `apis:M5.1` (the `vm` handler→backend mapping).
+- **CI helper** — `runtimed`, `darwin-net`, and `k3sm` all import `apis:M7.2`'s `k3smtest.SkipUnless` (the only DAG-legal home for a helper all three consume); the per-repo `ci.yml` files are independent (no cross-repo edge).
+- **MLX** — `runtimed:M8.2` (Metal SBPL + egress + `GPUFacts`) + `k3sm:M8.3` (node advertisement + translate + VAP) + `k3sm:M8.5` (the `pkg/mlx` operator) ← **`apis:M8.1`** (the `MLXModel` CRD, the `allow_gpu`/`allow_internet_egress`/`GPUFacts` proto fields, the `config/crd` embed, and the constants). `darwin-net` has **no** M8 work (machine-checked via the S1 exit criterion). The egress annotation constant lives in a runtime-area `apis` package, not `mlx/v1alpha1`.
 
 ## Next
 **M3 is closed (Wave 1)** — `M3.1` (PV/PVC volume source + the `storage/v1` provisioner contract) and
@@ -428,3 +554,14 @@ M3.3). This unblocks the downstream M3 round (a **separate** follow-up, not `api
 
 **M4** is the next `apis` milestone (API-stability freeze): freeze the `v1` protos + the `net.k3sm.io`
 CRDs (now incl. `MeshPeer`) for public consumption and resolve the vanity import path.
+
+**M7–M8 are now encoded as ledger stubs** (all `todo`, `done:false`/`met:false`) — planned work, no code
+in this change:
+- **M7.2** (`apis` slice of the public-launch release engineering) — the public `ci.yml` (thin `hack/ci.sh`
+  wrapper) and the shared `k3smtest.SkipUnless` helper + capability taxonomy that `runtimed`/`darwin-net`/
+  `k3sm` all import (m7-plan Res. 4 — `apis` is the DAG-legal home).
+- **M8.1** (`apis` Wave 1 of MLX, orchestrate-only) — the alpha `MLXModel` CRD (`mlx/v1alpha1`), the
+  `allow_gpu`/`allow_internet_egress`/`GPUFacts` proto fields carved from the reserved bands (reserving 101,
+  m8-plan Res. 5), the `config/crd` `go:embed` package (Res. 10), the exported constants (egress annotation
+  in a runtime-area package, Res. 7), and the DESIGN §5a/§5b + privilege-model doc edits (Res. 19). The
+  `spec.distributed` CEL test lives in `k3sm`, not `apis` (Res. 9 — keeps `apis`'s graph minimal).

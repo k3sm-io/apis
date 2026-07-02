@@ -1,5 +1,9 @@
 # apis — k3sm shared contracts
 
+> Part of **[k3sm](https://github.com/k3sm-io/k3sm)** — a macOS-native Kubernetes distribution for
+> Apple Silicon. Start at the [k3sm repo](https://github.com/k3sm-io/k3sm) for the product overview
+> and quickstart.
+
 `k3sm.io/apis` holds the cross-repo contracts for [k3sm](https://github.com/k3sm-io/k3sm): gRPC
 protobufs (the `runtimed` runtime API, the `netd` API), shared Go types (PodBox spec, OCI image
 manifest), and CRD types (`MeshPeer`, `NodeNetwork` under `net.k3sm.io` / `runtime.k3sm.io`).
