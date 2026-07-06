@@ -416,7 +416,36 @@ message Container {
   // per-source name prefix. Mirrors corev1.Container.EnvFrom.
   repeated EnvFromSource env_from = 15;
 
+  // restart_policy is the container-level restartPolicy, mirroring
+  // corev1.Container.RestartPolicy (KEP-753 native sidecars). It is meaningful
+  // ONLY on an init container today: ALWAYS marks it a NATIVE SIDECAR. A
+  // sidecar STARTS in its init-list position but is NOT waited to completion —
+  // the init sequence proceeds once it is started (startup-probe gating of
+  // progression is deliberately out of scope; a register-noted
+  // simplification). It is EXCLUDED from init-completion AND from pod terminal
+  // accounting: pod phase derives from MAIN containers only (a Job pod goes
+  // Succeeded/Failed on its mains with the sidecar still running). It RESTARTS
+  // on exit for the pod's lifetime — restart decision, backoff, and
+  // restart_count authority is the PROVIDER (k3sm), executed via the existing
+  // RestartContainer RPC; runtimed performs NO exit-driven sidecar restarts.
+  // TEARDOWN: when all mains have terminated (voluntary completion) AND on
+  // DeletePod — mains are stopped first (concurrently), then sidecars in
+  // REVERSE start order, sharing ONE pod-level grace budget (sidecars get the
+  // remainder). The zero value (UNSPECIFIED) is legacy behavior in both skew
+  // directions (an old reader ignores the field; an old writer never sets it)
+  // — the additive consumer-first contract.
+  ContainerRestartPolicy restart_policy = 16;
+
   reserved 100 to 149; // M2.2: per-container resource limits.
+}
+
+// ContainerRestartPolicy mirrors corev1 container-level restartPolicy (KEP-753
+// native sidecars, k8s 1.33 GA). UNSPECIFIED = the field is unset = pre-M10.2
+// behavior (an init container runs to completion; a regular container follows the
+// pod-level policy).
+enum ContainerRestartPolicy {
+  CONTAINER_RESTART_POLICY_UNSPECIFIED = 0;
+  CONTAINER_RESTART_POLICY_ALWAYS = 1;
 }
 
 // EnvVar is a single environment variable. Exactly one of value or value_from
