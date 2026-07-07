@@ -71,6 +71,16 @@ func TestRoundTrip(t *testing.T) {
 		Stdin:      true,
 	}, &Container{})
 
+	// M10.2: a native sidecar — an init container carrying the container-level
+	// restart_policy (KEP-753). The enum field must survive the wire so the
+	// signal crosses the provider↔runtimed contract.
+	roundTrip(t, "Container_native_sidecar_restart_policy", &Container{
+		Name:          "log-forwarder",
+		Image:         "registry.example/fluent-bit@sha256:def",
+		Command:       []string{"/fluent-bit"},
+		RestartPolicy: ContainerRestartPolicy_CONTAINER_RESTART_POLICY_ALWAYS,
+	}, &Container{})
+
 	roundTrip(t, "SandboxProfile", &SandboxProfile{
 		Backend:               SandboxBackend_SANDBOX_BACKEND_SEATBELT_INPROC,
 		DataVolumePath:        "/var/lib/k3sm/pods/p1/rootfs",
@@ -609,6 +619,21 @@ func TestQOSClassZeroValue(t *testing.T) {
 		if q == 0 {
 			t.Fatalf("QOSClass %v must be non-zero", q)
 		}
+	}
+}
+
+// TestContainerRestartPolicyZeroValue asserts the M10.2 ContainerRestartPolicy
+// zero value is UNSPECIFIED — the load-bearing skew contract: an unset field
+// means legacy behavior in both directions (an old reader ignores it, an old
+// writer never sets it), so ALWAYS (the native-sidecar signal) must be
+// non-zero and never accidental.
+func TestContainerRestartPolicyZeroValue(t *testing.T) {
+	t.Parallel()
+	if ContainerRestartPolicy_CONTAINER_RESTART_POLICY_UNSPECIFIED != 0 {
+		t.Fatalf("ContainerRestartPolicy zero value must be UNSPECIFIED, got %d", ContainerRestartPolicy_CONTAINER_RESTART_POLICY_UNSPECIFIED)
+	}
+	if ContainerRestartPolicy_CONTAINER_RESTART_POLICY_ALWAYS == 0 {
+		t.Fatalf("ContainerRestartPolicy ALWAYS must be non-zero")
 	}
 }
 
