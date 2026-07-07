@@ -346,7 +346,9 @@ phases:
 
   - id: M10
     title: Kubernetes conformance hardening (apis slice — native-sidecar Container.restart_policy proto field)
-    status: todo
+    status: done
+    completed: 2026-07-06
+    updated_by: orchestrator
     depends_on: []
     notes: >-
       apis is Wave 1 of M10 (../../docs/m10-plan.md §M10.2, Res.8 — ORCHESTRATE-ONLY:
@@ -366,15 +368,15 @@ phases:
     subphases:
       - id: M10.2
         title: Container.restart_policy proto field (native sidecar signal)
-        status: todo
+        status: done
         depends_on: []
         deliverables:
           - id: M10.2-d1
-            done: false
+            done: true
             desc: "Container.restart_policy — a single additive field on the runtime/v1 Container message (runtime.proto ~L367) carrying the per-container restartPolicy so the native-sidecar signal (initContainer restartPolicy:Always, stable since k8s 1.33) crosses the provider↔runtimed gRPC contract, which today it cannot (the message has no such field; translate.go:507 drops it). Modeled on corev1.Container.RestartPolicy (a ContainerRestartPolicy string/enum; only \"Always\" is meaningful for the sidecar case). Allocated the next FREE sequential field number below 100 on Container (the M2.1/M3.1 stable-number precedent; reserved bands untouched, no renumber). NOT a k3sm.io/* annotation — a first-class proto field (Res.8). Consumer-first per the named exception (apis proto change): dependents ship tolerant readers first; the field is consumed by k3sm translate + runtimed sidecar lifecycle in M10.2. buf breaking runs against the PRE-carve committed baseline FIRST (proves additive — no renumber, no reserved-number reuse), THEN buf/baseline.binpb is regenerated as the new floor (checking against a regenerated baseline is self-comparison and proves nothing — the M8.1 baseline discipline)."
         acceptance:
           - id: M10.2-a1
-            met: false
+            met: true
             check: "CGO_ENABLED=0 build/test standalone (GOWORK=off) + under go.work; buf breaking (WIRE_JSON) runs against the committed pre-carve baseline/binpb FIRST and is clean (additive-only, no field renumber, no reserved-number reuse), THEN buf/baseline.binpb is regenerated as the new floor; buf generate leaves no diff; proto.Equal round-trip golden holds for a Container carrying restart_policy; the field is consumed by k3sm translate + runtimed sidecar lifecycle in M10.2; the module still imports zero k3sm.io/* packages"
             method: unit
 ---
