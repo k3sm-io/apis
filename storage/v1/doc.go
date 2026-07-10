@@ -19,8 +19,7 @@ limitations under the License.
 // parameters and the PV node-affinity / topology that the local-path
 // provisioner controller (k3sm.io/k3sm, the controller that creates
 // PersistentVolumes) and the runtime binder (k3sm.io/runtimed, which mounts the
-// per-PVC dir into the pod) must agree on — see k3sm/docs/DESIGN.md §5 and the
-// M3 re-plan (docs/m3-plan.md).
+// per-PVC dir into the pod) must agree on — see k3sm/docs/DESIGN.md §5.
 //
 // The upstream storage.k8s.io StorageClass and core/v1 PersistentVolume objects
 // remain the Kubernetes API surface the provisioner reads and writes; this

@@ -5,7 +5,7 @@ cross-repo Go types (PodBox spec, OCI image manifest), and CRD types (`net.k3sm.
 **Depends on nothing in `k3sm.io/*`** — it exists to break import cycles between `runtimed`,
 `darwin-net`, and `k3sm`.
 
-> Roadmap & current phase: `docs/PHASES.md` (workspace matrix: `../ROADMAP.md`).
+> Roadmap & current phase: `docs/PHASES.md`.
 
 ## Build / test (pure Go)
 ```sh
