@@ -165,8 +165,8 @@ message PodBox {
   int64 memory_limit_bytes = 100;
 
   // qos_class is the pod's resolved Quality-of-Service class. runtimed uses it
-  // for best-effort CPU policy (k3sm has no CFS millicore enforcement — see
-  // ../../docs/stockkitty-readiness.md); the provider also mirrors it into
+  // for best-effort CPU policy (k3sm has no CFS millicore enforcement); the
+  // provider also mirrors it into
   // PodStatus.qos_class (string). Mirrors corev1 PodStatus.QOSClass as an enum.
   QOSClass qos_class = 101;
 

@@ -36,7 +36,7 @@ const (
 	// DefaultBasePath is the APFS storage root under which per-PVC dirs live. It
 	// is on the SAME APFS volume as /var/lib/k3sm (kine's SQLite shares it), so a
 	// runaway PVC can fill the datastore volume — capacity is not enforced vs
-	// free space (over-commit → write-time ENOSPC); see docs/m3-plan.md.
+	// free space (over-commit → write-time ENOSPC).
 	DefaultBasePath = "/var/lib/k3sm/storage"
 	// TopologyKeyHostname is the node-label key a local PV's node-affinity and the
 	// scheduler pin against — the standard well-known hostname label. The
@@ -54,7 +54,7 @@ const (
 	// ReclaimRetain keeps the backing dir after the PVC is deleted (manual
 	// reclamation). It is the ONLY policy k3sm M3 supports: there is no
 	// volume-delete RPC, and root-rmdir'ing the dir would bypass the pod SBPL
-	// deny-set — see docs/m3-plan.md (runtimed:M3.1).
+	// deny-set.
 	ReclaimRetain ReclaimPolicy = "Retain"
 	// ReclaimDelete is the upstream delete-on-release policy. It is a well-formed
 	// value but is NOT supported by k3sm M3 (LocalPathClass.Validate rejects it).
@@ -81,7 +81,7 @@ const (
 	// BindingWaitForFirstConsumer delays provisioning until a pod that uses the
 	// PVC is scheduled, so the PV is created on (and node-affinity-pinned to) that
 	// pod's node. It is the ONLY mode k3sm M3 supports — a local PV pinned to the
-	// wrong Mac mounts empty storage (docs/m3-plan.md, k3sm:M3.2).
+	// wrong Mac mounts empty storage.
 	BindingWaitForFirstConsumer VolumeBindingMode = "WaitForFirstConsumer"
 	// BindingImmediate provisions as soon as the PVC is created. It is a
 	// well-formed value but is NOT supported by k3sm M3 (it cannot pin topology).
@@ -206,8 +206,8 @@ func (c LocalPathClass) DataDir(namespace, claimName string) (string, error) {
 // PVName returns the canonical PersistentVolume object name the provisioner
 // derives from a PVC UID ("pvc-<uid>"). Deriving the PV name from the immutable
 // PVC UID makes provisioning idempotent: a stale watch-cache replay re-derives
-// the same name, so a check-before-create sees AlreadyExists and is a no-op
-// (docs/m3-plan.md, k3sm:M3.2). This is the kube object name, distinct from
+// the same name, so a check-before-create sees AlreadyExists and is a no-op.
+// This is the kube object name, distinct from
 // DataDir (the on-disk path keyed by namespace/claimName). Returns an error if
 // uid is empty. Errors wrap ErrInvalid.
 func PVName(pvcUID string) (string, error) {
