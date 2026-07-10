@@ -623,8 +623,8 @@ type PodBox struct {
 	// the M2.1 k3sm.io/memory-limit-bytes annotation seam runtimed bridged it on.
 	MemoryLimitBytes int64 `protobuf:"varint,100,opt,name=memory_limit_bytes,json=memoryLimitBytes,proto3" json:"memory_limit_bytes,omitempty"`
 	// qos_class is the pod's resolved Quality-of-Service class. runtimed uses it
-	// for best-effort CPU policy (k3sm has no CFS millicore enforcement — see
-	// ../../docs/stockkitty-readiness.md); the provider also mirrors it into
+	// for best-effort CPU policy (k3sm has no CFS millicore enforcement); the
+	// provider also mirrors it into
 	// PodStatus.qos_class (string). Mirrors corev1 PodStatus.QOSClass as an enum.
 	QosClass QOSClass `protobuf:"varint,101,opt,name=qos_class,json=qosClass,proto3,enum=k3sm.runtime.v1.QOSClass" json:"qos_class,omitempty"`
 	// rlimits are the POSIX resource limits runtimed applies via setrlimit(2)

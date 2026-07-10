@@ -84,7 +84,8 @@ func addKnownTypes(s *runtime.Scheme) error {
 // endpoint, pod /24, and the symmetric AllowedIPs the mesh programs. It is
 // cluster-scoped and named for the node it represents (one MeshPeer per node);
 // under M3's AlwaysAllow authorizer a node may write only its own MeshPeer
-// (enroll is controller-/admission-mediated — DESIGN §5b, docs/m3-plan.md).
+// (enroll is controller-/admission-mediated so a node cannot forge another's
+// mesh membership — DESIGN §5b).
 // Mirrors the Kubernetes object conventions (TypeMeta + ObjectMeta) so it is a
 // first-class served/watchable CRD.
 type MeshPeer struct {
@@ -100,7 +101,7 @@ type MeshPeer struct {
 
 // MeshPeerSpec is a node's declared mesh membership. AllowedIPs MUST equal
 // PodCIDR (the node's single /24 source of truth: AllowedIPs == podnet IPAM CIDR
-// == node.spec.podCIDR); symmetric-but-unequal still blackholes (docs/m3-plan.md).
+// == node.spec.podCIDR); symmetric-but-unequal AllowedIPs still blackholes traffic.
 type MeshPeerSpec struct {
 	// SchemaVersion stamps this payload (MeshPeerSchemaVersion). A reader gates on
 	// it before programming the tunnel.

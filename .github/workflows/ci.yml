@@ -1,20 +1,16 @@
-# INTERIM public CI (M7 bootstrap).
+# Public CI.
 #
 # Runs the repo's existing hack/ci.sh gate on every PR, plus a -race pass, plus
 # the PINNED buf toolchain so hack/ci.sh's wire-stability checks (lint /
 # generate-diff / breaking, guarded behind `command -v buf`) actually run instead
 # of silently self-skipping.
 #
-# This is superseded later by the full M7.2 gate (actionlint/zizmor +
-# workflow-manifest + symbol-canary liveness), which subsumes it.
-#
 # Read-only token; pull_request trigger (never pull_request_target); GitHub-hosted
 # ephemeral Apple-Silicon runner; third-party actions pinned by commit SHA.
 name: CI
 on:
-  # CI DISABLED — no auto-run. macOS runners are billable and we are not spending
-  # on CI for now (operator directive 2026-07-02). Manual-only via workflow_dispatch;
-  # re-enable by restoring `pull_request:`. See docs/BACKLOG.md CI-disabled note.
+  # CI DISABLED — no auto-run. macOS runners are billable and auto-run is off for
+  # now. Manual-only via workflow_dispatch; re-enable by restoring `pull_request:`.
   workflow_dispatch:
 permissions:
   contents: read
