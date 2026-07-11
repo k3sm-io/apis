@@ -377,6 +377,58 @@ phases:
             met: true
             check: "CGO_ENABLED=0 build/test standalone (GOWORK=off) + under go.work; buf breaking (WIRE_JSON) runs against the committed pre-carve baseline/binpb FIRST and is clean (additive-only, no field renumber, no reserved-number reuse), THEN buf/baseline.binpb is regenerated as the new floor; buf generate leaves no diff; proto.Equal round-trip golden holds for a Container carrying restart_policy; the field is consumed by k3sm translate + runtimed sidecar lifecycle in M10.2; the module still imports zero k3sm.io/* packages"
             method: unit
+
+  - id: M11
+    title: Linux containers & multi-arch (apis slice — guest/v1 vsock contract + platform fields + Rosetta label constants)
+    status: todo
+    depends_on: []
+    notes: >-
+      apis is Wave 1 of M11 (docs/m11-plan.md — authoritative; Phase C encoded from it).
+      Hard cut: a NEW proto package (guest/v1, zero existing consumers) + additive
+      carves from the EXPLICITLY RESERVED runtime/v1 bands (Container 100..149,
+      ImageManifest 100..149) + the next free Volume source number. The guest/v1
+      contract crosses the runtimed↔initramfs boundary (an independently-shipped pinned
+      artifact), so it carries the runtime/v1-style additive-only stability header, buf
+      baseline discipline, and an api_version handshake on Health — compat = lockstep
+      via the in-code initramfs sha256 pin; --guest-artifacts-dir is unsupported skew.
+      Recorded NON-changes (so nobody adds deps): NO SandboxProfile.guest_network field
+      (the B6 carrier is the in-process runtimed.Deps podnet adapter, provider-side
+      SetupGuest BEFORE toPodBox — the M10.1 one-authority ordering; the 102..149 band
+      keeps its earmark); NO default-platform field (the default policy derives
+      runtimed-side from SandboxProfile.Backend + probed capabilities — only the
+      explicit override rides the wire); Rosetta capability advertisement rides the
+      existing RuntimeCondition repeated field (the B1 precedent, zero proto change).
+    subphases:
+      - id: M11.1
+        title: guest/v1 (GuestAgent + GuestSpec + VMHostSpec) + runtime/v1 platform/hostPath carves + label constants
+        status: todo
+        depends_on: []
+        deliverables:
+          - id: M11.1-d1
+            done: false
+            desc: "NEW k3sm.io/apis/guest/v1 proto package — the WHOLE VM contract family in ONE home (deliberately no apis/vm/v1): the GuestAgent vsock gRPC service (Health{ready, leased guest IP, rosetta_registered, api_version/capabilities}, ContainerEvents stream{started/exited{code,signal,oom}}, Exec/Logs REUSING runtime/v1 stream messages (the reuse doc states pod_id must match the booted pod and container selects — single-pod-guest semantics), Stats{per-container cgroup2 cpu usage_usec + working set = memory.current − inactive_file}, Stop{grace_seconds → TERM→KILL→poweroff}), the GuestSpec message (guest-spec.json is its proto-JSON: hostname, resolv_conf, containers[]{name, rootfs_tag, RunSpec fields, uid/gid/supplemental_gids, init}, mounts[]{tag_or_source, target, kind VIRTIOFS|TMPFS|BIND, read_only, size_limit, idmap}, rosetta, fs_group, agent_port), and the VMHostSpec message (vmhost.spec.json: pod_id, vcpus, memory_bytes, kernel_path, initramfs_path, cmdline, shares[]{tag, host_path, read_only}, rosetta, agent_vsock_port, mac_address). Package doc records the placement rationale (the initramfs embedding the agent is an independently-shipped pinned artifact ⇒ genuine versioned wire contract), the additive-only stability header, and the lockstep-pin compat posture. doc.go required."
+          - id: M11.1-d2
+            done: false
+            desc: "runtime/v1 band carves (additive; re-narrow each reserved range + REWRITE the band comments honestly — the M8.1-d4 convention): Container.image_platform = 100 typed as the EXISTING Platform message, never a string (one normalization point for os/arch/variant incl. arm64 \"\"≡v8; the band comment currently says 'M2.2: per-container resource limits' — update it; re-carve reserved 101 to 149); ImageManifest.platform = 100 + ImageManifest.index_digest = 101 (the band's own 'platform' earmark finally honored; re-carve reserved 102 to 149); Volume.host_path = 8 + HostPathVolumeSource{path, type} as a VERBATIM corev1 mirror — shape only, ALL enforcement semantics (allowlist, share-vs-snapshot) stay OUT of the proto; the field lands CONSUMER-LESS (guest hostPath is fail-closed rejected until human-gated B98 lands — m11-plan Resolution 1). Also the resolveBinary contract comment on Container.command: the M0 empty-command convention is DISCRIMINATED, not retired — absolute-path image string ⇒ host-binary convention; OCI reference ⇒ image-config merge (consumed in runtimed M11.2-d1)."
+          - id: M11.1-d3
+            done: false
+            desc: "Exported label/annotation constants (runtime-area apis package, the M8.1-d4 placement rule): k3sm.io/rosetta (host Rosetta), k3sm.io/rosetta-linux (guest Rosetta ∧ VMBackendAvailable — the composition is documented on the constant), k3sm.io/image-platform (the per-POD override annotation; the k3sm provider parses once and stamps Container.image_platform per-container — the pod-level annotation applies to every container, no per-container key form in v1). No string literals in runtimed/k3sm."
+          - id: M11.1-d4
+            done: false
+            desc: "DESIGN doc edits (named M11.1 deliverables — the m8-Res.19 pattern): k3sm/docs/DESIGN.md §5a multi-arch-aware pull sentence (platform-keyed cache, fail-closed ErrNoPlatformMatch, vm-path whiteout unpack, digest-pin stays the vm integrity anchor) + §5c/§6 third-entitled-artifact prose (k3sm-vmhost carries com.apple.security.virtualization ONLY; the one-signed-binary statement gains the helper the same way k3sm-netd did) — pre-encoded by the roadmap PR, kept truthful here if the wave moves them."
+        acceptance:
+          - id: M11.1-a1
+            met: false
+            check: "buf breaking runs against the PRE-carve committed baseline FIRST (additive only — no renumber, no reserved-number reuse), THEN buf/baseline.binpb regenerated as the new floor (the M8.1 baseline discipline); buf generate no-diff; apis/hack/ci.sh green"
+            method: unit
+          - id: M11.1-a2
+            met: false
+            check: "guest/v1 proto round-trips (proto.Equal golden); GuestSpec + VMHostSpec proto-JSON goldens hold (the spec files ARE this encoding); Health carries api_version; CGO_ENABLED=0 standalone (GOWORK=off) + go.work builds; -race clean"
+            method: unit
+          - id: M11.1-a3
+            met: false
+            check: "the module still imports zero k3sm.io/* packages (cycle check); Container.image_platform/ImageManifest.platform are the Platform message type (no string platform field anywhere); Volume.host_path mirrors corev1 exactly (path+type only); NO SandboxProfile.guest_network field exists"
+            method: build
 ---
 
 # apis — Phase roadmap
@@ -611,3 +663,29 @@ in this change:
   the `config/crd` `go:embed` package, the exported constants (egress annotation
   in a runtime-area package), and the DESIGN §5a/§5b + privilege-model doc edits. The
   `spec.distributed` CEL test lives in `k3sm`, not `apis` (keeps `apis`'s graph minimal).
+
+## M11 — Linux containers & multi-arch (apis slice) ⬜
+`apis` is **Wave 1** of M11 (`docs/m11-plan.md` is authoritative; new API surface is human-reviewed).
+**Hard cut** — additive only: a **new proto package** (`guest/v1`, zero existing consumers) + carves
+from the **explicitly reserved** `runtime/v1` bands (`Container 100..149`, `ImageManifest 100..149`)
++ the next free `Volume` source number. `guest/v1` crosses the runtimed↔initramfs boundary (an
+independently-shipped pinned artifact) so it is a versioned wire contract: additive-only stability
+header, buf-baseline discipline, `api_version` handshake on `Health`; compat = lockstep via the
+in-code initramfs sha256 pin (`--guest-artifacts-dir` is unsupported skew).
+
+### M11.1 — guest/v1 contract + platform/hostPath carves + Rosetta constants ⬜
+**Deliverables**
+- ⬜ `M11.1-d1` **`k3sm.io/apis/guest/v1`** — the whole VM contract family in one home (deliberately no `vm/v1`): `GuestAgent` (Health/ContainerEvents/Exec/Logs (reusing `runtime/v1` stream messages, single-pod-guest semantics documented)/Stats/Stop), `GuestSpec` (`guest-spec.json` = its proto-JSON), `VMHostSpec` (`vmhost.spec.json` = its proto-JSON). Placement rationale + compat posture in the package doc; `doc.go` required.
+- ⬜ `M11.1-d2` **`runtime/v1` carves**: `Container.image_platform = 100` (the existing `Platform` message, never a string; band comment rewritten honestly; re-carve `reserved 101 to 149`); `ImageManifest.platform = 100` + `index_digest = 101` (re-carve `reserved 102 to 149`); `Volume.host_path = 8` + `HostPathVolumeSource{path,type}` as a **verbatim corev1 mirror, consumer-less** (guest hostPath fail-closed until human-gated B98); the `Container.command` doc comment gains the **discriminator** (absolute path ⇒ M0 host-binary convention; OCI ref ⇒ image-config merge).
+- ⬜ `M11.1-d3` **Constants**: `k3sm.io/rosetta`, `k3sm.io/rosetta-linux` (composition documented), `k3sm.io/image-platform` (pod-level annotation → per-container stamp). No string literals in consumers.
+- ⬜ `M11.1-d4` **DESIGN edits** (m8-Res.19 pattern): §5a multi-arch pull sentence + §5c/§6 third-entitled-artifact (`k3sm-vmhost`) prose — pre-encoded by the roadmap PR, kept truthful by this wave.
+
+**Acceptance (exit gate)**
+- ⬜ `M11.1-a1` `buf breaking` vs the **pre-carve committed baseline first**, then baseline regenerated; `buf generate` no-diff; `apis/hack/ci.sh` green — *method: unit*
+- ⬜ `M11.1-a2` `guest/v1` round-trip + GuestSpec/VMHostSpec proto-JSON goldens; `Health.api_version` present; `CGO_ENABLED=0` standalone + go.work builds; `-race` clean — *method: unit*
+- ⬜ `M11.1-a3` zero `k3sm.io/*` imports; platform fields are the `Platform` message; `host_path` mirrors corev1 exactly; **no** `SandboxProfile.guest_network` — *method: build*
+
+**Recorded non-changes**: no `SandboxProfile.guest_network` (B6 rides the in-process `runtimed.Deps`
+podnet adapter, provider-side `SetupGuest` **before** `toPodBox` — M10.1 one-authority ordering; the
+102..149 band keeps its earmark); no default-platform field (policy derives runtimed-side); Rosetta
+advertisement rides the existing `RuntimeCondition` repeated field (the B1 precedent).
