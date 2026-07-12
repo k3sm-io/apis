@@ -384,6 +384,9 @@ phases:
     depends_on: []
     notes: >-
       apis is Wave 1 of M11 (docs/m11-plan.md — authoritative; Phase C encoded from it).
+      RE-SEQUENCED PRE-LAUNCH (2026-07-11, its R16): the M11 build waves ship the vm path
+      functional-EXPERIMENTAL at v0.1; run out of ledger order with recorded rationale —
+      the M10 remainder is hardware-gated and not a dependency.
       Hard cut: a NEW proto package (guest/v1, zero existing consumers) + additive
       carves from the EXPLICITLY RESERVED runtime/v1 bands (Container 100..149,
       ImageManifest 100..149) + the next free Volume source number. The guest/v1
