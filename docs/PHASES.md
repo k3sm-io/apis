@@ -2,8 +2,8 @@
 repo: apis
 schema: phases/v1
 current_phase: M5
-updated: 2026-07-02
-updated_by: orchestrator
+updated: 2026-07-11
+updated_by: roadmap-encoder
 
 phases:
   - id: M0
@@ -429,6 +429,30 @@ phases:
             met: false
             check: "the module still imports zero k3sm.io/* packages (cycle check); Container.image_platform/ImageManifest.platform are the Platform message type (no string platform field anywhere); Volume.host_path mirrors corev1 exactly (path+type only); NO SandboxProfile.guest_network field exists"
             method: build
+
+  - id: M12
+    title: Images & build engine (apis slice — the imagePullPolicy enum carve)
+    status: todo
+    depends_on: []
+    notes: >-
+      docs/m12-plan.md is authoritative (Phase C encoded from it). One additive
+      reserved-band carve, hard cut (the restart_policy precedent: the enum zero value is
+      legacy behavior in both skew directions). Consumers ride queue item B120, which
+      depends on this wave.
+    subphases:
+      - id: M12.1
+        title: Container.image_pull_policy enum carve
+        status: todo
+        depends_on: []
+        deliverables:
+          - id: M12.1-d1
+            done: false
+            desc: "ImagePullPolicy enum (IMAGE_PULL_POLICY_UNSPECIFIED = 0 = legacy pull-through in BOTH skew directions / ALWAYS / IF_NOT_PRESENT / NEVER) + Container.image_pull_policy. Field number: allocate the next free number in the 100–149 band AT ENCODE TIME from the proto file — NEVER 100 (pinned to M11.1's image_platform regardless of landing order; allocate ≥101), re-narrow the reserved range + rewrite the band comment honestly (the PodBox allocation precedent). Semantics comment pins: the embedded apiserver OWNS defaulting (:latest/untagged → Always) — the provider translates the stamped value verbatim, runtimed never re-derives from the tag."
+        acceptance:
+          - id: M12.1-a1
+            met: false
+            check: "buf breaking vs the PRE-carve committed baseline first, then baseline regenerated; buf generate no-diff; the enum zero value is UNSPECIFIED with the legacy-in-both-skew-directions comment (the restart_policy pattern); the allocated field number is ≥101 and the reserved range re-narrowed; apis/hack/ci.sh green"
+            method: unit
 ---
 
 # apis — Phase roadmap
