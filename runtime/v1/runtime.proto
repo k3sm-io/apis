@@ -754,7 +754,22 @@ message ImageManifest {
   // annotations are arbitrary manifest annotations.
   map<string, string> annotations = 5;
 
-  reserved 100 to 149; // M2: platform / subject (referrers) fields.
+  // platform is the platform this manifest was RESOLVED to when the reference
+  // named a multi-platform index. It is the resolved answer, not the request:
+  // the local image index is keyed by (reference x platform), so without it two
+  // pulls of one reference on different platforms collapse to a single entry.
+  // Absent when the reference resolved directly to a manifest.
+  Platform platform = 100;
+
+  // index_digest is the digest of the multi-platform INDEX the reference
+  // resolved through, when there was one. It is distinct from the manifest's own
+  // digest: the index digest is what a tag pointed at, so it is the edge that
+  // makes "this manifest came from that index" provable rather than inferred.
+  // Empty when the reference resolved directly to a manifest.
+  string index_digest = 101;
+
+  // 100..101 allocated above; 102..149 stay reserved (149 ceiling preserved).
+  reserved 102 to 149; // M2: subject (referrers) fields.
 }
 
 // Descriptor is an OCI content descriptor (media type, digest, size).
