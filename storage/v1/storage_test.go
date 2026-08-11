@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -185,6 +186,113 @@ func TestLocalPathClassDataDir(t *testing.T) {
 		for _, tc := range []struct{ ns, claim string }{{"", "claim"}, {"ns", ""}, {"", ""}} {
 			if _, err := c.DataDir(tc.ns, tc.claim); !errors.Is(err, ErrInvalid) {
 				t.Fatalf("DataDir(%q,%q) error = %v, want ErrInvalid", tc.ns, tc.claim, err)
+			}
+		}
+	})
+}
+
+// TestDataDirRejectsEscape pins the DataDir name grammar: namespace is an RFC
+// 1123 DNS label, claimName an RFC 1123 DNS subdomain, both checked against the
+// RAW argument. The rejection cases cover traversal ("..", "a/b", "/abs"), the
+// case-insensitive-APFS aliasing case (an upper-case namespace and an
+// upper-case claim resolve to the SAME on-disk dir as their lowercase twins on
+// the default macOS volume), untrimmed whitespace, emptiness, and the length
+// ceilings. The POSITIVE controls are load-bearing: without them the table
+// cannot distinguish "the guard works" from "DataDir rejects everything".
+func TestDataDirRejectsEscape(t *testing.T) {
+	t.Parallel()
+
+	const maxLabel = 63
+	c := DefaultLocalPathClass()
+
+	cases := []struct {
+		name  string
+		ns    string
+		claim string
+		want  string // "" means the call must be rejected with ErrInvalid
+	}{
+		// Positive controls — ordinary values still produce the expected path.
+		{"ordinary", "stockkitty", "postgres-data", "/var/lib/k3sm/storage/stockkitty/postgres-data"},
+		{"digits and hyphens", "ns-1", "claim-2", "/var/lib/k3sm/storage/ns-1/claim-2"},
+		{"single char components", "a", "b", "/var/lib/k3sm/storage/a/b"},
+		{"max-length label namespace", strings.Repeat("a", maxLabel), "data", "/var/lib/k3sm/storage/" + strings.Repeat("a", maxLabel) + "/data"},
+		// A dotted name is a valid SUBDOMAIN, so it is legal for a claim...
+		{"dotted claim is a valid subdomain", "prod", "my.claim", "/var/lib/k3sm/storage/prod/my.claim"},
+		// ...but NOT for a namespace, which must be a bare label.
+		{"dotted namespace is not a label", "my.ns", "data", ""},
+
+		// Traversal.
+		{"parent namespace", "..", "server", ""},
+		{"parent claim", "prod", "..", ""},
+		{"dot namespace", ".", "data", ""},
+		{"dot claim", "prod", ".", ""},
+		{"separator in namespace", "a/b", "data", ""},
+		{"separator in claim", "prod", "a/b", ""},
+		{"absolute namespace", "/abs", "data", ""},
+		{"absolute claim", "prod", "/abs", ""},
+		{"traversal suffix in claim", "prod", "data/../../server", ""},
+
+		// Whitespace — the raw value is what would be joined.
+		{"leading space namespace", " prod", "data", ""},
+		{"trailing space namespace", "prod ", "data", ""},
+		{"trailing space claim", "prod", "data ", ""},
+		{"blank namespace", "   ", "data", ""},
+
+		// APFS case-insensitivity: an upper-case name aliases its lowercase twin.
+		{"upper-case namespace", "Default", "data", ""},
+		{"upper-case claim", "default", "Data", ""},
+
+		// Emptiness.
+		{"empty namespace", "", "data", ""},
+		{"empty claim", "prod", "", ""},
+		{"both empty", "", "", ""},
+
+		// Length ceilings.
+		{"over-long label namespace", strings.Repeat("a", maxLabel+1), "data", ""},
+		{"over-long subdomain claim", "prod", strings.Repeat("a", 254), ""},
+
+		// Other out-of-class bytes.
+		{"underscore claim", "prod", "my_claim", ""},
+		{"leading hyphen namespace", "-prod", "data", ""},
+		{"nul byte in claim", "prod", "data\x00", ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := c.DataDir(tc.ns, tc.claim)
+			if tc.want == "" {
+				if !errors.Is(err, ErrInvalid) {
+					t.Fatalf("DataDir(%q,%q) error = %v, want ErrInvalid", tc.ns, tc.claim, err)
+				}
+				if got != "" {
+					t.Fatalf("DataDir(%q,%q) returned path %q on rejection, want no path", tc.ns, tc.claim, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("DataDir(%q,%q) = %v, want %q", tc.ns, tc.claim, err, tc.want)
+			}
+			if got != tc.want {
+				t.Fatalf("DataDir(%q,%q) = %q, want %q", tc.ns, tc.claim, got, tc.want)
+			}
+		})
+	}
+
+	// The escape the grammar exists to stop, stated as the property rather than
+	// the error: no accepted (namespace, claim) pair may resolve outside the
+	// storage root, and no two distinct pairs may resolve to one dir on a
+	// case-insensitive volume.
+	t.Run("no accepted pair escapes the base path", func(t *testing.T) {
+		t.Parallel()
+		base := DefaultBasePath + "/"
+		for _, tc := range cases {
+			got, err := c.DataDir(tc.ns, tc.claim)
+			if err != nil {
+				continue
+			}
+			if !strings.HasPrefix(got, base) || strings.Contains(got, "/../") {
+				t.Fatalf("DataDir(%q,%q) = %q escapes %q", tc.ns, tc.claim, got, base)
 			}
 		}
 	})
