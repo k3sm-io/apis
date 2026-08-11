@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"regexp"
 	"strings"
 )
 
@@ -184,6 +185,39 @@ func (c LocalPathClass) Validate() error {
 	return nil
 }
 
+// Maximum byte lengths of the two RFC 1123 name forms DataDir accepts, matching
+// the Kubernetes object-name limits its only producers are already constrained
+// to: a namespace is a DNS label, a PVC name a DNS subdomain.
+const (
+	maxDNSLabelLen     = 63
+	maxDNSSubdomainLen = 253
+)
+
+// The two RFC 1123 name grammars DataDir's components must match. Both are
+// CLOSED character classes — lowercase alphanumerics plus '-' (and '.' as a
+// subdomain separator) — so no separator, no leading dot, and no upper-case
+// byte can appear in a value that reaches path.Join.
+var (
+	dnsLabelRe     = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+	dnsSubdomainRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
+)
+
+// validDNSName checks the RAW value v (never a trimmed copy — the raw value is
+// what DataDir joins) against re and the max byte length, naming it kind in the
+// error. Errors wrap ErrInvalid.
+func validDNSName(kind, v string, re *regexp.Regexp, max int) error {
+	if v == "" {
+		return fmt.Errorf("%w: DataDir needs a non-empty %s", ErrInvalid, kind)
+	}
+	if len(v) > max {
+		return fmt.Errorf("%w: DataDir %s %q is longer than %d bytes", ErrInvalid, kind, v, max)
+	}
+	if !re.MatchString(v) {
+		return fmt.Errorf("%w: DataDir %s %q must match %s (RFC 1123: lowercase, no separators)", ErrInvalid, kind, v, re)
+	}
+	return nil
+}
+
 // DataDir returns the stable on-APFS directory for a PVC, keyed by its
 // (namespace, claimName). It is the SINGLE source of truth both repos compute:
 // the provisioner writes it as the bound PersistentVolume's local path, and
@@ -191,14 +225,46 @@ func (c LocalPathClass) Validate() error {
 // PodBox alone (namespace + the PVC source's claim_name), never needing the PV
 // UID. The (namespace, claimName) key is globally unique and stable across the
 // PVC's life (PVCs are never renamed), so the same claim always maps to the same
-// dir. Returns an error if either component is empty. Errors wrap ErrInvalid.
+// dir.
+//
+// Both components are validated as strict RFC 1123 names — namespace as a DNS
+// LABEL, claimName as a DNS SUBDOMAIN — and the RAW argument is what is checked,
+// because the raw argument is what path.Join receives. The grammar is a CLOSED
+// class rather than a ".."/"/" blacklist for two independent reasons:
+//
+//   - Traversal. path.Join CLEANS its result, so an unchecked ".." component
+//     resolves the dir OUT of the storage root and onto a sibling of it — the
+//     tree that holds the control-plane state next door. A value outside the
+//     class yields no path at all, rather than a path that must be re-checked by
+//     every caller afterwards.
+//   - Aliasing. The default macOS APFS volume is CASE-INSENSITIVE while a
+//     Kubernetes namespace is a case-sensitive byte string, so "Default" and
+//     "default" are two distinct namespaces resolving to ONE directory: a
+//     cross-namespace data escape that contains no traversal metacharacter and
+//     that a ".."/"/" test passes cleanly. RFC 1123 is lowercase-only, so one
+//     rule closes traversal and aliasing together. This is the same reasoning as
+//     the lowercase-only pod-id class in k3sm.io/runtimed (pkg/image/podid.go).
+//
+// Whitespace is rejected by the same class, closing a live gap: a blank-trimmed
+// emptiness check accepted "ns " and then joined the UNTRIMMED value, so a
+// trailing space produced a second, distinct on-disk directory for one namespace.
+//
+// The class costs no reach: it is exactly the set the only producers emit
+// (pod.Namespace, and pvc.Namespace/pvc.Name), all already apiserver-constrained
+// to these same RFC 1123 forms.
+//
+// Returns an error if either component is empty or outside its grammar; no path
+// is returned on rejection. Errors wrap ErrInvalid.
 func (c LocalPathClass) DataDir(namespace, claimName string) (string, error) {
 	base := c.BasePath
 	if base == "" {
 		base = DefaultBasePath
 	}
-	if strings.TrimSpace(namespace) == "" || strings.TrimSpace(claimName) == "" {
-		return "", fmt.Errorf("%w: DataDir needs a namespace and claimName, got %q/%q", ErrInvalid, namespace, claimName)
+	if err := validDNSName("namespace", namespace, dnsLabelRe, maxDNSLabelLen); err != nil {
+		return "", err
+	}
+	if err := validDNSName("claimName", claimName, dnsSubdomainRe, maxDNSSubdomainLen); err != nil {
+		return "", err
 	}
 	return path.Join(base, namespace, claimName), nil
 }
