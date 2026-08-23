@@ -290,7 +290,10 @@ func TestImagesServiceSurface(t *testing.T) {
 			// self-authentication obligation).
 			{"advisory-digest clause", "any client-supplied digest or size is ADVISORY"},
 			{"re-hash-before-commit clause", "MUST re-hash the received bytes and reject a mismatch BEFORE the lease commits"},
-			{"re-hash resolution citation", "the M12 images plan, Resolution 8"},
+			// The bare "Resolution 8" citation also appears in the SOLE STORE
+			// WRITER paragraph above the DIGEST CONTRACT one; pin the clause
+			// that is unique to the digest paragraph so deleting IT reddens.
+			{"re-hash resolution citation", "Resolution 8: every ingest path"},
 			// The lease obligation, with the transitional citation and the marker
 			// that says where it will move.
 			{"lease obligation", "the server takes its store lease before the first blob commit and records the reference before releasing it"},
