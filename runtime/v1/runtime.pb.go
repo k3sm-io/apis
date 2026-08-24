@@ -586,7 +586,10 @@ type PodBox struct {
 	// PodBox (FAILURE_REASON_INVALID_POD_BOX), never coerced to the derived path
 	// and never retried. No producer sets this field today, empty is the only
 	// value a producer can safely send, and the field is planned for
-	// consumer-first removal, tracked as B147. This validation is path
+	// consumer-first removal, tracked as B147. Its sibling
+	// SandboxProfile.data_volume_path is validated by a DIFFERENT rule — it
+	// accepts a two-spelling derived set, not this single derivation — so do not
+	// generalize this field's accept set to it. This validation is path
 	// CONTAINMENT only — it does not provide same-node pod mutual isolation
 	// (pods commonly share the daemon's uid; untrusted multi-tenancy requires
 	// the vm RuntimeClass).
@@ -3191,9 +3194,36 @@ type SandboxProfile struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// backend selects the isolation backend (OS-version-gated; see DESIGN §5a).
 	Backend SandboxBackend `protobuf:"varint,1,opt,name=backend,proto3,enum=k3sm.runtime.v1.SandboxBackend" json:"backend,omitempty"`
-	// data_volume_path is the only path the pod may write (its APFS data volume);
-	// typically the rootfs_path. Reads of /System, /usr, dyld cache, and the pod
-	// dir are always granted by the baseline.
+	// data_volume_path is the only tree the pod may write — the one path the
+	// generated profile grants read and write on top of the default-deny (reads of
+	// /System, /usr, the dyld cache, and the pod dir come from the baseline). It is
+	// SERVER-VALIDATED, not free-form: the daemon accepts exactly two spellings,
+	// both derived from its own configured root for THIS pod's id — the pod's
+	// per-pod directory (<root>/pods/<pod_id>), which is what the current producer
+	// (the k3sm provider) sends today, and that directory's rootfs child
+	// (<root>/pods/<pod_id>/rootfs), which is strictly narrower.
+	//
+	// Both spellings are accepted because a producer in service sends the pod
+	// directory: an accept set narrowed to the rootfs spelling alone would reject
+	// every pod that producer already creates. The two are NOT equivalent — the
+	// pod-directory spelling grants one directory level more than the rootfs
+	// spelling, so a producer able to compute the rootfs child should send that
+	// tighter value.
+	//
+	// Whichever accepted spelling is sent, the daemon applies the narrower rootfs
+	// spelling to the pod's generated profile; the wider transmitted value is never
+	// what takes effect. A value that is neither derived spelling — including one
+	// naming another pod's directory — rejects the pod as an invalid PodBox
+	// (FAILURE_REASON_INVALID_POD_BOX), never coerced to a derived path and never
+	// retried. extra_read_paths/extra_write_paths entries at or under
+	// data_volume_path are always permitted, regardless of the protected-prefix
+	// denials that apply to paths outside it.
+	//
+	// The sibling PodBox.rootfs_path is validated by a DIFFERENT rule (one derived
+	// spelling, byte-equal); do not generalize either field's accept set to the
+	// other. This validation is path CONTAINMENT only — it does not provide
+	// same-node pod mutual isolation (pods commonly share the daemon's uid;
+	// untrusted multi-tenancy requires the vm RuntimeClass).
 	DataVolumePath string `protobuf:"bytes,2,opt,name=data_volume_path,json=dataVolumePath,proto3" json:"data_volume_path,omitempty"`
 	// extra_read_paths and extra_write_paths widen the allow-list for workloads
 	// that need host paths beyond the baseline (e.g. hostPath volumes). Keep
