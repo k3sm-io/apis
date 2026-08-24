@@ -577,8 +577,19 @@ type PodBox struct {
 	// namespace and name are the kube coordinates, for logs/diagnostics.
 	Namespace string `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	Name      string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	// rootfs_path is the per-pod dir, e.g. /var/lib/k3sm/pods/<id>/rootfs, into
-	// which image payloads are clonefile'd and run in place at host paths.
+	// rootfs_path is SERVER-DERIVED, never caller-chosen: the daemon computes the
+	// per-pod rootfs directory (<root>/pods/<pod_id>/rootfs) from its own
+	// configured root, which a producer cannot reproduce because that root is set
+	// per node; a non-empty value is therefore accepted only when it is
+	// byte-equal to that single derivation, and any other spelling — including a
+	// firmlink alias of the very same directory — rejects the pod as an invalid
+	// PodBox (FAILURE_REASON_INVALID_POD_BOX), never coerced to the derived path
+	// and never retried. No producer sets this field today, empty is the only
+	// value a producer can safely send, and the field is planned for
+	// consumer-first removal, tracked as B147. This validation is path
+	// CONTAINMENT only — it does not provide same-node pod mutual isolation
+	// (pods commonly share the daemon's uid; untrusted multi-tenancy requires
+	// the vm RuntimeClass).
 	RootfsPath string `protobuf:"bytes,4,opt,name=rootfs_path,json=rootfsPath,proto3" json:"rootfs_path,omitempty"`
 	// uid and gid are the dedicated user/group the pod's processes run as.
 	Uid uint32 `protobuf:"varint,5,opt,name=uid,proto3" json:"uid,omitempty"`
