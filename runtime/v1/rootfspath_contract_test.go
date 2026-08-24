@@ -100,8 +100,11 @@ func TestRootfsPathContractDocumented(t *testing.T) {
 	}
 }
 
-// flattenComments strips //-markers and collapses all whitespace to single
-// spaces, so a phrase is matched however the comment happens to be wrapped.
+// flattenComments flattens WHOLE-FILE text — it strips a leading //-marker
+// where a line has one and passes every other line through — and collapses all
+// whitespace to single spaces, so a phrase is matched however the comment
+// happens to be wrapped. It is deliberately NOT comment-scoped; do not extend
+// this test assuming non-comment lines were filtered out.
 // Without it a line break inside a phrase hides it from a substring search — the
 // hole that let an append-beside diff pass an earlier draft of this gate.
 func flattenComments(src string) string {
