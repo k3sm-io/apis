@@ -65,6 +65,7 @@ func TestDataVolumePathContractDocumented(t *testing.T) {
 		{"<root>/pods/<pod_id>/rootfs", "the narrower accepted spelling, strictly less privilege", true},
 		{"applies the narrower rootfs spelling", "whatever is sent, the narrower spelling is what the profile gets", true},
 		{"FAILURE_REASON_INVALID_POD_BOX", "a mismatch rejects the pod; it is never coerced and never retried", false},
+		{"EFFECTIVE (narrowed)", "the extra-paths carve-out is keyed to the narrowed value, never the wider transmitted one", false},
 	}
 
 	files := []struct {

@@ -3195,8 +3195,10 @@ type SandboxProfile struct {
 	// backend selects the isolation backend (OS-version-gated; see DESIGN §5a).
 	Backend SandboxBackend `protobuf:"varint,1,opt,name=backend,proto3,enum=k3sm.runtime.v1.SandboxBackend" json:"backend,omitempty"`
 	// data_volume_path is the only tree the pod may write — the one path the
-	// generated profile grants read and write on top of the default-deny (reads of
-	// /System, /usr, the dyld cache, and the pod dir come from the baseline). It is
+	// generated profile grants read and write on top of the default-deny. OS reads
+	// (/System, /usr, the dyld cache) come from the profile's baseline; access to
+	// the pod's OWN directory comes from THIS value — it is not independently
+	// granted, so a missing or wrong value costs the pod its own tree. It is
 	// SERVER-VALIDATED, not free-form: the daemon accepts exactly two spellings,
 	// both derived from its own configured root for THIS pod's id — the pod's
 	// per-pod directory (<root>/pods/<pod_id>), which is what the current producer
@@ -3215,9 +3217,9 @@ type SandboxProfile struct {
 	// what takes effect. A value that is neither derived spelling — including one
 	// naming another pod's directory — rejects the pod as an invalid PodBox
 	// (FAILURE_REASON_INVALID_POD_BOX), never coerced to a derived path and never
-	// retried. extra_read_paths/extra_write_paths entries at or under
-	// data_volume_path are always permitted, regardless of the protected-prefix
-	// denials that apply to paths outside it.
+	// retried. extra_read_paths/extra_write_paths entries at or under the
+	// EFFECTIVE (narrowed) data volume value are always permitted, even where the
+	// profile otherwise denies access to the daemon's own trees outside it.
 	//
 	// The sibling PodBox.rootfs_path is validated by a DIFFERENT rule (one derived
 	// spelling, byte-equal); do not generalize either field's accept set to the
