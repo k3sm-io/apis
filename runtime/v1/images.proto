@@ -1,0 +1,409 @@
+// images.proto is the k3sm node IMAGE contract: the store-facing RPCs the
+// `k3sm image` CLI and the node's image-GC caller drive. It is a SEPARATE
+// SERVICE IN THE SAME PROTO PACKAGE (k3sm.runtime.v1) — the CRI
+// RuntimeService/ImageService split. Image verbs and pod verbs are different
+// callers' surfaces, so they get different services; they share one package,
+// one generated Go package, and one wire namespace, because a second proto
+// package or import path would fork the shared-contracts module for no gain.
+//
+// Stability contract: as in runtime.proto — field numbers are STABLE and the
+// surface is ADDITIVE-ONLY forever. Never renumber or repurpose a field; never
+// reuse a reserved number/name. Every message keeps the file convention's
+// `reserved 100 to 149;` headroom band. `buf breaking` (WIRE_JSON) enforces it.
+syntax = "proto3";
+
+package k3sm.runtime.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/rpc/status.proto";
+// Same package, same generated Go package — imported so this file can NAME the
+// existing Descriptor / ImageManifest / Platform messages instead of declaring
+// parallel ones. No new module dependency: proto2/3 file imports are not Go
+// imports, and runtime.proto is unchanged by this carve.
+import "runtime/v1/runtime.proto";
+
+option go_package = "k3sm.io/apis/runtime/v1;runtimev1";
+
+// Images is the node-local image service: list, measure, remove, prune, and
+// ingest. It is served by the same native runtime daemon (k3sm.io/runtimed)
+// that serves `service Runtime`, on the same listener — the split is about
+// which CALLER a surface belongs to, not about which process serves it.
+//
+// TRUST POSTURE (stated precisely — these RPCs are NOT "root-only"):
+//
+//   - In the INSTALLED posture the runtime is EMBEDDED IN-PROCESS in the one
+//     k3sm binary and serves NO SOCKET AT ALL. The only unix-socket listener is
+//     created by the standalone k3sm-runtimed daemon binary; an embedded node
+//     never constructs one, so it exposes these RPCs to no peer whatsoever.
+//
+//   - The standalone daemon's socket is guarded by POSIX FILE MODE ALONE: the
+//     socket node is 0600 inside a 0700 parent dir, owned by the daemon's own
+//     euid (the unprivileged `_k3sm` user in the shipped posture; root only if
+//     an operator chooses to run the daemon as root). There is NO LOCAL_PEERCRED
+//     differentiation on this socket — the server installs no peer-credential
+//     check — and pods commonly share the daemon's uid, because the native
+//     hostprocess path has no per-pod uid isolation. Absent an explicit Seatbelt
+//     deny of the socket path, a process at that uid is indistinguishable from
+//     the CLI. The file mode keeps OTHER uids out; it does not partition the
+//     daemon's own uid into callers.
+//
+//   - Consequence for future work: "narrow these RPCs to a subset of callers",
+//     or "let `k3sm image ls` work without sudo", is a NEW LISTENER / AUTHZ
+//     DESIGN — a second socket with its own ownership, plus an authorizer that
+//     can actually tell peers apart — never a permission tweak on this one.
+//
+//   - The MECHANICAL control lives daemon-side, not here: a proto file cannot
+//     assert what listener its service is registered on. The assertion that
+//     Images is served by the IDENTICAL server the Runtime service is
+//     registered on — so it inherits exactly this socket and no other — is
+//     B130b's gate, in the daemon repo.
+//
+// SKEW (v1 is DELIBERATELY REACTIVE): a daemon that predates this service
+// returns gRPC UNIMPLEMENTED for every method below, and a client treats that
+// status as "this daemon has no image service". Capability-band advertisement
+// via GetRuntimeInfoResponse's reserved 100..149 band was considered and is
+// DEFERRED: it would cost a field plus a producer and a consumer on both sides
+// to restate what the status code already carries unambiguously. Recorded here
+// so a later reader does not re-derive the question and file it as an omission.
+service Images {
+  // ListImages returns the images recorded in the local store. The entries
+  // embed the existing Descriptor / ImageManifest / Platform messages rather
+  // than re-spelling digest, size, or media type as parallel scalars.
+  rpc ListImages(ListImagesRequest) returns (ListImagesResponse);
+
+  // ImageFsInfo returns raw statfs-style measurements of the filesystem backing
+  // the image store. It is MEASUREMENT-SHAPED ONLY — see FilesystemUsage.
+  rpc ImageFsInfo(ImageFsInfoRequest) returns (ImageFsInfoResponse);
+
+  // RemoveImage removes an image ROOT from the local index (an untag). Root
+  // removal is authorized and local — an explicit operator/lifecycle action,
+  // never a side effect of fetched content. It unlinks no blobs: blob deletion
+  // happens only in PruneImages, which re-derives reachability first.
+  // Idempotent — removing an absent image succeeds.
+  rpc RemoveImage(RemoveImageRequest) returns (RemoveImageResponse);
+
+  // PruneImages deletes unreferenced content. The REFUSAL SEMANTICS are
+  // daemon-side: deletability is `not reachable(blob, roots)` computed in one
+  // transaction over recorded edges, and every unlink re-verifies before it
+  // runs (the ratified image-GC provenance model — the M12 images plan,
+  // Resolution 13). This wire carries only the TYPED OUTCOME: which digests
+  // went, and a minimal per-digest reason for each one that was kept, so a
+  // dry-run or audit caller can see WHY a blob survived without the daemon
+  // exporting its policy.
+  rpc PruneImages(PruneImagesRequest) returns (PruneImagesResponse);
+
+  // LoadImage ingests an image archive the client streams — the `k3sm image
+  // load` / `import` path.
+  //
+  // CLIENT-STREAMING, and the shape is deliberate: the client sends a metadata
+  // frame then chunk frames, and the server replies exactly once at the end.
+  // Runtime's Exec/Attach/PortForward are BIDIRECTIONAL; this is the file's
+  // first client-streaming RPC, because there is nothing for the server to say
+  // until the archive is verified and committed.
+  //
+  // THE DAEMON IS THE SOLE STORE WRITER on this path: the client opens the
+  // operator's archive (the daemon generally cannot read an operator's home)
+  // and streams the bytes; it never writes the content store itself. See the
+  // M12 images plan, Resolution 8 (as AMENDED 2026-08-09).
+  //
+  // DIGEST CONTRACT: any client-supplied digest or size is ADVISORY. The server
+  // MUST re-hash the received bytes and reject a mismatch BEFORE the lease
+  // commits — a client-asserted digest is an input to be verified, never a fact
+  // to be trusted (the M12 images plan, Resolution 8: every ingest path
+  // re-hashes content against its claimed digest before commit).
+  //
+  // LEASE OBLIGATION: the server takes its store lease before the first blob
+  // commit and records the reference before releasing it. Citation is
+  // TRANSITIONAL — the M12 images plan, Resolution 13(c). TODO(B128): once the
+  // store/metastore package is promoted and states this obligation in its own
+  // doc.go, re-point this citation at that package and drop the plan reference.
+  //
+  // LoadImage is NOT a SignaturePolicy CHECKPOINT. Loaded images are
+  // PROVENANCE-FREE BY DESIGN — an operator-CLI-only surface (the M12 images
+  // plan, section M12.2). This RPC neither evaluates nor records a
+  // SignaturePolicy; enforcement stays where it already is, at materialize/exec.
+  rpc LoadImage(stream LoadImageRequest) returns (LoadImageResponse);
+}
+
+// ---------------------------------------------------------------------------
+// ListImages
+// ---------------------------------------------------------------------------
+
+// ListImagesRequest selects which stored images to return. An empty request
+// lists everything.
+message ListImagesRequest {
+  // reference narrows the listing to one pull reference (exact match); empty
+  // lists every image in the store.
+  string reference = 1;
+
+  // platform narrows a reference that resolved through a multi-platform index:
+  // the local image index is keyed by (reference x platform), so a reference
+  // alone can name more than one entry. This is the EXISTING Platform message —
+  // there is no second platform shape in this module.
+  Platform platform = 2;
+
+  reserved 100 to 149;
+}
+
+// ListImagesResponse carries the matching store entries.
+message ListImagesResponse {
+  // images are the matching entries, in unspecified order.
+  repeated Image images = 1;
+
+  // error carries a structured failure (empty on success).
+  google.rpc.Status error = 2;
+
+  reserved 100 to 149;
+}
+
+// Image is one entry of the local image index. It is a thin WRAPPER over the
+// existing contract messages: every content fact it reports is read out of the
+// embedded Descriptor / ImageManifest (and, through the manifest, Platform).
+// Digest, size, and media type are NOT re-declared here as scalars — a second
+// spelling of those facts is exactly the duplication this module exists to
+// prevent, and would immediately drift from the manifest it describes.
+message Image {
+  // manifest_descriptor is the manifest's OWN content descriptor: media type,
+  // digest (what a user reads as the image id), and size in bytes.
+  Descriptor manifest_descriptor = 1;
+
+  // manifest is the resolved image manifest — reference, config and layer
+  // descriptors, annotations, plus the resolved platform and index_digest for a
+  // reference that came through a multi-platform index.
+  ImageManifest manifest = 2;
+
+  reserved 100 to 149;
+}
+
+// ---------------------------------------------------------------------------
+// ImageFsInfo
+// ---------------------------------------------------------------------------
+
+// ImageFsInfoRequest is empty (reserved for future per-filesystem selectors).
+message ImageFsInfoRequest {
+  reserved 100 to 149;
+}
+
+// ImageFsInfoResponse carries the raw measurements only; the caller does the
+// arithmetic.
+message ImageFsInfoResponse {
+  // filesystems are the per-filesystem measurements backing the image store (in
+  // practice one — the filesystem the blob tree lives on).
+  repeated FilesystemUsage filesystems = 1;
+
+  // store_bytes is the measured size of the image store subtree itself: bytes
+  // on disk under the store root. It is a RAW MEASUREMENT, never an estimate of
+  // what a prune could reclaim.
+  uint64 store_bytes = 2;
+
+  // error carries a structured failure (empty on success).
+  google.rpc.Status error = 3;
+
+  reserved 100 to 149;
+}
+
+// FilesystemUsage is a statfs-style measurement of one filesystem at an instant
+// — the CRI FilesystemUsage analog.
+//
+// MEASUREMENT-SHAPED ONLY. It carries raw facts (used / capacity / available
+// bytes, inode usage, and when they were sampled) and DELIBERATELY carries no
+// precomputed reclaimable, budget, threshold, or eligibility field: THE DAEMON
+// DOES THAT MATH. That keeps the wire forward-compatible with whatever image-GC
+// model B128 lands — a policy number baked into the contract would need
+// redefining (a wire break, or a second confusing field) every time the policy
+// moved, while a raw measurement never expires.
+message FilesystemUsage {
+  // timestamp is when the sample was taken.
+  google.protobuf.Timestamp timestamp = 1;
+
+  // mountpoint is the filesystem the measurement was taken on.
+  string mountpoint = 2;
+
+  // used_bytes is the filesystem's used capacity in bytes.
+  uint64 used_bytes = 3;
+
+  // capacity_bytes is the filesystem's total capacity in bytes.
+  uint64 capacity_bytes = 4;
+
+  // available_bytes is what is available to the daemon's euid in bytes (statfs
+  // f_bavail * f_bsize — it is not capacity_bytes minus used_bytes on a
+  // filesystem that reserves space).
+  uint64 available_bytes = 5;
+
+  // inodes_used is the number of inodes in use, when the filesystem reports it.
+  uint64 inodes_used = 6;
+
+  reserved 100 to 149;
+}
+
+// ---------------------------------------------------------------------------
+// RemoveImage
+// ---------------------------------------------------------------------------
+
+// RemoveImageRequest names the image root to remove. A root is a (reference x
+// platform) index entry; digest pins WHICH manifest that entry must currently
+// resolve to, so a concurrent re-pull of a mutable tag cannot make the removal
+// hit a different image than the caller meant.
+message RemoveImageRequest {
+  // reference is the pull reference to remove.
+  string reference = 1;
+
+  // platform narrows a reference that resolved through a multi-platform index;
+  // unset removes every platform entry for the reference.
+  Platform platform = 2;
+
+  // digest, when set, requires the entry to resolve to this manifest digest;
+  // the call fails without removing anything if it does not.
+  string digest = 3;
+
+  reserved 100 to 149;
+}
+
+// RemoveImageResponse reports what was actually removed.
+message RemoveImageResponse {
+  // removed_references are the index entries this call removed. Empty means the
+  // image was already absent — removal is idempotent, not an error.
+  repeated string removed_references = 1;
+
+  // error carries a structured failure (empty on success).
+  google.rpc.Status error = 2;
+
+  reserved 100 to 149;
+}
+
+// ---------------------------------------------------------------------------
+// PruneImages
+// ---------------------------------------------------------------------------
+
+// PruneImagesRequest selects the prune mode.
+message PruneImagesRequest {
+  // dry_run computes the plan and unlinks nothing; the response is identical in
+  // shape, so an audit caller and a real caller read the same fields.
+  bool dry_run = 1;
+
+  reserved 100 to 149;
+}
+
+// PruneImagesResponse reports the typed outcome of a prune: what went, what
+// stayed and why, and how many bytes the unlinks released.
+message PruneImagesResponse {
+  // removed_digests are the blob digests unlinked (or, under dry_run, the ones
+  // that would be).
+  repeated string removed_digests = 1;
+
+  // skipped are the blobs the prune considered and KEPT, each with a typed
+  // reason — the minimum a dry-run or audit caller needs to see why a blob
+  // survived, without the daemon exporting its policy over the wire.
+  repeated SkippedBlob skipped = 2;
+
+  // reclaimed_bytes is the size of the removed content (0 under dry_run only if
+  // the implementation declines to size a plan it did not execute).
+  uint64 reclaimed_bytes = 3;
+
+  // error carries a structured failure (empty on success).
+  google.rpc.Status error = 4;
+
+  reserved 100 to 149;
+}
+
+// SkippedBlob is one blob the prune kept, with the typed reason it was kept.
+message SkippedBlob {
+  // digest is the blob's content digest, "<algo>:<hex>".
+  string digest = 1;
+
+  // reason is the typed cause. It reports a VERDICT the daemon reached; it does
+  // not describe the rule that produced it.
+  PruneSkipReason reason = 2;
+
+  reserved 100 to 149;
+}
+
+// PruneSkipReason is why a prune kept a blob. A dedicated enum rather than the
+// runtime FailureReason: FailureReason enumerates pod-operation failures
+// (INVALID_POD_BOX, SPAWN, SANDBOX_SETUP), and a kept blob is not a failure at
+// all — reusing it would force image outcomes into pod vocabulary.
+// UNSPECIFIED means the daemon reported no typed reason.
+enum PruneSkipReason {
+  PRUNE_SKIP_REASON_UNSPECIFIED = 0;
+  // REACHABLE: the blob is reachable from a recorded root, so it is not
+  // deletable. This is the general verdict; the two below narrow it.
+  PRUNE_SKIP_REASON_REACHABLE = 1;
+  // LEASED: an in-flight ingest holds a lease covering the blob.
+  PRUNE_SKIP_REASON_LEASED = 2;
+  // IN_USE: a live pod's root reaches the blob.
+  PRUNE_SKIP_REASON_IN_USE = 3;
+  // UNLINK_FAILED: the blob was planned for deletion but the unlink's
+  // re-verification refused it, or the unlink itself failed.
+  PRUNE_SKIP_REASON_UNLINK_FAILED = 4;
+}
+
+// ---------------------------------------------------------------------------
+// LoadImage
+// ---------------------------------------------------------------------------
+
+// LoadImageRequest is one frame of the ingest stream. The FIRST frame carries
+// the metadata (reference, format, and the advisory digest/size) and no chunk;
+// every subsequent frame carries a chunk and nothing else.
+//
+// Every field is BYTES OR A SCALAR by design — there is no OCI-typed framing on
+// this stream. The archive's own structure is parsed by the daemon from the
+// bytes; modeling it on the wire would drag an OCI type system into a module
+// whose whole purpose is depending on nothing.
+message LoadImageRequest {
+  // reference is the pull reference to record the loaded image under. Set on
+  // the first frame; ignored on chunk frames.
+  string reference = 1;
+
+  // format is the archive format hint. UNSPECIFIED asks the server to detect it
+  // from the bytes.
+  LoadImageFormat format = 2;
+
+  // digest is the client's claim about the archive's content digest. ADVISORY:
+  // the server re-hashes what it receives and rejects a mismatch before the
+  // lease commits. A caller that cannot compute it leaves it empty.
+  string digest = 3;
+
+  // size is the client's claim about the archive's byte length. ADVISORY, the
+  // same way digest is — usable for progress or an early reject, never as proof.
+  int64 size = 4;
+
+  // chunk is the next slice of archive bytes. Chunk boundaries carry no
+  // meaning; the server concatenates them in arrival order.
+  bytes chunk = 5;
+
+  reserved 100 to 149;
+}
+
+// LoadImageFormat is the archive format of a LoadImage stream.
+enum LoadImageFormat {
+  // UNSPECIFIED asks the server to detect the format from the bytes.
+  LOAD_IMAGE_FORMAT_UNSPECIFIED = 0;
+  // DOCKER_SAVE is a `docker save` tar.
+  LOAD_IMAGE_FORMAT_DOCKER_SAVE = 1;
+  // OCI_LAYOUT is an OCI image-layout directory, tarred.
+  LOAD_IMAGE_FORMAT_OCI_LAYOUT = 2;
+}
+
+// LoadImageResponse is the SINGLE TERMINAL RESPONSE of an ingest — v1 reports
+// only the finished outcome.
+//
+// Per-chunk progress was considered and DEFERRED. A client-streaming RPC cannot
+// carry interim server messages at all, so progress is not a field this
+// message's reserved band could ever grow into: it would be a NEW bidirectional
+// RPC. Stated so the omission reads as a decision rather than an oversight.
+message LoadImageResponse {
+  // images are the images the archive contributed, as recorded in the store —
+  // the same wrapper ListImages returns, so a load and a subsequent list agree
+  // by construction.
+  repeated Image images = 1;
+
+  // received_bytes is the byte count the SERVER counted off the stream, not the
+  // client's advisory size.
+  int64 received_bytes = 2;
+
+  // error carries a structured failure (empty on success) — notably a digest
+  // mismatch, which fails the call and commits nothing.
+  google.rpc.Status error = 3;
+
+  reserved 100 to 149;
+}

@@ -17,7 +17,9 @@ lint:
     - PACKAGE_DIRECTORY_MATCH
     # Contract names are fixed by the M1.1 design: `service Runtime` (not
     # RuntimeService); the watch/logs streams carry domain types PodStatusEvent
-    # and LogEntry (not WatchPodStatusResponse / GetLogsResponse).
+    # and LogEntry (not WatchPodStatusResponse / GetLogsResponse). The same
+    # exemption covers `service Images` (not ImageService) in images.proto — the
+    # CRI-style second service in this one package keeps the sibling's naming.
     - SERVICE_SUFFIX
     - RPC_RESPONSE_STANDARD_NAME
 breaking:
