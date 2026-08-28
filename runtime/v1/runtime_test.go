@@ -81,6 +81,15 @@ func TestRoundTrip(t *testing.T) {
 		RestartPolicy: ContainerRestartPolicy_CONTAINER_RESTART_POLICY_ALWAYS,
 	}, &Container{})
 
+	// M12.1: an explicit imagePullPolicy — the apiserver-stamped value the
+	// provider forwards verbatim. The enum field must survive the wire so the
+	// policy reaches runtimed's puller.
+	roundTrip(t, "Container_image_pull_policy", &Container{
+		Name:            "app",
+		Image:           "registry.example/app:latest",
+		ImagePullPolicy: ImagePullPolicy_IMAGE_PULL_POLICY_ALWAYS,
+	}, &Container{})
+
 	roundTrip(t, "SandboxProfile", &SandboxProfile{
 		Backend:               SandboxBackend_SANDBOX_BACKEND_SEATBELT_INPROC,
 		DataVolumePath:        "/var/lib/k3sm/pods/p1/rootfs",
@@ -634,6 +643,54 @@ func TestContainerRestartPolicyZeroValue(t *testing.T) {
 	}
 	if ContainerRestartPolicy_CONTAINER_RESTART_POLICY_ALWAYS == 0 {
 		t.Fatalf("ContainerRestartPolicy ALWAYS must be non-zero")
+	}
+}
+
+// TestImagePullPolicyZeroValue asserts the M12.1 ImagePullPolicy zero value is
+// UNSPECIFIED — the load-bearing skew contract: an unset field means today's
+// legacy pull-through in BOTH directions (an old provider never sets it; a new
+// runtimed reads absent-as-legacy), so every explicit policy — NEVER above all,
+// which suppresses the pull entirely — must be non-zero and never accidental.
+func TestImagePullPolicyZeroValue(t *testing.T) {
+	t.Parallel()
+	if ImagePullPolicy_IMAGE_PULL_POLICY_UNSPECIFIED != 0 {
+		t.Fatalf("ImagePullPolicy zero value must be UNSPECIFIED, got %d", ImagePullPolicy_IMAGE_PULL_POLICY_UNSPECIFIED)
+	}
+	for _, p := range []ImagePullPolicy{
+		ImagePullPolicy_IMAGE_PULL_POLICY_ALWAYS,
+		ImagePullPolicy_IMAGE_PULL_POLICY_IF_NOT_PRESENT,
+		ImagePullPolicy_IMAGE_PULL_POLICY_NEVER,
+	} {
+		if p == 0 {
+			t.Fatalf("ImagePullPolicy %v must be non-zero", p)
+		}
+	}
+}
+
+// TestContainerImagePullPolicyFieldNumber pins the M12.1 band allocation: the
+// field number is >= 101, because 100 is reserved for M11.1's image_platform
+// regardless of which carve lands first. Read from the descriptor, so a proto
+// edit that renumbers the field (a wire break for every deployed node) fails
+// here and not only in buf breaking.
+func TestContainerImagePullPolicyFieldNumber(t *testing.T) {
+	t.Parallel()
+	fd := (&Container{}).ProtoReflect().Descriptor().Fields().ByName("image_pull_policy")
+	if fd == nil {
+		t.Fatal("Container has no image_pull_policy field")
+	}
+	if got := fd.Number(); got != 101 {
+		t.Fatalf("image_pull_policy field number = %d, want 101 (>=101: 100 is pinned to image_platform)", got)
+	}
+	// 100 must still be reserved, so the M11.1 carve can claim it unopposed.
+	rr := (&Container{}).ProtoReflect().Descriptor().ReservedRanges()
+	reserved100 := false
+	for i := 0; i < rr.Len(); i++ {
+		if r := rr.Get(i); r[0] <= 100 && 100 < r[1] {
+			reserved100 = true
+		}
+	}
+	if !reserved100 {
+		t.Fatal("Container field number 100 must stay reserved (pinned to M11.1 image_platform)")
 	}
 }
 
