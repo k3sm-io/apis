@@ -5,13 +5,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."   # repo root
 
-# Pinned toolchain versions (keep in lockstep with go.mod + buf.gen.yaml).
-BUF_VERSION=v1.71.0
-PROTOC_GEN_GO_VERSION=v1.36.11
-PROTOC_GEN_GO_GRPC_VERSION=v1.5.1
-
-GOBIN="$(go env GOPATH)/bin"
-export PATH="$GOBIN:$PATH"
+# Pinned versions + $(go env GOPATH)/bin on PATH — one home, shared with hack/ci.sh.
+. hack/lib/buf-env.sh
 
 # `go install` is hermetic on version; skip if the pinned binary is already present.
 need() { ! command -v "$1" >/dev/null 2>&1; }
