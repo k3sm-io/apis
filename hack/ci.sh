@@ -13,7 +13,21 @@ fmt=$(gofmt -l .) || true
 echo "==> [apis] license headers"
 hack/verify-boilerplate.sh
 
-if [ -n "$(CGO_ENABLED=$CGO go list ./... 2>/dev/null)" ]; then
+# Enumerate the Go packages BEFORE deciding to skip anything. Exit 0 with empty
+# output means "no Go packages yet" — the legitimate skip this guard was written
+# for. A NON-ZERO exit (broken go.mod, unresolvable dependency, bad GOWORK, absent
+# toolchain) is a HARD ERROR: the old `[ -n "$(go list ./... 2>/dev/null)" ]` could
+# not tell the two apart, so it silently skipped vet/build/test and still reported
+# green — a gate that cannot even enumerate its packages must go RED (B168).
+golist_err="$(mktemp)"
+trap 'rm -f "$golist_err"' EXIT
+if ! go_pkgs="$(CGO_ENABLED=$CGO go list ./... 2>"$golist_err")"; then
+	echo "FAIL: [apis] go list ./... failed — cannot enumerate packages; refusing to skip vet/build/test:" >&2
+	cat "$golist_err" >&2
+	exit 1
+fi
+
+if [ -n "$go_pkgs" ]; then
 	echo "==> [apis] go vet";   CGO_ENABLED=$CGO go vet ./...
 	echo "==> [apis] go build"; CGO_ENABLED=$CGO go build ./...
 	echo "==> [apis] go test";  CGO_ENABLED=$CGO go test ./...
