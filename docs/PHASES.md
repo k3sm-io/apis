@@ -445,15 +445,15 @@ phases:
     subphases:
       - id: M12.1
         title: Container.image_pull_policy enum carve
-        status: todo
+        status: done
         depends_on: []
         deliverables:
           - id: M12.1-d1
-            done: false
+            done: true
             desc: "ImagePullPolicy enum (IMAGE_PULL_POLICY_UNSPECIFIED = 0 = legacy pull-through in BOTH skew directions / ALWAYS / IF_NOT_PRESENT / NEVER) + Container.image_pull_policy. Field number: allocate the next free number in the 100–149 band AT ENCODE TIME from the proto file — NEVER 100 (pinned to M11.1's image_platform regardless of landing order; allocate ≥101), re-narrow the reserved range + rewrite the band comment honestly (the PodBox allocation precedent). Semantics comment pins: the embedded apiserver OWNS defaulting (:latest/untagged → Always) — the provider translates the stamped value verbatim, runtimed never re-derives from the tag."
         acceptance:
           - id: M12.1-a1
-            met: false
+            met: true
             check: "buf breaking vs the PRE-carve committed baseline first, then baseline regenerated; buf generate no-diff; the enum zero value is UNSPECIFIED with the legacy-in-both-skew-directions comment (the restart_policy pattern); the allocated field number is ≥101 and the reserved range re-narrowed; apis/hack/ci.sh green"
             method: unit
 ---

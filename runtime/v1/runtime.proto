@@ -450,7 +450,35 @@ message Container {
   // — the additive consumer-first contract.
   ContainerRestartPolicy restart_policy = 16;
 
-  reserved 100 to 149; // M2.2: per-container resource limits.
+  // --- M12.1 image pull policy (allocated from Container's reserved 100..149
+  // band). 100 is deliberately NOT taken here: it is pinned to M11.1's
+  // image_platform regardless of which of the two carves lands first, so this
+  // allocation starts at 101 and 100 stays reserved below. ---
+
+  // image_pull_policy is the per-container imagePullPolicy, mirroring
+  // corev1.Container.ImagePullPolicy.
+  //
+  // DEFAULTING IS OWNED BY THE EMBEDDED APISERVER, which stamps the corev1
+  // default onto the pod spec before it is ever scheduled (a `:latest` or
+  // untagged reference defaults to ALWAYS; anything else to IF_NOT_PRESENT).
+  // The k3sm provider translates that already-stamped value VERBATIM into this
+  // field, and runtimed obeys the value as given: runtimed NEVER re-derives a
+  // policy from the image tag. A second derivation point would be free to
+  // disagree with the apiserver's stamped spec, so `kubectl get pod -o yaml`
+  // would stop describing what the node actually did.
+  //
+  // The zero value (UNSPECIFIED) is the legacy pull-through behavior in BOTH
+  // skew directions — an old provider never sets the field, and a new runtimed
+  // must read absent-as-legacy (attempt the pull, reusing already-cached
+  // blobs), never as an implicit NEVER. That is the additive consumer-first
+  // contract, and it is why every explicit policy is non-zero (the
+  // restart_policy precedent).
+  ImagePullPolicy image_pull_policy = 101;
+
+  // 101 is allocated above. 100 stays reserved (pinned to M11.1's
+  // image_platform) and 102..149 stay reserved for future per-container
+  // additions; the band's 149 ceiling is preserved (additive).
+  reserved 100, 102 to 149;
 }
 
 // ContainerRestartPolicy mirrors corev1 container-level restartPolicy (KEP-753
@@ -460,6 +488,28 @@ message Container {
 enum ContainerRestartPolicy {
   CONTAINER_RESTART_POLICY_UNSPECIFIED = 0;
   CONTAINER_RESTART_POLICY_ALWAYS = 1;
+}
+
+// ImagePullPolicy mirrors corev1.Container.ImagePullPolicy. UNSPECIFIED = the
+// field is unset = the pre-M12 legacy pull-through behavior in BOTH skew
+// directions (an old provider never sets it; a new runtimed reads absent as
+// legacy, not as NEVER), so every explicit policy is non-zero and can never be
+// selected by accident. Defaulting is NOT this enum's job: the embedded
+// apiserver stamps ALWAYS for a `:latest`/untagged reference and IF_NOT_PRESENT
+// otherwise, and the provider forwards the stamped value verbatim.
+enum ImagePullPolicy {
+  IMAGE_PULL_POLICY_UNSPECIFIED = 0;
+  // ALWAYS re-resolves the reference against the registry on every container
+  // start (corev1 "Always"). Cached blobs are still reused; it is the manifest
+  // resolution that must be fresh.
+  IMAGE_PULL_POLICY_ALWAYS = 1;
+  // IF_NOT_PRESENT pulls only when the reference is absent from the node's
+  // local image index (corev1 "IfNotPresent") — a hit performs zero registry
+  // round trips.
+  IMAGE_PULL_POLICY_IF_NOT_PRESENT = 2;
+  // NEVER makes no pull attempt at all (corev1 "Never"): a locally absent image
+  // is a terminal start failure, never a network fetch.
+  IMAGE_PULL_POLICY_NEVER = 3;
 }
 
 // EnvVar is a single environment variable. Exactly one of value or value_from
