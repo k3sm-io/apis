@@ -279,7 +279,7 @@ phases:
             done: false
             desc: "Public CI workflow — apis/.github/workflows/ci.yml, a THIN wrapper over the existing hack/ci.sh (no logic duplication): CGO_ENABLED=0, macos-15 arm64 runner, gofmt -l / go vet / go build / go test with -race, plus the buf generate-diff + buf breaking gates apis already runs. dco.yml already exists in all repos, so the red-at-main reason is 'no ci.yml exists', not 'no workflows exist'. README refresh: apis's front-door README becomes the public go-gettable contract page (badges, pitch, the k3sm.io/apis vanity path) — apis stays clean / go-gettable (no committed replaces, unlike k3sm)."
           - id: M7.2-d2
-            done: false
+            done: true  # landed standalone 2026-08-29 via the B187 carve (apis#34) — m11-plan R25(b); the prose capability list below is superseded by the phases.json-derived taxonomy in k3smtest
             desc: "k3smtest.SkipUnless shared test helper + capability taxonomy HOSTED IN apis. A new package (k3sm.io/apis/k3smtest) exporting SkipUnless(t, cap) over the ONE owned capability taxonomy (root, lo0, utun, pf, clang, apple-gpu, macos-26, network); when K3SM_CI_REQUIRE names a cap that is absent, the helper is FATAL (not skip) so self-skips turn red, not silent — an env-var helper without the meta-test fails open by construction. apis is the DAG-legal home runtimed, darwin-net, and k3sm all import (a leaf copy would drift or force a sideways import). Pure Go, zero k3sm.io/* imports; the no-raw-t.Skip lint + the meta-test get named homes in the consuming repos."
         acceptance:
           - id: M7.2-a1
