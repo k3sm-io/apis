@@ -21,14 +21,16 @@ import (
 	"testing"
 )
 
-// TestRosettaAndPlatformKeys pins the exact byte strings of the M11 label and
-// annotation keys.
+// TestRosettaAndPlatformKeys pins the exact byte strings of the runtime-area
+// label and annotation keys (M11's Rosetta/platform keys and M8's
+// internet-egress opt-in).
 //
-// These are not decoration: a node is SELECTED by these keys and a pod's images
-// are RESOLVED by that annotation, so a typo or a rename is a break for every
-// already-labelled node and every already-scheduled pod — and one that compiles
-// perfectly. The constants exist so no consumer spells a literal; this test
-// exists so the constants themselves cannot drift silently.
+// These are not decoration: a node is SELECTED by these keys, a pod's images are
+// RESOLVED by the platform annotation, and a pod's sandbox is WIDENED by the
+// egress annotation — so a typo or a rename is a break for every already-labelled
+// node and every already-admitted pod, and one that compiles perfectly. The
+// constants exist so no consumer spells a literal; this test exists so the
+// constants themselves cannot drift silently.
 func TestRosettaAndPlatformKeys(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -37,6 +39,7 @@ func TestRosettaAndPlatformKeys(t *testing.T) {
 		{"LabelRosetta", LabelRosetta, "k3sm.io/rosetta"},
 		{"LabelRosettaLinux", LabelRosettaLinux, "k3sm.io/rosetta-linux"},
 		{"AnnotationImagePlatform", AnnotationImagePlatform, "k3sm.io/image-platform"},
+		{"AnnotationInternetEgress", AnnotationInternetEgress, "k3sm.io/internet-egress"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

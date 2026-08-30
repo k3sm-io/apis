@@ -72,4 +72,24 @@ const (
 	// binfmt registration set). If that need appears, it arrives as a new
 	// explicit surface, not as a key-naming convention.
 	AnnotationImagePlatform = "k3sm.io/image-platform"
+
+	// AnnotationInternetEgress is the POD-LEVEL annotation opting a workload in
+	// to reaching networks beyond the cluster. It is the operator-facing spelling
+	// of SandboxProfile.allow_internet_egress: the k3sm provider reads this
+	// annotation at admission and sets that proto field; nothing else sets it.
+	//
+	// It lives HERE, in the runtime-area package, and deliberately not in
+	// mlx/v1alpha1 — it is a k3sm.io/*-domain key that parameterizes this
+	// runtime contract's SandboxProfile, and it is not MLX-specific (any pod that
+	// must fetch from the internet wants it). The mlx package holds only
+	// mlx.k3sm.io/* keys.
+	//
+	// Enforcement ceiling, stated plainly (the same words the proto field
+	// carries, because a consumer that reads only one of the two must still get
+	// the truth): at the Seatbelt layer this currently emits the same
+	// unfiltered-but-compilable network stanza as allow_network (macOS 26 cannot
+	// express per-IP scoping); it is the API/admission contract — network-layer
+	// (packet-filter) enforcement is tracked as future work. Treat its absence as
+	// an admission-visible declaration, not as a proven network boundary.
+	AnnotationInternetEgress = "k3sm.io/internet-egress"
 )

@@ -868,8 +868,48 @@ message SandboxProfile {
   // choose a default. Ignored unless backend == SANDBOX_BACKEND_VM.
   int64 vm_memory_bytes = 101;
 
-  // 100..101 allocated above; 102..149 stay reserved (149 ceiling preserved).
-  reserved 102 to 149; // future fine-grained mach-service / sysctl allow rules.
+  // --- M8 GPU + internet-egress opt-ins (allocated from SandboxProfile's
+  // reserved 100..149 band). Both are per-pod WIDENINGS of the default-deny
+  // profile, both default false, and both are set by the k3sm provider from an
+  // explicit workload opt-in — never inferred. A daemon that predates them
+  // ignores the fields, and a provider that predates them never sets them, so
+  // the pair needs no phased provider<->runtimed rollout. ---
+
+  // allow_gpu, when true, widens the generated profile with the Metal/GPU
+  // access an on-device inference workload needs (the IOKit user clients and
+  // GPU mach services a Metal device open requires), on top of the default-deny.
+  // It is a real widening: a pod granted it can open the shared GPU and consume
+  // its memory, so it is granted only to workloads that asked for the GPU
+  // resource. When false the profile denies GPU access and a Metal device open
+  // fails inside the pod.
+  //
+  // It is a REQUEST, not an assertion of capability: a host with no usable
+  // Metal device honours the flag by granting access that then finds no device.
+  // GetRuntimeInfoResponse.gpu is where a caller learns what the host actually
+  // has (GPUFacts.sandbox_gpu_supported reports whether the selected backend can
+  // grant this at all).
+  bool allow_gpu = 102;
+
+  // allow_internet_egress, when true, declares that the pod may reach networks
+  // beyond the cluster — the opt-in a model-fetching or package-pulling
+  // workload needs, distinct from allow_network's pod-IP-scoped cluster traffic.
+  //
+  // Enforcement ceiling, stated plainly: at the Seatbelt layer this currently
+  // emits the same unfiltered-but-compilable network stanza as allow_network
+  // (macOS 26 cannot express per-IP scoping); it is the API/admission contract
+  // — network-layer (packet-filter) enforcement is tracked as future work.
+  //
+  // Read that ceiling before relying on this field for isolation: today it
+  // records and gates the INTENT (an admission decision a cluster operator can
+  // see and refuse), and the runtime cannot yet make a pod that was denied it
+  // provably unable to reach the internet if allow_network is already true.
+  bool allow_internet_egress = 103;
+
+  // 100..103 allocated above; 104..149 stay reserved (149 ceiling preserved).
+  // The headroom is for further per-pod profile opt-ins of the same shape —
+  // fine-grained mach-service / sysctl allow rules, and any narrowing of the
+  // network grants above once the platform can express one.
+  reserved 104 to 149;
 }
 
 // SandboxBackend is the pod isolation mechanism. UNSPECIFIED means the runtime
@@ -1494,7 +1534,80 @@ message GetRuntimeInfoResponse {
   // healthy is the overall readiness; conditions detail subsystems.
   bool healthy = 4;
   repeated RuntimeCondition conditions = 5;
-  reserved 100 to 149; // M2: backend capabilities, OS version, feature flags.
+
+  // --- M8 GPU facts (allocated from GetRuntimeInfoResponse's reserved 100..149
+  // band). The node advertisement (the mlx.k3sm.io/gpu extended resource and the
+  // chip labels) is derived from THIS message, so the facts cross the contract
+  // once, from the daemon that can actually probe the hardware. ---
+
+  // gpu reports the host's GPU facts. Absent (nil) means this daemon does not
+  // report GPU facts at all — an older daemon, distinct from a daemon that
+  // reports a host with no usable GPU (present, metal_available false). A
+  // consumer MUST treat the two differently: the first is "unknown", the second
+  // is "known to be absent", and collapsing them advertises a GPU resource on
+  // nodes that have none.
+  GPUFacts gpu = 100;
+
+  // 100 allocated above; 101..149 stay reserved (149 ceiling preserved).
+  // 101 is earmarked for the backend-capabilities message (the M2 note below);
+  // it is RESERVED rather than merely earmarked so no carve can take it first.
+  reserved 101 to 149; // 101: backend capabilities; 102..149: OS version, feature flags.
+}
+
+// GPUFacts is what the daemon can observe about this host's GPU. It is a report
+// of FACTS, never a policy: nothing here says whether a given pod may use the
+// GPU (that is SandboxProfile.allow_gpu), only what is there to be used.
+message GPUFacts {
+  // metal_available reports that the host has a usable Metal device. False on a
+  // host with no GPU the daemon can open — including one where the device exists
+  // but the daemon's own environment cannot reach it.
+  bool metal_available = 1;
+
+  // chip_brand is the marketing chip name exactly as the host reports it, spaces
+  // and all (e.g. "Apple M4 Max"). It is carried VERBATIM: this is the raw fact,
+  // and it is not a valid Kubernetes label value. The node-label form is a
+  // normalized slug derived by the consumer that advertises the node — see the
+  // chip-slug rule documented on the mlx.k3sm.io label constants.
+  string chip_brand = 2;
+
+  // chip_family is the coarser family the chip belongs to (e.g. "M4"), for
+  // scheduling that wants a generation rather than an exact model. Same
+  // verbatim-fact posture as chip_brand.
+  string chip_family = 3;
+
+  // mem_bytes is the host's total physical memory in bytes. On Apple Silicon
+  // this IS the GPU's memory too (unified memory), which is why it is a GPU
+  // fact: it is the ceiling every other number here is measured against.
+  uint64 mem_bytes = 4;
+
+  // iogpu_wired_limit_bytes is the configured iogpu wired-memory limit in bytes
+  // — the cap on how much memory the GPU may wire down, which for a large model
+  // is the binding constraint rather than mem_bytes.
+  //
+  // 0 is a MODELLED SENTINEL meaning "no explicit limit is configured; the
+  // kernel default applies". It does NOT mean "no limit known" and it does NOT
+  // mean "no limit". A consumer must not read 0 as unbounded headroom, and must
+  // not treat it as a missing fact: the daemon reports 0 precisely when it
+  // successfully determined that the host carries no override.
+  uint64 iogpu_wired_limit_bytes = 5;
+
+  // recommended_max_working_set_bytes is the Metal device's recommended maximum
+  // working-set size in bytes — the largest allocation footprint Metal advises
+  // for this device. It is the number a model-admission check should size
+  // against; 0 when metal_available is false or the value could not be read.
+  uint64 recommended_max_working_set_bytes = 6;
+
+  // sandbox_gpu_supported reports whether THE CURRENTLY-SELECTED sandbox backend
+  // can grant a pod GPU access at all (i.e. whether SandboxProfile.allow_gpu can
+  // take effect on this daemon as configured).
+  //
+  // It is scoped to the selected backend on purpose and is NOT a property of the
+  // host: the same machine can support GPU pods under one backend and not
+  // another, so a consumer must not cache it as a hardware fact or infer it from
+  // metal_available.
+  bool sandbox_gpu_supported = 7;
+
+  reserved 100 to 149; // future GPU facts (per-device enumeration, driver/OS versions).
 }
 
 // RuntimeCondition is a single daemon subsystem health signal.
