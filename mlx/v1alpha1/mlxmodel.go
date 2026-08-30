@@ -184,6 +184,11 @@ const (
 	MLXModelPhasePending MLXModelPhase = "Pending"
 	// MLXModelPhaseDownloading means the weights are being fetched.
 	MLXModelPhaseDownloading MLXModelPhase = "Downloading"
+	// MLXModelPhaseLoading means the weights are fetched and the serving
+	// surface answers but readiness has not yet passed (model loading /
+	// first compile). Distinct from Downloading so an operator can tell a
+	// stalled fetch from a long load.
+	MLXModelPhaseLoading MLXModelPhase = "Loading"
 	// MLXModelPhaseReady means at least the desired replicas are serving.
 	MLXModelPhaseReady MLXModelPhase = "Ready"
 	// MLXModelPhaseFailed means the model cannot be served and will not retry

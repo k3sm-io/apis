@@ -194,6 +194,7 @@ spec:
                   enum:
                     - Pending
                     - Downloading
+                    - Loading
                     - Ready
                     - Failed
                 endpoint:
