@@ -1,0 +1,204 @@
+# MLXModel CRD (mlx.k3sm.io/v1alpha1) — the native Apple-Silicon ML serving
+# contract (apis:M8.1).
+#
+# Hand-authored (apis runs no controller-gen) to match the Go type in
+# k3sm.io/apis/mlx/v1alpha1 (mlxmodel.go). k3sm's CRD-ensure applies THIS
+# manifest from the embedded bytes in k3sm.io/apis/config/crd — there is no
+# shadow copy anywhere, so this file is the single source of truth for the
+# served schema.
+#
+# ALPHA: a single version v1alpha1 is both served and stored, and unlike the
+# net.k3sm.io/v1 MeshPeer schema beside it this one is NOT additive-only.
+# Incompatible changes are allowed at any release; see the package doc.
+#
+# Scope is Namespaced: an MLXModel owns namespaced workload objects (a serving
+# deployment, a Service, and optionally a cache PVC), unlike the cluster-scoped
+# node-topology MeshPeer.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: mlxmodels.mlx.k3sm.io
+spec:
+  group: mlx.k3sm.io
+  scope: Namespaced
+  names:
+    kind: MLXModel
+    listKind: MLXModelList
+    plural: mlxmodels
+    singular: mlxmodel
+    shortNames:
+      - mlxm
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      additionalPrinterColumns:
+        - name: Model
+          type: string
+          jsonPath: .spec.model
+        - name: Phase
+          type: string
+          description: Derived single-word summary of status.conditions (display only).
+          jsonPath: .status.phase
+        - name: Endpoint
+          type: string
+          jsonPath: .status.endpoint
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: MLXModel is one MLX-served model — the model to fetch, the unified memory it needs, and how many replicas serve it.
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required:
+                - model
+                - memory
+              # spec.distributed is RESERVED for multi-node sharded serving. It is
+              # representable so a spec that sets it can be REJECTED with a legible
+              # reason — a silently-ignored sharding request would serve the model
+              # single-node and look like success. The contract test for this rule
+              # lives in k3sm beside the CRD-ensure code, which already carries the
+              # apiextensions structural-schema dependencies.
+              x-kubernetes-validations:
+                - rule: '!has(self.distributed)'
+                  message: spec.distributed is reserved for a future multi-node (JACCL) release and must not be set
+              properties:
+                model:
+                  type: string
+                  description: Model is the model repository reference to serve (e.g. mlx-community/Llama-3.2-3B-Instruct-4bit).
+                  minLength: 1
+                revision:
+                  type: string
+                  description: Revision pins the model to an exact immutable revision; empty means the repository's MUTABLE default branch (status.resolvedRevision records what was actually resolved).
+                quantization:
+                  type: string
+                  description: Quantization is the quantization variant to serve (e.g. 4bit) when the repository offers a choice.
+                memory:
+                  anyOf:
+                    - type: integer
+                    - type: string
+                  pattern: '^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$'
+                  x-kubernetes-int-or-string: true
+                  description: Memory is the unified memory the served model needs — the real scheduling constraint on Apple Silicon, where the GPU shares system memory. Required, with no default.
+                replicas:
+                  type: integer
+                  format: int32
+                  description: Replicas is the number of serving replicas; unset means one, and an explicit 0 scales to zero without deleting the object.
+                  minimum: 0
+                port:
+                  type: integer
+                  format: int32
+                  description: Port is the port the serving process listens on and the generated Service exposes; 0 means the operator default.
+                  minimum: 0
+                  maximum: 65535
+                runtime:
+                  type: object
+                  description: Runtime configures the serving container.
+                  properties:
+                    image:
+                      type: string
+                      description: Image is the serving image; empty means the operator's pinned default mlx-serve image.
+                    args:
+                      type: array
+                      description: Args are extra arguments appended to the serving command.
+                      items:
+                        type: string
+                cache:
+                  type: object
+                  description: Cache requests a persistent volume for downloaded weights; absent means no cache volume and weights are re-fetched per node.
+                  required:
+                    - size
+                  properties:
+                    size:
+                      anyOf:
+                        - type: integer
+                        - type: string
+                      pattern: '^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$'
+                      x-kubernetes-int-or-string: true
+                      description: Size is the requested capacity of the cache volume; it must exceed the model's on-disk size.
+                    storageClassName:
+                      type: string
+                      description: StorageClassName selects the storage class for the cache volume; empty means the cluster default.
+                nodeSelector:
+                  type: object
+                  description: NodeSelector narrows which nodes may serve this model, on top of the mlx.k3sm.io/gpu resource request the operator always adds.
+                  additionalProperties:
+                    type: string
+                distributed:
+                  type: object
+                  description: Distributed is RESERVED for multi-node sharded serving and must not be set (rejected by the CEL rule on spec).
+                  properties:
+                    nodes:
+                      type: integer
+                      format: int32
+                      description: Nodes is the number of nodes the model would shard across. Reserved; not honoured.
+            status:
+              type: object
+              description: MLXModelStatus is conditions-first — conditions are the contract, and phase/endpoint/resolvedRevision are derived conveniences.
+              properties:
+                conditions:
+                  type: array
+                  description: Conditions are the standard Kubernetes conditions, of which Ready is the primary one.
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                      - lastTransitionTime
+                      - reason
+                    properties:
+                      type:
+                        type: string
+                        maxLength: 316
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                        maxLength: 1024
+                      message:
+                        type: string
+                        maxLength: 32768
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - type
+                observedGeneration:
+                  type: integer
+                  format: int64
+                  description: ObservedGeneration is the metadata.generation this status was computed from; a consumer that skips this check can read a condition describing the previous spec.
+                  minimum: 0
+                phase:
+                  type: string
+                  description: Phase is the DERIVED single-word summary of conditions, for display only — never branch on it.
+                  enum:
+                    - Pending
+                    - Downloading
+                    - Ready
+                    - Failed
+                endpoint:
+                  type: string
+                  description: Endpoint is the in-cluster address clients use to reach the served model.
+                resolvedRevision:
+                  type: string
+                  description: ResolvedRevision is the exact model revision actually being served — the only record of what is really running when spec.revision was empty.
