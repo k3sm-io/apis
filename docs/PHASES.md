@@ -293,7 +293,8 @@ phases:
 
   - id: M8
     title: MLX — native Apple-Silicon ML serving (apis slice — MLXModel CRD + proto GPU/egress facts)
-    status: todo
+    status: done
+    completed: 2026-08-29
     depends_on: []
     notes: >-
       apis is Wave 1 of M8 (CRD introduction and the reserved-band carve +
@@ -307,7 +308,8 @@ phases:
     subphases:
       - id: M8.1
         title: MLXModel CRD + proto GPU/egress facts
-        status: in-progress
+        status: done
+        completed: 2026-08-29
         depends_on: []
         deliverables:
           - id: M8.1-d1
@@ -326,7 +328,7 @@ phases:
             done: true
             desc: "RECORD-ONLY placement note (no apis code — satisfied by this ledger entry plus the a2/a3 gates asserting apis carries ONLY DeepCopy/round-trip tests): the spec.distributed-set→rejected CEL contract test lives in k3sm beside pkg/crdensure (which already carries the k8s apiextensions structural-schema dependency set), recorded here like the NodePort/NodeNetwork no-ops so nobody adds k8s deps to apis — a faithful CEL test would drag apiextensions machinery into apis's deliberately-minimal graph, violating the zero-heavy-dep posture. The M8.1 wave marks this done together with d4 (no separate build step). RE-SCOPED 2026-08-29 (operator-directed reconciliation): was worded as a deliverable; it is a record with a no-op done criterion."
           - id: M8.1-d6
-            done: false
+            done: true  # 2026-08-29 — k3sm#171 (DESIGN 5a egress ceiling + GPU opt-in) + the workspace privilege-model section
             desc: "DESIGN + privilege-model doc edits (named M8.1 deliverables — these ARE apis-milestone work, not k3sm's): k3sm/docs/DESIGN.md §5a (the per-pod internet-egress opt-in widening + the content-addressed-tree materialize note) / §5b, plus the privilege-model doc, edited for the egress opt-in and the new mlx.k3sm.io CRD group."
         acceptance:
           - id: M8.1-a1
