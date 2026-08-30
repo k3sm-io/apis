@@ -307,38 +307,38 @@ phases:
     subphases:
       - id: M8.1
         title: MLXModel CRD + proto GPU/egress facts
-        status: todo
+        status: in-progress
         depends_on: []
         deliverables:
           - id: M8.1-d1
-            done: false
+            done: true
             desc: "MLXModel CRD types in a NEW k3sm.io/apis/mlx/v1alpha1 package — hand-written types mirroring the net/v1 MeshPeer precedent (metav1 TypeMeta/ObjectMeta, hand-written DeepCopy*/DeepCopyObject, no code-gen), but EXPLICITLY ALPHA-BRANDED: v1alpha1, incompatible changes allowed + documented in the package doc (a deliberate divergence from MeshPeer's served-v1 posture — the headline user-facing API earns a graduation runway). MLXModelSpec{Model, Revision, Quantization, Memory resource.Quantity (required — the real scheduling constraint), Replicas *int32, Port int32, Runtime{Image,Args}, Cache{Size,StorageClassName}, NodeSelector, Distributed *MLXDistributed}; Status is conditions-first ([]metav1.Condition + observedGeneration + status subresource) with a derived Phase printer column, Endpoint, ResolvedRevision. spec.Distributed is RESERVED (the JACCL seam) — its CEL-rejection test lives in k3sm, NOT here (see M8.1-d5)."
           - id: M8.1-d2
-            done: false
+            done: true
             desc: "Additive proto fields carved from the reserved bands of runtime/v1/runtime.proto, following the in-file allocation-comment convention (the M2.2/M5.1 band-carve precedent): SandboxProfile bool allow_gpu = 102 + bool allow_internet_egress = 103 (re-carve to `reserved 104 to 149`, and REWRITE the band comment HONESTLY — the current 'fine-grained mach-service / sysctl allow rules' text fits allow_gpu but not egress, so the comment stays truthful when re-carving); GetRuntimeInfoResponse GPUFacts gpu = 100 (message: metal_available, chip_brand, chip_family, mem_bytes, iogpu_wired_limit_bytes (0 = the kernel-default sentinel, modeled explicitly — not 'no limit known'), recommended_max_working_set_bytes, sandbox_gpu_supported (scoped 'the currently-selected backend supports Metal')). RESERVE 101 — not merely earmark it: the carve is `reserved 101 to 149;` with the backend-capabilities earmark comment on 101."
           - id: M8.1-d3
-            done: false
+            done: true
             desc: "NEW k3sm.io/apis/config/crd //go:embed package — the CRD manifest apis/config/crd/mlx.k3sm.io_mlxmodels.yaml (beside the existing net.k3sm.io_meshpeers.yaml) exported via a new go:embed package with a NAMED PER-CRD ACCESSOR, so k3sm's SSA ensure consumes the embedded bytes with NO shadow copy. M8's k3sm crdensure applies mlxmodels ONLY; MeshPeer stays out-of-band as today (adopting it is a named future follow-up with an M3-regression check, not an embed-glob side effect)."
           - id: M8.1-d4
-            done: false
+            done: true
             desc: "Exported string constants — in k3sm.io/apis/mlx/v1alpha1: GroupName = \\\"mlx.k3sm.io\\\", ResourceGPU = \\\"mlx.k3sm.io/gpu\\\", LabelGPUPresent = \\\"mlx.k3sm.io/gpu.present\\\" (DISTINCT from the resource name), LabelChip/LabelChipFamily/LabelMemoryGB, plus the chip-slug normalization rule (apple-m4-max, not the raw space-bearing chip_brand). BUT the internet-egress annotation constant is k3sm.io/*-domain and parameterizes runtime/v1 SandboxProfile, so it lives in a RUNTIME-AREA apis package, NOT mlx/v1alpha1 (the MLX package holds only mlx.k3sm.io/* constants). No string literals in k3sm/runtimed."
           - id: M8.1-d5
-            done: false
+            done: true
             desc: "RECORD-ONLY placement note (no apis code — satisfied by this ledger entry plus the a2/a3 gates asserting apis carries ONLY DeepCopy/round-trip tests): the spec.distributed-set→rejected CEL contract test lives in k3sm beside pkg/crdensure (which already carries the k8s apiextensions structural-schema dependency set), recorded here like the NodePort/NodeNetwork no-ops so nobody adds k8s deps to apis — a faithful CEL test would drag apiextensions machinery into apis's deliberately-minimal graph, violating the zero-heavy-dep posture. The M8.1 wave marks this done together with d4 (no separate build step). RE-SCOPED 2026-08-29 (operator-directed reconciliation): was worded as a deliverable; it is a record with a no-op done criterion."
           - id: M8.1-d6
             done: false
             desc: "DESIGN + privilege-model doc edits (named M8.1 deliverables — these ARE apis-milestone work, not k3sm's): k3sm/docs/DESIGN.md §5a (the per-pod internet-egress opt-in widening + the content-addressed-tree materialize note) / §5b, plus the privilege-model doc, edited for the egress opt-in and the new mlx.k3sm.io CRD group."
         acceptance:
           - id: M8.1-a1
-            met: false
+            met: true
             check: "buf breaking runs against the PRE-CARVE committed baseline FIRST (proves the reserved-band carve is additive — no field renumber, no reserved-number reuse, 101 reserved), THEN buf/baseline.binpb is regenerated as the new floor (checking against a regenerated baseline is self-comparison and proves nothing); buf generate leaves no diff; apis/hack/ci.sh green"
             method: unit
           - id: M8.1-a2
-            met: false
+            met: true
             check: "builds CGO_ENABLED=0 standalone (GOWORK=off) + under go.work; the MLXModel DeepCopy golden + JSON round-trip and proto.Equal round-trip hold for GPUFacts + the new SandboxProfile fields (table-driven, -race clean)"
             method: unit
           - id: M8.1-a3
-            met: false
+            met: true
             check: "the module still imports zero k3sm.io/* packages (cycle check); alpha branding is asserted (registered GVK group mlx.k3sm.io, version v1alpha1); the egress annotation constant is NOT in the mlx package"
             method: build
 
@@ -625,6 +625,8 @@ user docs, website, and hygiene scrub are `k3sm` / site-repo work with **no `api
 - ⬜ `M7.2-a2` the **`SkipUnless` meta-test passes** — with `K3SM_CI_REQUIRE` naming a REQUIRE-set cap that is absent, `SkipUnless` is `t.Fatal`, not `t.Skip`; the taxonomy is table-tested; `-race` clean — *method: unit*
 
 ## M8 — MLX: native Apple-Silicon ML serving (apis slice) ⬜
+
+**M8.1 d1–d5 ✅ 2026-08-29** (apis#33 — MLXModel v1alpha1 + GPU/egress carves + embedded CRD + constants; a1 proven vs the pre-carve baseline with a live negative control, a2/a3 mutation-spot-checked; d6 — the DESIGN/privilege-model prose in k3sm — is the one open row).
 `apis` is **Wave 1** of M8 (CRD introduction is human-reviewed). **Hard cut** — additive only: a **new
 alpha CRD group** (`mlx.k3sm.io/v1alpha1`, no existing consumers) and proto fields carved from the
 **explicitly reserved bands** of `runtime/v1/runtime.proto` (`SandboxProfile 102..149`,
