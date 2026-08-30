@@ -380,7 +380,8 @@ phases:
 
   - id: M11
     title: Linux containers & multi-arch (apis slice — guest/v1 vsock contract + platform fields + Rosetta label constants)
-    status: todo
+    status: done
+    completed: 2026-08-29
     depends_on: []
     notes: >-
       apis is Wave 1 of M11 (docs/m11-plan.md — authoritative; Phase C encoded from it).
@@ -404,32 +405,33 @@ phases:
     subphases:
       - id: M11.1
         title: guest/v1 (GuestAgent + GuestSpec + VMHostSpec) + runtime/v1 platform/hostPath carves + label constants
-        status: todo
+        status: done
+        completed: 2026-08-29
         depends_on: []
         deliverables:
           - id: M11.1-d1
-            done: false
+            done: true
             desc: "NEW k3sm.io/apis/guest/v1 proto package — the WHOLE VM contract family in ONE home (deliberately no apis/vm/v1): the GuestAgent vsock gRPC service (Health{ready, leased guest IP, rosetta_registered, api_version/capabilities}, ContainerEvents stream{started/exited{code,signal,oom}}, Exec/Logs REUSING runtime/v1 stream messages (the reuse doc states pod_id must match the booted pod and container selects — single-pod-guest semantics), Stats{per-container cgroup2 cpu usage_usec + working set = memory.current − inactive_file}, Stop{grace_seconds → TERM→KILL→poweroff}), the GuestSpec message (guest-spec.json is its proto-JSON: hostname, resolv_conf, containers[]{name, rootfs_tag, RunSpec fields, uid/gid/supplemental_gids, init}, mounts[]{tag_or_source, target, kind VIRTIOFS|TMPFS|BIND, read_only, size_limit, idmap}, rosetta, fs_group, agent_port), and the VMHostSpec message (vmhost.spec.json: pod_id, vcpus, memory_bytes, kernel_path, initramfs_path, cmdline, shares[]{tag, host_path, read_only}, rosetta, agent_vsock_port, mac_address). Package doc records the placement rationale (the initramfs embedding the agent is an independently-shipped pinned artifact ⇒ genuine versioned wire contract), the additive-only stability header, and the lockstep-pin compat posture. doc.go required."
           - id: M11.1-d2
-            done: false
+            done: true
             desc: "runtime/v1 band carves (additive; re-narrow each reserved range + REWRITE the band comments honestly — the M8.1-d4 convention). RE-SCOPED 2026-08-29 (operator-directed reconciliation) — REMAINING (B127 landed ImageManifest.platform=100 + index_digest=101 on 2026-08-10; M12.1's image_pull_policy already occupies Container 101): Container.image_platform = 100 (the pinned number — the band comment reserves it by name; typed as the existing Platform message; rewrite the band comment, re-carve reserved 102 to 149 minus 101), Volume.host_path = 8 + HostPathVolumeSource{path,type} verbatim-corev1/consumer-less, and the Container.command discriminator doc comment. The ImageManifest half of the old text is DONE-by-B127 — do not re-carve it. Surviving contract detail on the three remaining carves: image_platform is typed as the EXISTING Platform message, never a string (one normalization point for os/arch/variant incl. arm64 \"\"≡v8); HostPathVolumeSource{path, type} is a VERBATIM corev1 mirror — shape only, ALL enforcement semantics (allowlist, share-vs-snapshot) stay OUT of the proto, and the field lands CONSUMER-LESS (guest hostPath is fail-closed rejected until human-gated B98 lands — m11-plan Resolution 1); the resolveBinary contract comment on Container.command DISCRIMINATES rather than retires the M0 empty-command convention — absolute-path image string ⇒ host-binary convention; OCI reference ⇒ image-config merge (consumed in runtimed M11.2-d1)."
           - id: M11.1-d3
-            done: false
+            done: true
             desc: "Exported label/annotation constants (runtime-area apis package, the M8.1-d4 placement rule): k3sm.io/rosetta (host Rosetta), k3sm.io/rosetta-linux (guest Rosetta ∧ VMBackendAvailable — the composition is documented on the constant), k3sm.io/image-platform (the per-POD override annotation; the k3sm provider parses once and stamps Container.image_platform per-container — the pod-level annotation applies to every container, no per-container key form in v1). No string literals in runtimed/k3sm."
           - id: M11.1-d4
-            done: false
+            done: true  # verified pre-encoded by the W0 roadmap PR (DESIGN.md:84/:102/:107), 2026-08-29
             desc: "DESIGN doc edits (named M11.1 deliverables — the m8-Res.19 pattern): k3sm/docs/DESIGN.md §5a multi-arch-aware pull sentence (platform-keyed cache, fail-closed ErrNoPlatformMatch, vm-path whiteout unpack, digest-pin stays the vm integrity anchor) + §5c/§6 third-entitled-artifact prose (k3sm-vmhost carries com.apple.security.virtualization ONLY; the one-signed-binary statement gains the helper the same way k3sm-netd did) — pre-encoded by the roadmap PR, kept truthful here if the wave moves them."
         acceptance:
           - id: M11.1-a1
-            met: false
+            met: true
             check: "buf breaking runs against the PRE-carve committed baseline FIRST (additive only — no renumber, no reserved-number reuse), THEN buf/baseline.binpb regenerated as the new floor (the M8.1 baseline discipline); buf generate no-diff; apis/hack/ci.sh green"
             method: unit
           - id: M11.1-a2
-            met: false
+            met: true
             check: "guest/v1 proto round-trips (proto.Equal golden); GuestSpec + VMHostSpec proto-JSON goldens hold (the spec files ARE this encoding); Health carries api_version; CGO_ENABLED=0 standalone (GOWORK=off) + go.work builds; -race clean"
             method: unit
           - id: M11.1-a3
-            met: false
+            met: true
             check: "the module still imports zero k3sm.io/* packages (cycle check); Container.image_platform/ImageManifest.platform are the Platform message type (no string platform field anywhere); Volume.host_path mirrors corev1 exactly (path+type only); NO SandboxProfile.guest_network field exists"
             method: build
 
@@ -692,6 +694,8 @@ in this change:
   `spec.distributed` CEL test lives in `k3sm`, not `apis` (keeps `apis`'s graph minimal).
 
 ## M11 — Linux containers & multi-arch (apis slice) ⬜
+
+**M11.1 ✅ DONE 2026-08-29** (apis#32 — guest/v1 GuestAgent contract + the three runtime/v1 carves + label constants; a1 proven vs the pre-carve baseline, a2 goldens mutation-checked, a3 module-graph clean; d4 verified pre-encoded by the W0 roadmap PR).
 `apis` is **Wave 1** of M11 (`docs/m11-plan.md` is authoritative; new API surface is human-reviewed).
 **Hard cut** — additive only: a **new proto package** (`guest/v1`, zero existing consumers) + carves
 from the **explicitly reserved** `runtime/v1` bands (`Container 100..149`, `ImageManifest 100..149`)
