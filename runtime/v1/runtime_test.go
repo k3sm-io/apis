@@ -681,16 +681,15 @@ func TestContainerImagePullPolicyFieldNumber(t *testing.T) {
 	if got := fd.Number(); got != 101 {
 		t.Fatalf("image_pull_policy field number = %d, want 101 (>=101: 100 is pinned to image_platform)", got)
 	}
-	// 100 must still be reserved, so the M11.1 carve can claim it unopposed.
-	rr := (&Container{}).ProtoReflect().Descriptor().ReservedRanges()
-	reserved100 := false
-	for i := 0; i < rr.Len(); i++ {
-		if r := rr.Get(i); r[0] <= 100 && 100 < r[1] {
-			reserved100 = true
-		}
-	}
-	if !reserved100 {
-		t.Fatal("Container field number 100 must stay reserved (pinned to M11.1 image_platform)")
+	// 100 was held for M11.1's image_platform, which has since claimed it. The
+	// pin is therefore checked by its OUTCOME rather than by the reservation: 100
+	// belongs to image_platform and to nothing else. Asserting it were still
+	// reserved would now be asserting the carve never landed.
+	md := (&Container{}).ProtoReflect().Descriptor()
+	if got := md.Fields().ByNumber(100); got == nil {
+		t.Fatal("Container field number 100 is unallocated; it is pinned to M11.1's image_platform")
+	} else if got.Name() != "image_platform" {
+		t.Fatalf("Container field 100 = %q, want image_platform (the number was pinned to it)", got.Name())
 	}
 }
 

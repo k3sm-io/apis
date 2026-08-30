@@ -1,0 +1,80 @@
+{
+  "agentPort": 1024,
+  "containers": [
+    {
+      "args": [
+        "initdb /pgdata"
+      ],
+      "command": [
+        "/bin/sh",
+        "-c"
+      ],
+      "env": [
+        "PGDATA=/pgdata"
+      ],
+      "gid": "999",
+      "init": true,
+      "name": "init-db",
+      "rootfsTag": "k3sm.rootfs.init-db",
+      "uid": "999",
+      "workingDir": "/"
+    },
+    {
+      "args": [
+        "-D",
+        "/pgdata"
+      ],
+      "command": [
+        "/usr/local/bin/postgres"
+      ],
+      "env": [
+        "PGDATA=/pgdata",
+        "POSTGRES_DB=stockkitty"
+      ],
+      "gid": "999",
+      "name": "postgres",
+      "rootfsTag": "k3sm.rootfs.postgres",
+      "supplementalGids": [
+        "999",
+        "2000"
+      ],
+      "uid": "999",
+      "workingDir": "/var/lib/postgresql"
+    }
+  ],
+  "fsGroup": "2000",
+  "hostname": "web-0",
+  "mounts": [
+    {
+      "kind": "GUEST_MOUNT_KIND_VIRTIOFS",
+      "readOnly": true,
+      "tagOrSource": "k3sm.proj",
+      "target": "/var/run/secrets/kubernetes.io/serviceaccount"
+    },
+    {
+      "kind": "GUEST_MOUNT_KIND_TMPFS",
+      "sizeLimitBytes": "67108864",
+      "target": "/dev/shm"
+    },
+    {
+      "idmap": true,
+      "kind": "GUEST_MOUNT_KIND_VIRTIOFS",
+      "tagOrSource": "k3sm.pvc.default.pgdata",
+      "target": "/pgdata"
+    }
+  ],
+  "resolvConf": {
+    "nameservers": [
+      "10.43.0.10"
+    ],
+    "options": [
+      "ndots:5"
+    ],
+    "searches": [
+      "default.svc.cluster.local",
+      "svc.cluster.local",
+      "cluster.local"
+    ]
+  },
+  "rosetta": true
+}
