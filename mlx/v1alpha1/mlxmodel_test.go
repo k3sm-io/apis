@@ -413,6 +413,7 @@ func TestMLXModelPhaseValues(t *testing.T) {
 	}{
 		{"Pending", MLXModelPhasePending, "Pending"},
 		{"Downloading", MLXModelPhaseDownloading, "Downloading"},
+		{"Loading", MLXModelPhaseLoading, "Loading"},
 		{"Ready", MLXModelPhaseReady, "Ready"},
 		{"Failed", MLXModelPhaseFailed, "Failed"},
 	}
