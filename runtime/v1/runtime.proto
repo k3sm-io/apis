@@ -217,6 +217,26 @@ message Volume {
   // Added in M3.1 (the next free sequential source number; the M2.1 sources
   // took 2..6). Mirrors corev1.Volume.PersistentVolumeClaim.
   PersistentVolumeClaimVolumeSource persistent_volume_claim = 7;
+
+  // host_path mounts a path from the NODE's filesystem. Added in M11.1 as the
+  // next free sequential source number (2..7 were taken). Mirrors
+  // corev1.Volume.HostPath.
+  //
+  // THIS FIELD IS CONSUMER-LESS ON PURPOSE. It exists so the contract can
+  // express a hostPath volume at all — a pod spec that carries one must be
+  // representable in order to be REJECTED with a legible reason rather than
+  // silently mangled into some other source. No k3sm runtime consumes it today:
+  // hostPath into a guest is fail-closed rejected until the human-gated
+  // allowlist design lands, and /var/lib/k3sm is denied unconditionally,
+  // allowlist or not.
+  //
+  // Enforcement semantics are deliberately NOT in this proto — not the
+  // allowlist, not the share-versus-snapshot decision, not the path
+  // canonicalization. A wire type that encoded a policy would invite a consumer
+  // to trust the policy the spec asserted about itself, and a pod spec is
+  // attacker-shaped input. The shape lives here; every decision lives in the
+  // runtime that reads it.
+  HostPathVolumeSource host_path = 8;
 }
 
 // ConfigMapVolumeSource mounts a ConfigMap as files. Mirrors
@@ -357,6 +377,27 @@ message PersistentVolumeClaimVolumeSource {
   bool read_only = 2;
 }
 
+// HostPathVolumeSource mounts a host path into a pod. It is a VERBATIM mirror
+// of corev1.HostPathVolumeSource — path plus the optional type — and nothing
+// more: mirroring upstream exactly means a pod spec survives the trip through
+// this contract unchanged, so what k3sm later refuses is the volume the user
+// actually asked for.
+//
+// SHAPE ONLY. Whether a host path may be mounted at all, which paths an
+// allowlist permits, and whether a permitted path is shared live or snapshotted
+// are RUNTIME decisions that stay out of the wire type (see Volume.host_path).
+message HostPathVolumeSource {
+  // path is the absolute path on the node.
+  string path = 1;
+  // type is the corev1 HostPathType check string ("", "DirectoryOrCreate",
+  // "Directory", "FileOrCreate", "File", "Socket", "CharDevice",
+  // "BlockDevice"). Empty means no check is requested, exactly as upstream —
+  // it is carried as a string because corev1's *HostPathType is a string alias
+  // whose empty value is meaningful, and an enum would have to invent a
+  // zero-value distinction upstream does not have.
+  string type = 2;
+}
+
 // PodSecurityContext is the pod-scoped privilege configuration. fs_group lives
 // HERE (pod-level only). Mirrors the M2.1 subset of corev1.PodSecurityContext.
 // int64 mirrors corev1's *int64; 0 is a valid value (root).
@@ -386,8 +427,25 @@ message Container {
   // path when command/args are empty).
   string image = 2;
 
-  // command and args form argv: argv = command + args. If both are empty the
-  // image reference is treated as the binary path (M0 convention).
+  // command and args form argv: argv = command + args.
+  //
+  // RESOLUTION DISCRIMINATOR (the runtime's resolveBinary contract). When
+  // command is empty, what happens is decided by the SHAPE OF `image`, not by
+  // the emptiness alone:
+  //
+  //   - `image` is an ABSOLUTE PATH (leading '/') — the M0 host-binary
+  //     convention: the reference IS the binary to exec. This convention is
+  //     DISCRIMINATED, not retired; it stays the native path's way to run a
+  //     host binary with no image at all.
+  //   - `image` is an OCI REFERENCE — the runtime resolves argv from the IMAGE
+  //     CONFIG (Entrypoint/Cmd) merged with command/args per the Kubernetes
+  //     four-quadrant rule, with $(VAR) expansion. An OCI-referenced container
+  //     with no command is therefore runnable, which it was not while empty
+  //     command meant "exec the reference".
+  //
+  // The two cases are disjoint by construction — an OCI reference cannot begin
+  // with '/' — so no pod spec is ambiguous, and the discriminator is a property
+  // of the value rather than a mode the caller must remember to set.
   repeated string command = 3;
   repeated string args = 4;
 
@@ -450,10 +508,31 @@ message Container {
   // — the additive consumer-first contract.
   ContainerRestartPolicy restart_policy = 16;
 
-  // --- M12.1 image pull policy (allocated from Container's reserved 100..149
-  // band). 100 is deliberately NOT taken here: it is pinned to M11.1's
-  // image_platform regardless of which of the two carves lands first, so this
-  // allocation starts at 101 and 100 stays reserved below. ---
+  // --- Allocations from Container's reserved 100..149 band. The band is
+  // documented headroom for per-container additions, kept apart from the
+  // sub-100 sequential fields so the two can never collide. 100 was pinned to
+  // image_platform by name before either carve landed and is claimed here;
+  // 101 is M12.1's image_pull_policy. ---
+
+  // image_platform is the EXPLICIT per-container platform override: the
+  // platform the image reference must be resolved to when the reference names a
+  // multi-platform index. It is stamped by the k3sm provider from the pod-level
+  // k3sm.io/image-platform annotation (the annotation applies to every
+  // container in the pod; there is no per-container annotation form).
+  //
+  // ONLY THE OVERRIDE RIDES THE WIRE. The DEFAULT platform is derived
+  // runtimed-side from the sandbox backend plus the node's probed capabilities,
+  // so absent here means "no override — apply the node's default policy", never
+  // "no platform". Sending a default would freeze a provider-side guess into
+  // the contract and let a node that knows better be overruled by a peer that
+  // does not.
+  //
+  // It is the EXISTING Platform message, never a string. One message type means
+  // one normalization point for os / architecture / variant (notably the arm64
+  // variant, where "" and "v8" denote the same platform); a parallel string
+  // field would put a second, silently divergent parser on the other side of
+  // the wire.
+  Platform image_platform = 100;
 
   // image_pull_policy is the per-container imagePullPolicy, mirroring
   // corev1.Container.ImagePullPolicy.
@@ -475,10 +554,9 @@ message Container {
   // restart_policy precedent).
   ImagePullPolicy image_pull_policy = 101;
 
-  // 101 is allocated above. 100 stays reserved (pinned to M11.1's
-  // image_platform) and 102..149 stay reserved for future per-container
-  // additions; the band's 149 ceiling is preserved (additive).
-  reserved 100, 102 to 149;
+  // 100..101 are allocated above; 102..149 stay reserved for future
+  // per-container additions; the band's 149 ceiling is preserved (additive).
+  reserved 102 to 149;
 }
 
 // ContainerRestartPolicy mirrors corev1 container-level restartPolicy (KEP-753
