@@ -22,6 +22,24 @@ lint:
     # CRI-style second service in this one package keeps the sibling's naming.
     - SERVICE_SUFFIX
     - RPC_RESPONSE_STANDARD_NAME
+  ignore_only:
+    # guest/v1's GuestAgent Exec/Logs REUSE the k3sm.runtime.v1 stream messages
+    # verbatim (ExecRequest/ExecResponse, GetLogsRequest/LogEntry): the guest
+    # verbs are the same verbs one hop further in, so declaring parallel copies
+    # is exactly the duplication this shared-contracts module exists to prevent
+    # — and two shapes for one stream would drift. That reuse makes those
+    # messages serve two RPCs each, which trips the uniqueness rule on BOTH the
+    # reusing file and the file that declared them. Scoped to those two paths,
+    # so any other service still gets the rule.
+    RPC_REQUEST_RESPONSE_UNIQUE:
+      - guest/v1/guest.proto
+      - runtime/v1/runtime.proto
+    # Same reuse, second consequence: GuestAgent.Logs takes the reused
+    # GetLogsRequest, whose name follows runtime/v1's GetLogs verb rather than
+    # this service's Logs verb. Renaming the RPC to satisfy the linter would
+    # rename a contract verb to suit a message it deliberately does not own.
+    RPC_REQUEST_STANDARD_NAME:
+      - guest/v1/guest.proto
 breaking:
   use:
     - WIRE_JSON # additive-only: no field renumber, no wire/JSON-incompatible change

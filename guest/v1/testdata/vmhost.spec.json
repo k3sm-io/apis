@@ -1,0 +1,27 @@
+{
+  "agentVsockPort": 1024,
+  "cmdline": "console=hvc0 reboot=k panic=1 quiet",
+  "initramfsPath": "/var/lib/k3sm/guest/initramfs-6.12.0-k3sm1.cpio",
+  "kernelPath": "/var/lib/k3sm/guest/vmlinuz-6.12.0-k3sm1",
+  "macAddress": "5a:9b:7c:8d:9e:0f",
+  "memoryBytes": "2147483648",
+  "podId": "0f6d0b3a-1c2e-4f5a-9b7c-8d9e0f1a2b3c",
+  "rosetta": true,
+  "shares": [
+    {
+      "hostPath": "/var/lib/k3sm/pods/0f6d0b3a/rootfs/postgres",
+      "readOnly": true,
+      "tag": "k3sm.rootfs.postgres"
+    },
+    {
+      "hostPath": "/var/lib/k3sm/pods/0f6d0b3a/projected",
+      "readOnly": true,
+      "tag": "k3sm.proj"
+    },
+    {
+      "hostPath": "/var/lib/k3sm/storage/default/pgdata",
+      "tag": "k3sm.pvc.default.pgdata"
+    }
+  ],
+  "vcpus": 2
+}
