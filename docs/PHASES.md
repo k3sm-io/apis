@@ -307,38 +307,38 @@ phases:
     subphases:
       - id: M8.1
         title: MLXModel CRD + proto GPU/egress facts
-        status: todo
+        status: in-progress
         depends_on: []
         deliverables:
           - id: M8.1-d1
-            done: false
+            done: true
             desc: "MLXModel CRD types in a NEW k3sm.io/apis/mlx/v1alpha1 package — hand-written types mirroring the net/v1 MeshPeer precedent (metav1 TypeMeta/ObjectMeta, hand-written DeepCopy*/DeepCopyObject, no code-gen), but EXPLICITLY ALPHA-BRANDED: v1alpha1, incompatible changes allowed + documented in the package doc (a deliberate divergence from MeshPeer's served-v1 posture — the headline user-facing API earns a graduation runway). MLXModelSpec{Model, Revision, Quantization, Memory resource.Quantity (required — the real scheduling constraint), Replicas *int32, Port int32, Runtime{Image,Args}, Cache{Size,StorageClassName}, NodeSelector, Distributed *MLXDistributed}; Status is conditions-first ([]metav1.Condition + observedGeneration + status subresource) with a derived Phase printer column, Endpoint, ResolvedRevision. spec.Distributed is RESERVED (the JACCL seam) — its CEL-rejection test lives in k3sm, NOT here (see M8.1-d5)."
           - id: M8.1-d2
-            done: false
+            done: true
             desc: "Additive proto fields carved from the reserved bands of runtime/v1/runtime.proto, following the in-file allocation-comment convention (the M2.2/M5.1 band-carve precedent): SandboxProfile bool allow_gpu = 102 + bool allow_internet_egress = 103 (re-carve to `reserved 104 to 149`, and REWRITE the band comment HONESTLY — the current 'fine-grained mach-service / sysctl allow rules' text fits allow_gpu but not egress, so the comment stays truthful when re-carving); GetRuntimeInfoResponse GPUFacts gpu = 100 (message: metal_available, chip_brand, chip_family, mem_bytes, iogpu_wired_limit_bytes (0 = the kernel-default sentinel, modeled explicitly — not 'no limit known'), recommended_max_working_set_bytes, sandbox_gpu_supported (scoped 'the currently-selected backend supports Metal')). RESERVE 101 — not merely earmark it: the carve is `reserved 101 to 149;` with the backend-capabilities earmark comment on 101."
           - id: M8.1-d3
-            done: false
+            done: true
             desc: "NEW k3sm.io/apis/config/crd //go:embed package — the CRD manifest apis/config/crd/mlx.k3sm.io_mlxmodels.yaml (beside the existing net.k3sm.io_meshpeers.yaml) exported via a new go:embed package with a NAMED PER-CRD ACCESSOR, so k3sm's SSA ensure consumes the embedded bytes with NO shadow copy. M8's k3sm crdensure applies mlxmodels ONLY; MeshPeer stays out-of-band as today (adopting it is a named future follow-up with an M3-regression check, not an embed-glob side effect)."
           - id: M8.1-d4
-            done: false
+            done: true
             desc: "Exported string constants — in k3sm.io/apis/mlx/v1alpha1: GroupName = \\\"mlx.k3sm.io\\\", ResourceGPU = \\\"mlx.k3sm.io/gpu\\\", LabelGPUPresent = \\\"mlx.k3sm.io/gpu.present\\\" (DISTINCT from the resource name), LabelChip/LabelChipFamily/LabelMemoryGB, plus the chip-slug normalization rule (apple-m4-max, not the raw space-bearing chip_brand). BUT the internet-egress annotation constant is k3sm.io/*-domain and parameterizes runtime/v1 SandboxProfile, so it lives in a RUNTIME-AREA apis package, NOT mlx/v1alpha1 (the MLX package holds only mlx.k3sm.io/* constants). No string literals in k3sm/runtimed."
           - id: M8.1-d5
-            done: false
+            done: true
             desc: "RECORD-ONLY placement note (no apis code — satisfied by this ledger entry plus the a2/a3 gates asserting apis carries ONLY DeepCopy/round-trip tests): the spec.distributed-set→rejected CEL contract test lives in k3sm beside pkg/crdensure (which already carries the k8s apiextensions structural-schema dependency set), recorded here like the NodePort/NodeNetwork no-ops so nobody adds k8s deps to apis — a faithful CEL test would drag apiextensions machinery into apis's deliberately-minimal graph, violating the zero-heavy-dep posture. The M8.1 wave marks this done together with d4 (no separate build step). RE-SCOPED 2026-08-29 (operator-directed reconciliation): was worded as a deliverable; it is a record with a no-op done criterion."
           - id: M8.1-d6
             done: false
             desc: "DESIGN + privilege-model doc edits (named M8.1 deliverables — these ARE apis-milestone work, not k3sm's): k3sm/docs/DESIGN.md §5a (the per-pod internet-egress opt-in widening + the content-addressed-tree materialize note) / §5b, plus the privilege-model doc, edited for the egress opt-in and the new mlx.k3sm.io CRD group."
         acceptance:
           - id: M8.1-a1
-            met: false
+            met: true
             check: "buf breaking runs against the PRE-CARVE committed baseline FIRST (proves the reserved-band carve is additive — no field renumber, no reserved-number reuse, 101 reserved), THEN buf/baseline.binpb is regenerated as the new floor (checking against a regenerated baseline is self-comparison and proves nothing); buf generate leaves no diff; apis/hack/ci.sh green"
             method: unit
           - id: M8.1-a2
-            met: false
+            met: true
             check: "builds CGO_ENABLED=0 standalone (GOWORK=off) + under go.work; the MLXModel DeepCopy golden + JSON round-trip and proto.Equal round-trip hold for GPUFacts + the new SandboxProfile fields (table-driven, -race clean)"
             method: unit
           - id: M8.1-a3
-            met: false
+            met: true
             check: "the module still imports zero k3sm.io/* packages (cycle check); alpha branding is asserted (registered GVK group mlx.k3sm.io, version v1alpha1); the egress annotation constant is NOT in the mlx package"
             method: build
 
@@ -380,7 +380,8 @@ phases:
 
   - id: M11
     title: Linux containers & multi-arch (apis slice — guest/v1 vsock contract + platform fields + Rosetta label constants)
-    status: todo
+    status: done
+    completed: 2026-08-29
     depends_on: []
     notes: >-
       apis is Wave 1 of M11 (docs/m11-plan.md — authoritative; Phase C encoded from it).
@@ -404,32 +405,33 @@ phases:
     subphases:
       - id: M11.1
         title: guest/v1 (GuestAgent + GuestSpec + VMHostSpec) + runtime/v1 platform/hostPath carves + label constants
-        status: todo
+        status: done
+        completed: 2026-08-29
         depends_on: []
         deliverables:
           - id: M11.1-d1
-            done: false
+            done: true
             desc: "NEW k3sm.io/apis/guest/v1 proto package — the WHOLE VM contract family in ONE home (deliberately no apis/vm/v1): the GuestAgent vsock gRPC service (Health{ready, leased guest IP, rosetta_registered, api_version/capabilities}, ContainerEvents stream{started/exited{code,signal,oom}}, Exec/Logs REUSING runtime/v1 stream messages (the reuse doc states pod_id must match the booted pod and container selects — single-pod-guest semantics), Stats{per-container cgroup2 cpu usage_usec + working set = memory.current − inactive_file}, Stop{grace_seconds → TERM→KILL→poweroff}), the GuestSpec message (guest-spec.json is its proto-JSON: hostname, resolv_conf, containers[]{name, rootfs_tag, RunSpec fields, uid/gid/supplemental_gids, init}, mounts[]{tag_or_source, target, kind VIRTIOFS|TMPFS|BIND, read_only, size_limit, idmap}, rosetta, fs_group, agent_port), and the VMHostSpec message (vmhost.spec.json: pod_id, vcpus, memory_bytes, kernel_path, initramfs_path, cmdline, shares[]{tag, host_path, read_only}, rosetta, agent_vsock_port, mac_address). Package doc records the placement rationale (the initramfs embedding the agent is an independently-shipped pinned artifact ⇒ genuine versioned wire contract), the additive-only stability header, and the lockstep-pin compat posture. doc.go required."
           - id: M11.1-d2
-            done: false
+            done: true
             desc: "runtime/v1 band carves (additive; re-narrow each reserved range + REWRITE the band comments honestly — the M8.1-d4 convention). RE-SCOPED 2026-08-29 (operator-directed reconciliation) — REMAINING (B127 landed ImageManifest.platform=100 + index_digest=101 on 2026-08-10; M12.1's image_pull_policy already occupies Container 101): Container.image_platform = 100 (the pinned number — the band comment reserves it by name; typed as the existing Platform message; rewrite the band comment, re-carve reserved 102 to 149 minus 101), Volume.host_path = 8 + HostPathVolumeSource{path,type} verbatim-corev1/consumer-less, and the Container.command discriminator doc comment. The ImageManifest half of the old text is DONE-by-B127 — do not re-carve it. Surviving contract detail on the three remaining carves: image_platform is typed as the EXISTING Platform message, never a string (one normalization point for os/arch/variant incl. arm64 \"\"≡v8); HostPathVolumeSource{path, type} is a VERBATIM corev1 mirror — shape only, ALL enforcement semantics (allowlist, share-vs-snapshot) stay OUT of the proto, and the field lands CONSUMER-LESS (guest hostPath is fail-closed rejected until human-gated B98 lands — m11-plan Resolution 1); the resolveBinary contract comment on Container.command DISCRIMINATES rather than retires the M0 empty-command convention — absolute-path image string ⇒ host-binary convention; OCI reference ⇒ image-config merge (consumed in runtimed M11.2-d1)."
           - id: M11.1-d3
-            done: false
+            done: true
             desc: "Exported label/annotation constants (runtime-area apis package, the M8.1-d4 placement rule): k3sm.io/rosetta (host Rosetta), k3sm.io/rosetta-linux (guest Rosetta ∧ VMBackendAvailable — the composition is documented on the constant), k3sm.io/image-platform (the per-POD override annotation; the k3sm provider parses once and stamps Container.image_platform per-container — the pod-level annotation applies to every container, no per-container key form in v1). No string literals in runtimed/k3sm."
           - id: M11.1-d4
-            done: false
+            done: true  # verified pre-encoded by the W0 roadmap PR (DESIGN.md:84/:102/:107), 2026-08-29
             desc: "DESIGN doc edits (named M11.1 deliverables — the m8-Res.19 pattern): k3sm/docs/DESIGN.md §5a multi-arch-aware pull sentence (platform-keyed cache, fail-closed ErrNoPlatformMatch, vm-path whiteout unpack, digest-pin stays the vm integrity anchor) + §5c/§6 third-entitled-artifact prose (k3sm-vmhost carries com.apple.security.virtualization ONLY; the one-signed-binary statement gains the helper the same way k3sm-netd did) — pre-encoded by the roadmap PR, kept truthful here if the wave moves them."
         acceptance:
           - id: M11.1-a1
-            met: false
+            met: true
             check: "buf breaking runs against the PRE-carve committed baseline FIRST (additive only — no renumber, no reserved-number reuse), THEN buf/baseline.binpb regenerated as the new floor (the M8.1 baseline discipline); buf generate no-diff; apis/hack/ci.sh green"
             method: unit
           - id: M11.1-a2
-            met: false
+            met: true
             check: "guest/v1 proto round-trips (proto.Equal golden); GuestSpec + VMHostSpec proto-JSON goldens hold (the spec files ARE this encoding); Health carries api_version; CGO_ENABLED=0 standalone (GOWORK=off) + go.work builds; -race clean"
             method: unit
           - id: M11.1-a3
-            met: false
+            met: true
             check: "the module still imports zero k3sm.io/* packages (cycle check); Container.image_platform/ImageManifest.platform are the Platform message type (no string platform field anywhere); Volume.host_path mirrors corev1 exactly (path+type only); NO SandboxProfile.guest_network field exists"
             method: build
 
@@ -623,6 +625,8 @@ user docs, website, and hygiene scrub are `k3sm` / site-repo work with **no `api
 - ⬜ `M7.2-a2` the **`SkipUnless` meta-test passes** — with `K3SM_CI_REQUIRE` naming a REQUIRE-set cap that is absent, `SkipUnless` is `t.Fatal`, not `t.Skip`; the taxonomy is table-tested; `-race` clean — *method: unit*
 
 ## M8 — MLX: native Apple-Silicon ML serving (apis slice) ⬜
+
+**M8.1 d1–d5 ✅ 2026-08-29** (apis#33 — MLXModel v1alpha1 + GPU/egress carves + embedded CRD + constants; a1 proven vs the pre-carve baseline with a live negative control, a2/a3 mutation-spot-checked; d6 — the DESIGN/privilege-model prose in k3sm — is the one open row).
 `apis` is **Wave 1** of M8 (CRD introduction is human-reviewed). **Hard cut** — additive only: a **new
 alpha CRD group** (`mlx.k3sm.io/v1alpha1`, no existing consumers) and proto fields carved from the
 **explicitly reserved bands** of `runtime/v1/runtime.proto` (`SandboxProfile 102..149`,
@@ -692,6 +696,8 @@ in this change:
   `spec.distributed` CEL test lives in `k3sm`, not `apis` (keeps `apis`'s graph minimal).
 
 ## M11 — Linux containers & multi-arch (apis slice) ⬜
+
+**M11.1 ✅ DONE 2026-08-29** (apis#32 — guest/v1 GuestAgent contract + the three runtime/v1 carves + label constants; a1 proven vs the pre-carve baseline, a2 goldens mutation-checked, a3 module-graph clean; d4 verified pre-encoded by the W0 roadmap PR).
 `apis` is **Wave 1** of M11 (`docs/m11-plan.md` is authoritative; new API surface is human-reviewed).
 **Hard cut** — additive only: a **new proto package** (`guest/v1`, zero existing consumers) + carves
 from the **explicitly reserved** `runtime/v1` bands (`Container 100..149`, `ImageManifest 100..149`)
