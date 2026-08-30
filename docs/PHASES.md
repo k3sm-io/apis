@@ -697,7 +697,7 @@ in this change:
   in a runtime-area package), and the DESIGN §5a/§5b + privilege-model doc edits. The
   `spec.distributed` CEL test lives in `k3sm`, not `apis` (keeps `apis`'s graph minimal).
 
-## M11 — Linux containers & multi-arch (apis slice) ⬜
+## M11 — Linux containers & multi-arch (apis slice) ✅
 
 **M11.1 ✅ DONE 2026-08-29** (apis#32 — guest/v1 GuestAgent contract + the three runtime/v1 carves + label constants; a1 proven vs the pre-carve baseline, a2 goldens mutation-checked, a3 module-graph clean; d4 verified pre-encoded by the W0 roadmap PR).
 `apis` is **Wave 1** of M11 (`docs/m11-plan.md` is authoritative; new API surface is human-reviewed).
@@ -708,17 +708,17 @@ independently-shipped pinned artifact) so it is a versioned wire contract: addit
 header, buf-baseline discipline, `api_version` handshake on `Health`; compat = lockstep via the
 in-code initramfs sha256 pin (`--guest-artifacts-dir` is unsupported skew).
 
-### M11.1 — guest/v1 contract + platform/hostPath carves + Rosetta constants ⬜
+### M11.1 — guest/v1 contract + platform/hostPath carves + Rosetta constants ✅
 **Deliverables**
-- ⬜ `M11.1-d1` **`k3sm.io/apis/guest/v1`** — the whole VM contract family in one home (deliberately no `vm/v1`): `GuestAgent` (Health/ContainerEvents/Exec/Logs (reusing `runtime/v1` stream messages, single-pod-guest semantics documented)/Stats/Stop), `GuestSpec` (`guest-spec.json` = its proto-JSON), `VMHostSpec` (`vmhost.spec.json` = its proto-JSON). Placement rationale + compat posture in the package doc; `doc.go` required.
-- ⬜ `M11.1-d2` **`runtime/v1` carves** (additive; re-narrow each reserved range + rewrite the band comments honestly). *Re-scoped 2026-08-29* — **remaining** (B127 landed `ImageManifest.platform = 100` + `index_digest = 101` on 2026-08-10; M12.1's `image_pull_policy` already occupies `Container` 101): `Container.image_platform = 100` (the pinned number — the band comment reserves it by name; the existing `Platform` message, never a string; rewrite the band comment, re-carve `reserved 102 to 149` minus 101); `Volume.host_path = 8` + `HostPathVolumeSource{path,type}` as a **verbatim corev1 mirror, consumer-less** (guest hostPath fail-closed until human-gated B98 — m11-plan Res. 1); and the `Container.command` doc comment gains the **discriminator** (absolute path ⇒ M0 host-binary convention; OCI ref ⇒ image-config merge). The `ImageManifest` half of the old text is **done-by-B127** — do not re-carve it.
-- ⬜ `M11.1-d3` **Constants**: `k3sm.io/rosetta`, `k3sm.io/rosetta-linux` (composition documented), `k3sm.io/image-platform` (pod-level annotation → per-container stamp). No string literals in consumers.
-- ⬜ `M11.1-d4` **DESIGN edits** (m8-Res.19 pattern): §5a multi-arch pull sentence + §5c/§6 third-entitled-artifact (`k3sm-vmhost`) prose — pre-encoded by the roadmap PR, kept truthful by this wave.
+- ✅ `M11.1-d1` **`k3sm.io/apis/guest/v1`** — the whole VM contract family in one home (deliberately no `vm/v1`): `GuestAgent` (Health/ContainerEvents/Exec/Logs (reusing `runtime/v1` stream messages, single-pod-guest semantics documented)/Stats/Stop), `GuestSpec` (`guest-spec.json` = its proto-JSON), `VMHostSpec` (`vmhost.spec.json` = its proto-JSON). Placement rationale + compat posture in the package doc; `doc.go` required.
+- ✅ `M11.1-d2` **`runtime/v1` carves** (additive; re-narrow each reserved range + rewrite the band comments honestly). *Re-scoped 2026-08-29* — **remaining** (B127 landed `ImageManifest.platform = 100` + `index_digest = 101` on 2026-08-10; M12.1's `image_pull_policy` already occupies `Container` 101): `Container.image_platform = 100` (the pinned number — the band comment reserves it by name; the existing `Platform` message, never a string; rewrite the band comment, re-carve `reserved 102 to 149` minus 101); `Volume.host_path = 8` + `HostPathVolumeSource{path,type}` as a **verbatim corev1 mirror, consumer-less** (guest hostPath fail-closed until human-gated B98 — m11-plan Res. 1); and the `Container.command` doc comment gains the **discriminator** (absolute path ⇒ M0 host-binary convention; OCI ref ⇒ image-config merge). The `ImageManifest` half of the old text is **done-by-B127** — do not re-carve it.
+- ✅ `M11.1-d3` **Constants**: `k3sm.io/rosetta`, `k3sm.io/rosetta-linux` (composition documented), `k3sm.io/image-platform` (pod-level annotation → per-container stamp). No string literals in consumers.
+- ✅ `M11.1-d4` **DESIGN edits** (m8-Res.19 pattern): §5a multi-arch pull sentence + §5c/§6 third-entitled-artifact (`k3sm-vmhost`) prose — pre-encoded by the roadmap PR, kept truthful by this wave.
 
 **Acceptance (exit gate)**
-- ⬜ `M11.1-a1` `buf breaking` vs the **pre-carve committed baseline first**, then baseline regenerated; `buf generate` no-diff; `apis/hack/ci.sh` green — *method: unit*
-- ⬜ `M11.1-a2` `guest/v1` round-trip + GuestSpec/VMHostSpec proto-JSON goldens; `Health.api_version` present; `CGO_ENABLED=0` standalone + go.work builds; `-race` clean — *method: unit*
-- ⬜ `M11.1-a3` zero `k3sm.io/*` imports; platform fields are the `Platform` message; `host_path` mirrors corev1 exactly; **no** `SandboxProfile.guest_network` — *method: build*
+- ✅ `M11.1-a1` `buf breaking` vs the **pre-carve committed baseline first**, then baseline regenerated; `buf generate` no-diff; `apis/hack/ci.sh` green — *method: unit*
+- ✅ `M11.1-a2` `guest/v1` round-trip + GuestSpec/VMHostSpec proto-JSON goldens; `Health.api_version` present; `CGO_ENABLED=0` standalone + go.work builds; `-race` clean — *method: unit*
+- ✅ `M11.1-a3` zero `k3sm.io/*` imports; platform fields are the `Platform` message; `host_path` mirrors corev1 exactly; **no** `SandboxProfile.guest_network` — *method: build*
 
 **Recorded non-changes**: no `SandboxProfile.guest_network` (B6 rides the in-process `runtimed.Deps`
 podnet adapter, provider-side `SetupGuest` **before** `toPodBox` — M10.1 one-authority ordering; the
