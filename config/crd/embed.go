@@ -31,11 +31,13 @@ limitations under the License.
 // would silently enlist it, and adopting a CRD into the applied set must be a
 // deliberate, reviewable act.
 //
-// That is why the MeshPeer manifest sitting beside this file
-// (net.k3sm.io_meshpeers.yaml) has NO accessor here. MeshPeer is applied
-// out-of-band by the existing bootstrap path; bringing it under this ensure is a
-// named follow-up that owes a mesh-regression check, and it must not arrive as a
-// side effect of an embed pattern.
+// The MeshPeer manifest beside this file (net.k3sm.io_meshpeers.yaml) now has
+// such an accessor, added as exactly the deliberate act that rule demands. It
+// previously had none, on the belief that MeshPeer was applied out-of-band by
+// the bootstrap path — and that belief was wrong: nothing applied it, so every
+// worker join failed at the enroll write until someone installed the CRD by
+// hand. k3sm's server provisions it fail-closed on the mesh path, and the
+// mesh-regression check that adopting it owes rides that consumer change's gate.
 package crd
 
 import (
@@ -59,4 +61,23 @@ var mlxModelCRDYAML string
 // the one that re-applies during a reconcile loop.
 func MLXModelCRD() []byte {
 	return []byte(mlxModelCRDYAML)
+}
+
+// MeshPeerCRDName is the metadata.name of the MeshPeer CustomResourceDefinition
+// (the <plural>.<group> form the API server addresses it by). Published so a
+// consumer waiting on or reading back the CRD does not spell the string.
+const MeshPeerCRDName = "meshpeers.net.k3sm.io"
+
+//go:embed net.k3sm.io_meshpeers.yaml
+var meshPeerCRDYAML string
+
+// MeshPeerCRD returns the net.k3sm.io MeshPeer CustomResourceDefinition manifest
+// as YAML bytes, ready to apply.
+//
+// It returns a FRESH COPY on every call. The embedded manifest is process-global
+// state, and a caller that decodes in place, appends, or otherwise scribbles on
+// the returned slice would corrupt what every later caller applies — including
+// the one that re-applies during a reconcile loop.
+func MeshPeerCRD() []byte {
+	return []byte(meshPeerCRDYAML)
 }
