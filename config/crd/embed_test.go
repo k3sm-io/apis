@@ -285,20 +285,126 @@ func TestAccessorReturnsAFreshCopy(t *testing.T) {
 	}
 }
 
-// TestNoGlobEmbedAndNoMeshPeerAccessor asserts the embed set is enumerated by
-// name and that MeshPeer is not in it.
+// TestMeshPeerCRDMatchesTheGoTypes asserts the embedded manifest describes the
+// same object the Go types in k3sm.io/apis/net/v1 describe.
+//
+// The manifest and the Go types are two hand-maintained descriptions of one
+// object (this module runs no controller-gen), so nothing but a test keeps them
+// in step. The identifiers checked here are the ones whose divergence is silent:
+// a wrong group or plural makes darwin-net watch a path that does not exist, and
+// a wrong scope makes the enroll write land in a namespace nobody reads.
+//
+// It deliberately does NOT import net/v1 — the check has to be able to see a
+// disagreement, and reading both sides from the same constant could not.
+func TestMeshPeerCRDMatchesTheGoTypes(t *testing.T) {
+	t.Parallel()
+	m := decodeManifest(t, MeshPeerCRD())
+
+	if got := m["kind"]; got != "CustomResourceDefinition" {
+		t.Errorf("kind = %v, want CustomResourceDefinition", got)
+	}
+	if got := mapAt(t, m, "metadata")["name"]; got != MeshPeerCRDName {
+		t.Errorf("metadata.name = %v, want %s (the accessor's constant)", got, MeshPeerCRDName)
+	}
+	if MeshPeerCRDName != "meshpeers.net.k3sm.io" {
+		t.Errorf("MeshPeerCRDName = %q, want meshpeers.net.k3sm.io", MeshPeerCRDName)
+	}
+
+	spec := mapAt(t, m, "spec")
+	if got := spec["group"]; got != "net.k3sm.io" {
+		t.Errorf("spec.group = %v, want net.k3sm.io", got)
+	}
+	// Cluster-scoped, unlike the namespaced MLXModel beside it: a MeshPeer is
+	// node-level mesh topology, one per node and named for the node.
+	if got := spec["scope"]; got != "Cluster" {
+		t.Errorf("spec.scope = %v, want Cluster", got)
+	}
+	names := mapAt(t, m, "spec", "names")
+	for _, tc := range []struct{ key, want string }{
+		{"kind", "MeshPeer"},
+		{"listKind", "MeshPeerList"},
+		{"plural", "meshpeers"},
+		{"singular", "meshpeer"},
+	} {
+		t.Run("names."+tc.key, func(t *testing.T) {
+			if got := names[tc.key]; got != tc.want {
+				t.Errorf("spec.names.%s = %v, want %s", tc.key, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestMeshPeerCRDVersionDiscipline asserts exactly one version, v1, both served
+// and stored.
+//
+// The manifest's own header promises a SINGLE served+stored v1 with an
+// additive-only schema — intra-version payload evolution rides
+// spec.schemaVersion, not a new GVK version. A second version appearing here
+// would mean conversion the module ships no webhook for.
+func TestMeshPeerCRDVersionDiscipline(t *testing.T) {
+	t.Parallel()
+	spec := mapAt(t, decodeManifest(t, MeshPeerCRD()), "spec")
+	versions, ok := spec["versions"].([]any)
+	if !ok {
+		t.Fatalf("spec.versions is %T, want a list", spec["versions"])
+	}
+	if len(versions) != 1 {
+		t.Fatalf("spec.versions has %d entries, want exactly 1 (evolution rides spec.schemaVersion)", len(versions))
+	}
+	v, ok := versions[0].(map[string]any)
+	if !ok {
+		t.Fatalf("spec.versions[0] is %T, want a mapping", versions[0])
+	}
+	if got := v["name"]; got != "v1" {
+		t.Errorf("spec.versions[0].name = %v, want v1", got)
+	}
+	if got := v["served"]; got != true {
+		t.Errorf("spec.versions[0].served = %v, want true", got)
+	}
+	if got := v["storage"]; got != true {
+		t.Errorf("spec.versions[0].storage = %v, want true", got)
+	}
+}
+
+// TestMeshPeerAccessorReturnsAFreshCopy asserts the MeshPeer accessor hands out
+// a copy, on the same grounds as its MLXModel sibling: the embedded manifest is
+// process-global, and k3sm's server re-applies it on every mesh-path bring-up,
+// so a caller's in-place decode would corrupt what every later apply sends.
+func TestMeshPeerAccessorReturnsAFreshCopy(t *testing.T) {
+	t.Parallel()
+	a := MeshPeerCRD()
+	if len(a) == 0 {
+		t.Fatal("MeshPeerCRD returned no bytes; the go:embed directive did not match")
+	}
+	a[0] = 'X'
+	b := MeshPeerCRD()
+	if b[0] == 'X' {
+		t.Fatal("MeshPeerCRD returns aliased bytes; a caller's scribble reaches every later caller")
+	}
+	if got := b[0]; got != '#' {
+		t.Errorf("second call starts with %q, want the manifest's leading comment", got)
+	}
+}
+
+// TestNoGlobEmbed asserts the embed set is enumerated by name, one directive per
+// manifest, with no glob and no embed.FS.
 //
 // A glob would make "which CRDs does k3sm apply" a property of what happens to
-// be in this directory: adding a manifest file would silently enlist it. That is
-// specifically why MeshPeer — which sits right beside the embedded file and is
-// applied out-of-band today — has no accessor. Adopting it into this ensure owes
-// a mesh-regression check and must be a deliberate act, not an embed-pattern
-// side effect.
-func TestNoGlobEmbedAndNoMeshPeerAccessor(t *testing.T) {
+// be in this directory: adding a manifest file would silently enlist it. The
+// enumerated set below is therefore the reviewable list itself — a new entry can
+// only appear by editing this test, which is the review this convention exists
+// to force.
+func TestNoGlobEmbed(t *testing.T) {
 	t.Parallel()
 	src, err := os.ReadFile("embed.go")
 	if err != nil {
 		t.Fatalf("read embed.go: %v", err)
+	}
+
+	// The manifests deliberately embedded, each by its own named directive.
+	embedded := map[string]bool{
+		"mlx.k3sm.io_mlxmodels.yaml": false,
+		"net.k3sm.io_meshpeers.yaml": false,
 	}
 
 	var directives []string
@@ -314,8 +420,20 @@ func TestNoGlobEmbedAndNoMeshPeerAccessor(t *testing.T) {
 		if strings.ContainsAny(d, "*?[") {
 			t.Errorf("//go:embed directive %q uses a glob; each manifest must be embedded by name", d)
 		}
-		if !strings.Contains(d, "mlx.k3sm.io_mlxmodels.yaml") {
-			t.Errorf("unexpected //go:embed directive %q; only the mlxmodels manifest is embedded", d)
+		matched := false
+		for name := range embedded {
+			if strings.Contains(d, name) {
+				embedded[name] = true
+				matched = true
+			}
+		}
+		if !matched {
+			t.Errorf("unexpected //go:embed directive %q; enlisting a manifest is a reviewable act, so add it to this test's list first", d)
+		}
+	}
+	for name, seen := range embedded {
+		if !seen {
+			t.Errorf("no //go:embed directive names %s; the accessor for it would hand out nothing", name)
 		}
 	}
 	// Comment prose is stripped first — the doc comment explains WHY there is no
@@ -333,21 +451,27 @@ func TestNoGlobEmbedAndNoMeshPeerAccessor(t *testing.T) {
 		t.Error("embed.go uses an embed.FS; a filesystem re-introduces the glob problem by another route")
 	}
 
-	// The MeshPeer manifest exists beside this package and must stay unembedded.
-	if _, err := os.Stat("net.k3sm.io_meshpeers.yaml"); err != nil {
-		t.Fatalf("expected the MeshPeer manifest beside this package: %v", err)
-	}
-	// Same treatment for MeshPeer: the doc comment explains why it is excluded.
-	for _, line := range strings.Split(code.String(), "\n") {
-		if strings.Contains(line, "meshpeers") || strings.Contains(line, "MeshPeer") {
-			t.Errorf("embed.go embeds or exposes MeshPeer (%q); it stays out-of-band", strings.TrimSpace(line))
+	// Every named manifest exists beside this package — a directive naming a file
+	// that is not here does not compile, but a file removed from the tree while
+	// the list keeps its name is the drift worth naming explicitly.
+	for name := range embedded {
+		if _, err := os.Stat(name); err != nil {
+			t.Errorf("expected the %s manifest beside this package: %v", name, err)
 		}
 	}
-	// And the bytes handed out are the MLXModel CRD, not something else.
-	if !strings.Contains(string(MLXModelCRD()), "mlxmodels.mlx.k3sm.io") {
-		t.Error("the embedded manifest is not the MLXModel CRD")
+
+	// And each accessor hands out its OWN manifest, not its neighbour's — the
+	// failure a second named embed makes possible for the first time.
+	if !strings.Contains(string(MLXModelCRD()), MLXModelCRDName) {
+		t.Error("MLXModelCRD does not return the MLXModel CRD")
 	}
-	if strings.Contains(string(MLXModelCRD()), "meshpeers.net.k3sm.io") {
-		t.Error("the embedded manifest carries the MeshPeer CRD")
+	if strings.Contains(string(MLXModelCRD()), MeshPeerCRDName) {
+		t.Error("MLXModelCRD returns the MeshPeer CRD")
+	}
+	if !strings.Contains(string(MeshPeerCRD()), MeshPeerCRDName) {
+		t.Error("MeshPeerCRD does not return the MeshPeer CRD")
+	}
+	if strings.Contains(string(MeshPeerCRD()), MLXModelCRDName) {
+		t.Error("MeshPeerCRD returns the MLXModel CRD")
 	}
 }
