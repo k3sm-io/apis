@@ -156,9 +156,22 @@ type HealthResponse struct {
 	Ready bool `protobuf:"varint,1,opt,name=ready,proto3" json:"ready,omitempty"`
 	// guest_ip is the address the guest's DHCP client leased on eth0, in dotted
 	// form; empty until the lease is held. THIS FIELD IS THE SINGLE LIVE-ADDRESS
-	// AUTHORITY for a vm pod: the pod's status IP is what the agent reports here,
-	// never a value the host inferred from the network attachment. A lease change
-	// is therefore observable as a change in this field.
+	// AUTHORITY for a vm pod: the host consumes what the agent reports here and
+	// never re-derives the address from the network attachment. It feeds
+	// k3sm.runtime.v1 PodStatus.guest_transport_address, which is how it crosses
+	// to the host's dial paths.
+	//
+	// It is the pod's LIVE TRANSPORT address — what the host dials to reach this
+	// guest (Service-proxy backend dials, probes, port-forward, and later policy
+	// attribution). It is NOT the pod's published status IP: that stays
+	// k3sm.runtime.v1 PodStatus.pod_ip / pod_ips, the podCIDR /32 the host
+	// assigns and publishes to EndpointSlice, DNS, and the downward API. The two
+	// are different addresses on different segments and neither substitutes for
+	// the other.
+	//
+	// It MAY CHANGE across a guest restart, because it is a lease. A lease change
+	// is therefore observable as a change in this field, and a consumer re-reads
+	// it rather than caching it as a stable identifier.
 	GuestIp string `protobuf:"bytes,2,opt,name=guest_ip,json=guestIp,proto3" json:"guest_ip,omitempty"`
 	// rosetta_registered is true when the guest completed Rosetta binfmt_misc
 	// registration, so linux/amd64 payloads in this pod will execute. It is

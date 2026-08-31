@@ -1077,7 +1077,33 @@ message PodStatus {
   // ephemeral_container_statuses carries `kubectl debug` container state.
   repeated ContainerStatus ephemeral_container_statuses = 15;
 
-  reserved 100 to 149; // M2: resourceClaimStatuses, resize, observedGeneration.
+  // --- M11 vm-pod live transport address (allocated from PodStatus's reserved
+  // 100..149 band) ---
+
+  // guest_transport_address is the address the HOST dials to reach a vm pod's
+  // guest: the address the guest's DHCP client leased on the node's NAT segment,
+  // as reported by the in-guest agent (guest/v1 HealthResponse.guest_ip, the
+  // single live-address authority — the host never re-derives it from the
+  // network attachment). Empty for every host-process pod, and empty for a vm
+  // pod whose guest has not taken a lease yet.
+  //
+  // A vm pod has TWO addresses and they are not interchangeable. pod_ip /
+  // pod_ips above are the pod's PUBLISHED IDENTITY: the podCIDR /32 that reaches
+  // EndpointSlice, DNS, and the downward API. This field is the LIVE TRANSPORT
+  // address and is used HOST-SIDE ONLY — Service-proxy backend dials, probe
+  // dials, port-forward, and later policy attribution. A consumer MUST NOT
+  // publish it into EndpointSlice, DNS, status.podIP, or any other user-visible
+  // surface: that would advertise a node-local NAT address as cluster-routable,
+  // and would make a pod's published identity churn every time a lease does.
+  //
+  // It MAY CHANGE across a guest restart, because it is a DHCP lease. It is
+  // therefore only as durable as the status stream that delivered it: a consumer
+  // holds it for the life of that stream, re-reads it from the next PodStatus,
+  // and never caches it across a stream break or a pod restart.
+  string guest_transport_address = 100;
+
+  // 100 allocated above; 101..149 stay reserved (149 ceiling preserved).
+  reserved 101 to 149; // M2: resourceClaimStatuses, resize, observedGeneration.
 }
 
 // PodCondition mirrors corev1.PodCondition.

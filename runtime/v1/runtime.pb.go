@@ -3916,8 +3916,29 @@ type PodStatus struct {
 	ContainerStatuses     []*ContainerStatus `protobuf:"bytes,14,rep,name=container_statuses,json=containerStatuses,proto3" json:"container_statuses,omitempty"`
 	// ephemeral_container_statuses carries `kubectl debug` container state.
 	EphemeralContainerStatuses []*ContainerStatus `protobuf:"bytes,15,rep,name=ephemeral_container_statuses,json=ephemeralContainerStatuses,proto3" json:"ephemeral_container_statuses,omitempty"`
-	unknownFields              protoimpl.UnknownFields
-	sizeCache                  protoimpl.SizeCache
+	// guest_transport_address is the address the HOST dials to reach a vm pod's
+	// guest: the address the guest's DHCP client leased on the node's NAT segment,
+	// as reported by the in-guest agent (guest/v1 HealthResponse.guest_ip, the
+	// single live-address authority — the host never re-derives it from the
+	// network attachment). Empty for every host-process pod, and empty for a vm
+	// pod whose guest has not taken a lease yet.
+	//
+	// A vm pod has TWO addresses and they are not interchangeable. pod_ip /
+	// pod_ips above are the pod's PUBLISHED IDENTITY: the podCIDR /32 that reaches
+	// EndpointSlice, DNS, and the downward API. This field is the LIVE TRANSPORT
+	// address and is used HOST-SIDE ONLY — Service-proxy backend dials, probe
+	// dials, port-forward, and later policy attribution. A consumer MUST NOT
+	// publish it into EndpointSlice, DNS, status.podIP, or any other user-visible
+	// surface: that would advertise a node-local NAT address as cluster-routable,
+	// and would make a pod's published identity churn every time a lease does.
+	//
+	// It MAY CHANGE across a guest restart, because it is a DHCP lease. It is
+	// therefore only as durable as the status stream that delivered it: a consumer
+	// holds it for the life of that stream, re-reads it from the next PodStatus,
+	// and never caches it across a stream break or a pod restart.
+	GuestTransportAddress string `protobuf:"bytes,100,opt,name=guest_transport_address,json=guestTransportAddress,proto3" json:"guest_transport_address,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *PodStatus) Reset() {
@@ -4053,6 +4074,13 @@ func (x *PodStatus) GetEphemeralContainerStatuses() []*ContainerStatus {
 		return x.EphemeralContainerStatuses
 	}
 	return nil
+}
+
+func (x *PodStatus) GetGuestTransportAddress() string {
+	if x != nil {
+		return x.GuestTransportAddress
+	}
+	return ""
 }
 
 // PodCondition mirrors corev1.PodCondition.
@@ -7339,7 +7367,7 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\farchitecture\x18\x02 \x01(\tR\farchitecture\x12\x18\n" +
 	"\avariant\x18\x03 \x01(\tR\avariant\x12\x1d\n" +
 	"\n" +
-	"os_version\x18\x04 \x01(\tR\tosVersion\"\xc6\x05\n" +
+	"os_version\x18\x04 \x01(\tR\tosVersion\"\xfe\x05\n" +
 	"\tPodStatus\x12\x15\n" +
 	"\x06pod_id\x18\x01 \x01(\tR\x05podId\x12/\n" +
 	"\x05phase\x18\x02 \x01(\x0e2\x19.k3sm.runtime.v1.PodPhaseR\x05phase\x12=\n" +
@@ -7359,7 +7387,8 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\x13nominated_node_name\x18\f \x01(\tR\x11nominatedNodeName\x12X\n" +
 	"\x17init_container_statuses\x18\r \x03(\v2 .k3sm.runtime.v1.ContainerStatusR\x15initContainerStatuses\x12O\n" +
 	"\x12container_statuses\x18\x0e \x03(\v2 .k3sm.runtime.v1.ContainerStatusR\x11containerStatuses\x12b\n" +
-	"\x1cephemeral_container_statuses\x18\x0f \x03(\v2 .k3sm.runtime.v1.ContainerStatusR\x1aephemeralContainerStatusesJ\x05\bd\x10\x96\x01\"\xa0\x02\n" +
+	"\x1cephemeral_container_statuses\x18\x0f \x03(\v2 .k3sm.runtime.v1.ContainerStatusR\x1aephemeralContainerStatuses\x126\n" +
+	"\x17guest_transport_address\x18d \x01(\tR\x15guestTransportAddressJ\x05\be\x10\x96\x01\"\xa0\x02\n" +
 	"\fPodCondition\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x128\n" +
 	"\x06status\x18\x02 \x01(\x0e2 .k3sm.runtime.v1.ConditionStatusR\x06status\x12B\n" +
