@@ -276,6 +276,46 @@ func TestMeshPeerSpecWithDefaults(t *testing.T) {
 			t.Fatalf("receiver mutated: SchemaVersion = %d", in.SchemaVersion)
 		}
 	})
+
+	t.Run("does not alias AllowedIPs", func(t *testing.T) {
+		t.Parallel()
+		in := MeshPeerSpec{NodeName: "n", AllowedIPs: []string{"100.64.2.0/24"}}
+		out := in.WithDefaults()
+
+		out.AllowedIPs[0] = "mutated"
+		out.AllowedIPs = append(out.AllowedIPs, "100.64.3.0/24")
+
+		if in.AllowedIPs[0] != "100.64.2.0/24" || len(in.AllowedIPs) != 1 {
+			t.Fatalf("receiver AllowedIPs aliased: got %v", in.AllowedIPs)
+		}
+	})
+}
+
+// TestMeshEnrollResponseWithDefaults asserts WithDefaults does not mutate the
+// receiver's Peers: each MeshPeerSpec carries its own AllowedIPs slice, so a
+// mutation through the returned copy's Peers must not corrupt the original
+// snapshot the caller may still be holding.
+func TestMeshEnrollResponseWithDefaults(t *testing.T) {
+	t.Parallel()
+
+	t.Run("does not alias peer AllowedIPs", func(t *testing.T) {
+		t.Parallel()
+		in := MeshEnrollResponse{
+			NodeName: "studio-1",
+			PodCIDR:  "100.64.1.0/24",
+			Peers: []MeshPeerSpec{
+				{NodeName: "studio-2", AllowedIPs: []string{"100.64.2.0/24"}},
+			},
+		}
+		out := in.WithDefaults()
+
+		out.Peers[0].AllowedIPs[0] = "mutated"
+		out.Peers[0].AllowedIPs = append(out.Peers[0].AllowedIPs, "100.64.3.0/24")
+
+		if in.Peers[0].AllowedIPs[0] != "100.64.2.0/24" || len(in.Peers[0].AllowedIPs) != 1 {
+			t.Fatalf("receiver peer AllowedIPs aliased: got %v", in.Peers[0].AllowedIPs)
+		}
+	})
 }
 
 // TestMeshEnrollRoundTrip asserts the version-stamped enroll payloads round-trip

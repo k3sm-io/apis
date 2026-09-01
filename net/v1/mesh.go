@@ -164,9 +164,10 @@ func (s MeshPeerSpec) WithDefaults() MeshPeerSpec {
 	if out.PersistentKeepaliveSeconds == 0 {
 		out.PersistentKeepaliveSeconds = DefaultPersistentKeepaliveSeconds
 	}
-	if s.AllowedIPs != nil {
-		out.AllowedIPs = make([]string, len(s.AllowedIPs))
-		copy(out.AllowedIPs, s.AllowedIPs)
+	if out.AllowedIPs != nil {
+		allowedIPs := make([]string, len(out.AllowedIPs))
+		copy(allowedIPs, out.AllowedIPs)
+		out.AllowedIPs = allowedIPs
 	}
 	return out
 }
@@ -373,15 +374,21 @@ type MeshEnrollResponse struct {
 }
 
 // WithDefaults returns a copy with SchemaVersion stamped to
-// MeshEnrollSchemaVersion when zero. It does not mutate the receiver.
+// MeshEnrollSchemaVersion when zero. It does not mutate the receiver: Peers is
+// deep-copied element-by-element (via MeshPeerSpec.DeepCopyInto), since each
+// peer carries its own AllowedIPs slice that a shallow struct copy would still
+// share with the receiver.
 func (r MeshEnrollResponse) WithDefaults() MeshEnrollResponse {
 	out := r
 	if out.SchemaVersion == 0 {
 		out.SchemaVersion = MeshEnrollSchemaVersion
 	}
-	if r.Peers != nil {
-		out.Peers = make([]MeshPeerSpec, len(r.Peers))
-		copy(out.Peers, r.Peers)
+	if out.Peers != nil {
+		peers := make([]MeshPeerSpec, len(out.Peers))
+		for i := range out.Peers {
+			out.Peers[i].DeepCopyInto(&peers[i])
+		}
+		out.Peers = peers
 	}
 	return out
 }
