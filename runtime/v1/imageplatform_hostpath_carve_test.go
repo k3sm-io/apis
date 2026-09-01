@@ -146,13 +146,12 @@ func TestContainerImagePlatformCarve(t *testing.T) {
 
 // TestVolumeHostPathCarve pins the M11.1 hostPath carve.
 //
-// The field lands CONSUMER-LESS on purpose: a pod spec carrying a hostPath must
-// be REPRESENTABLE so it can be rejected with a legible reason, rather than
-// silently mangled into some other source on the way through. The gate therefore
-// asserts the shape and, just as importantly, that the shape stayed a shape —
-// the moment an enforcement field (an allowlist, a share-versus-snapshot mode)
-// appears here, a consumer will trust a policy that an attacker-shaped pod spec
-// asserted about itself.
+// The field lands consumer-less on purpose: a pod spec carrying a hostPath must
+// be representable so it can be rejected with a legible reason, rather than
+// silently mangled into some other source on the way through. The gate asserts
+// the shape, and that the shape stayed a shape — the moment an enforcement
+// field (an allowlist, a share-versus-snapshot mode) appears here, a consumer
+// will trust a policy that an attacker-shaped pod spec asserted about itself.
 func TestVolumeHostPathCarve(t *testing.T) {
 	t.Parallel()
 

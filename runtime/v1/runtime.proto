@@ -4,8 +4,8 @@
 // (no Linux, no chroot) confined by a per-pod Seatbelt profile — see
 // k3sm/docs/DESIGN.md §5a.
 //
-// Stability contract: field numbers are STABLE and the surface is
-// ADDITIVE-ONLY forever. Never renumber or repurpose a field; never reuse a
+// Stability contract: field numbers are stable and the surface is
+// additive-only forever. Never renumber or repurpose a field; never reuse a
 // reserved number/name. `buf breaking` (WIRE_JSON) enforces this.
 syntax = "proto3";
 
@@ -222,15 +222,15 @@ message Volume {
   // next free sequential source number (2..7 were taken). Mirrors
   // corev1.Volume.HostPath.
   //
-  // THIS FIELD IS CONSUMER-LESS ON PURPOSE. It exists so the contract can
+  // This field is consumer-less on purpose. It exists so the contract can
   // express a hostPath volume at all — a pod spec that carries one must be
-  // representable in order to be REJECTED with a legible reason rather than
+  // representable in order to be rejected with a legible reason rather than
   // silently mangled into some other source. No k3sm runtime consumes it today:
   // hostPath into a guest is fail-closed rejected until the human-gated
   // allowlist design lands, and /var/lib/k3sm is denied unconditionally,
   // allowlist or not.
   //
-  // Enforcement semantics are deliberately NOT in this proto — not the
+  // Enforcement semantics are deliberately not in this proto — not the
   // allowlist, not the share-versus-snapshot decision, not the path
   // canonicalization. A wire type that encoded a policy would invite a consumer
   // to trust the policy the spec asserted about itself, and a pod spec is
@@ -383,9 +383,9 @@ message PersistentVolumeClaimVolumeSource {
 // this contract unchanged, so what k3sm later refuses is the volume the user
 // actually asked for.
 //
-// SHAPE ONLY. Whether a host path may be mounted at all, which paths an
+// Shape only. Whether a host path may be mounted at all, which paths an
 // allowlist permits, and whether a permitted path is shared live or snapshotted
-// are RUNTIME decisions that stay out of the wire type (see Volume.host_path).
+// are runtime decisions that stay out of the wire type (see Volume.host_path).
 message HostPathVolumeSource {
   // path is the absolute path on the node.
   string path = 1;
@@ -429,16 +429,16 @@ message Container {
 
   // command and args form argv: argv = command + args.
   //
-  // RESOLUTION DISCRIMINATOR (the runtime's resolveBinary contract). When
-  // command is empty, what happens is decided by the SHAPE OF `image`, not by
+  // Resolution discriminator (the runtime's resolveBinary contract). When
+  // command is empty, what happens is decided by the shape of `image`, not by
   // the emptiness alone:
   //
-  //   - `image` is an ABSOLUTE PATH (leading '/') — the M0 host-binary
-  //     convention: the reference IS the binary to exec. This convention is
-  //     DISCRIMINATED, not retired; it stays the native path's way to run a
+  //   - `image` is an absolute path (leading '/') — the M0 host-binary
+  //     convention: the reference is the binary to exec. This convention is
+  //     discriminated, not retired; it stays the native path's way to run a
   //     host binary with no image at all.
-  //   - `image` is an OCI REFERENCE — the runtime resolves argv from the IMAGE
-  //     CONFIG (Entrypoint/Cmd) merged with command/args per the Kubernetes
+  //   - `image` is an OCI reference — the runtime resolves argv from the image
+  //     config (Entrypoint/Cmd) merged with command/args per the Kubernetes
   //     four-quadrant rule, with $(VAR) expansion. An OCI-referenced container
   //     with no command is therefore runnable, which it was not while empty
   //     command meant "exec the reference".
@@ -490,19 +490,20 @@ message Container {
 
   // restart_policy is the container-level restartPolicy, mirroring
   // corev1.Container.RestartPolicy (KEP-753 native sidecars). It is meaningful
-  // ONLY on an init container today: ALWAYS marks it a NATIVE SIDECAR. A
-  // sidecar STARTS in its init-list position but is NOT waited to completion —
+  // only on an init container today: Always marks it a native sidecar. A
+  // sidecar starts in its init-list position but is not waited to completion —
   // the init sequence proceeds once it is started (startup-probe gating of
   // progression is deliberately out of scope; a register-noted
-  // simplification). It is EXCLUDED from init-completion AND from pod terminal
-  // accounting: pod phase derives from MAIN containers only (a Job pod goes
-  // Succeeded/Failed on its mains with the sidecar still running). It RESTARTS
+  // simplification). It is excluded from init-completion and from pod terminal
+  // accounting: pod phase derives from main containers only (a Job pod goes
+  // Succeeded/Failed on its mains with the sidecar still running). It restarts
   // on exit for the pod's lifetime — restart decision, backoff, and
-  // restart_count authority is the PROVIDER (k3sm), executed via the existing
-  // RestartContainer RPC; runtimed performs NO exit-driven sidecar restarts.
-  // TEARDOWN: when all mains have terminated (voluntary completion) AND on
-  // DeletePod — mains are stopped first (concurrently), then sidecars in
-  // REVERSE start order, sharing ONE pod-level grace budget (sidecars get the
+  // restart_count authority is the provider (k3sm), executed via the existing
+  // RestartContainer RPC; runtimed performs no exit-driven sidecar restarts.
+  //
+  // Teardown: when all mains have terminated (voluntary completion) and on
+  // DeletePod, mains are stopped first (concurrently), then sidecars in
+  // reverse start order, sharing one pod-level grace budget (sidecars get the
   // remainder). The zero value (UNSPECIFIED) is legacy behavior in both skew
   // directions (an old reader ignores the field; an old writer never sets it)
   // — the additive consumer-first contract.
@@ -520,14 +521,14 @@ message Container {
   // k3sm.io/image-platform annotation (the annotation applies to every
   // container in the pod; there is no per-container annotation form).
   //
-  // ONLY THE OVERRIDE RIDES THE WIRE. The DEFAULT platform is derived
+  // Only the override rides the wire. The default platform is derived
   // runtimed-side from the sandbox backend plus the node's probed capabilities,
   // so absent here means "no override — apply the node's default policy", never
   // "no platform". Sending a default would freeze a provider-side guess into
   // the contract and let a node that knows better be overruled by a peer that
   // does not.
   //
-  // It is the EXISTING Platform message, never a string. One message type means
+  // It is the existing Platform message, never a string. One message type means
   // one normalization point for os / architecture / variant (notably the arm64
   // variant, where "" and "v8" denote the same platform); a parallel string
   // field would put a second, silently divergent parser on the other side of
@@ -537,21 +538,21 @@ message Container {
   // image_pull_policy is the per-container imagePullPolicy, mirroring
   // corev1.Container.ImagePullPolicy.
   //
-  // DEFAULTING IS OWNED BY THE EMBEDDED APISERVER, which stamps the corev1
+  // Defaulting is owned by the embedded apiserver, which stamps the corev1
   // default onto the pod spec before it is ever scheduled (a `:latest` or
-  // untagged reference defaults to ALWAYS; anything else to IF_NOT_PRESENT).
-  // The k3sm provider translates that already-stamped value VERBATIM into this
-  // field, and runtimed obeys the value as given: runtimed NEVER re-derives a
+  // untagged reference defaults to Always; anything else to IfNotPresent).
+  // The k3sm provider translates that already-stamped value verbatim into this
+  // field, and runtimed obeys the value as given: runtimed never re-derives a
   // policy from the image tag. A second derivation point would be free to
   // disagree with the apiserver's stamped spec, so `kubectl get pod -o yaml`
   // would stop describing what the node actually did.
   //
-  // The zero value (UNSPECIFIED) is the legacy pull-through behavior in BOTH
+  // The zero value (UNSPECIFIED) is the legacy pull-through behavior in both
   // skew directions — an old provider never sets the field, and a new runtimed
   // must read absent-as-legacy (attempt the pull, reusing already-cached
-  // blobs), never as an implicit NEVER. That is the additive consumer-first
-  // contract, and it is why every explicit policy is non-zero (the
-  // restart_policy precedent).
+  // blobs), never as an implicit never-pull. That is the additive
+  // consumer-first contract, and it is why every explicit policy is non-zero
+  // (the restart_policy precedent).
   ImagePullPolicy image_pull_policy = 101;
 
   // 100..101 are allocated above; 102..149 stay reserved for future
@@ -1087,16 +1088,16 @@ message PodStatus {
   // network attachment). Empty for every host-process pod, and empty for a vm
   // pod whose guest has not taken a lease yet.
   //
-  // A vm pod has TWO addresses and they are not interchangeable. pod_ip /
-  // pod_ips above are the pod's PUBLISHED IDENTITY: the podCIDR /32 that reaches
-  // EndpointSlice, DNS, and the downward API. This field is the LIVE TRANSPORT
-  // address and is used HOST-SIDE ONLY — Service-proxy backend dials, probe
+  // A vm pod has two addresses and they are not interchangeable. pod_ip /
+  // pod_ips above are the pod's published identity: the podCIDR /32 that reaches
+  // EndpointSlice, DNS, and the downward API. This field is the live transport
+  // address and is used host-side only — Service-proxy backend dials, probe
   // dials, port-forward, and later policy attribution. A consumer MUST NOT
   // publish it into EndpointSlice, DNS, status.podIP, or any other user-visible
   // surface: that would advertise a node-local NAT address as cluster-routable,
   // and would make a pod's published identity churn every time a lease does.
   //
-  // It MAY CHANGE across a guest restart, because it is a DHCP lease. It is
+  // It may change across a guest restart, because it is a DHCP lease. It is
   // therefore only as durable as the status stream that delivered it: a consumer
   // holds it for the life of that stream, re-reads it from the next PodStatus,
   // and never caches it across a stream break or a pod restart.
@@ -1610,7 +1611,7 @@ message GPUFacts {
   // — the cap on how much memory the GPU may wire down, which for a large model
   // is the binding constraint rather than mem_bytes.
   //
-  // 0 is a MODELLED SENTINEL meaning "no explicit limit is configured; the
+  // 0 is a modelled sentinel meaning "no explicit limit is configured; the
   // kernel default applies". It does NOT mean "no limit known" and it does NOT
   // mean "no limit". A consumer must not read 0 as unbounded headroom, and must
   // not treat it as a missing fact: the daemon reports 0 precisely when it
@@ -1623,7 +1624,7 @@ message GPUFacts {
   // against; 0 when metal_available is false or the value could not be read.
   uint64 recommended_max_working_set_bytes = 6;
 
-  // sandbox_gpu_supported reports whether THE CURRENTLY-SELECTED sandbox backend
+  // sandbox_gpu_supported reports whether the currently-selected sandbox backend
   // can grant a pod GPU access at all (i.e. whether SandboxProfile.allow_gpu can
   // take effect on this daemon as configured).
   //

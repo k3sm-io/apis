@@ -1,13 +1,13 @@
-// images.proto is the k3sm node IMAGE contract: the store-facing RPCs the
-// `k3sm image` CLI and the node's image-GC caller drive. It is a SEPARATE
-// SERVICE IN THE SAME PROTO PACKAGE (k3sm.runtime.v1) — the CRI
+// images.proto is the k3sm node image contract: the store-facing RPCs the
+// `k3sm image` CLI and the node's image-GC caller drive. It is a separate
+// service in the same proto package (k3sm.runtime.v1) — the CRI
 // RuntimeService/ImageService split. Image verbs and pod verbs are different
 // callers' surfaces, so they get different services; they share one package,
 // one generated Go package, and one wire namespace, because a second proto
 // package or import path would fork the shared-contracts module for no gain.
 //
-// Stability contract: as in runtime.proto — field numbers are STABLE and the
-// surface is ADDITIVE-ONLY forever. Never renumber or repurpose a field; never
+// Stability contract: as in runtime.proto — field numbers are stable and the
+// surface is additive-only forever. Never renumber or repurpose a field; never
 // reuse a reserved number/name. Every message keeps the file convention's
 // `reserved 100 to 149;` headroom band. `buf breaking` (WIRE_JSON) enforces it.
 
@@ -378,7 +378,7 @@ type ImageFsInfoResponse struct {
 	// practice one — the filesystem the blob tree lives on).
 	Filesystems []*FilesystemUsage `protobuf:"bytes,1,rep,name=filesystems,proto3" json:"filesystems,omitempty"`
 	// store_bytes is the measured size of the image store subtree itself: bytes
-	// on disk under the store root. It is a RAW MEASUREMENT, never an estimate of
+	// on disk under the store root. It is a raw measurement, never an estimate of
 	// what a prune could reclaim.
 	StoreBytes uint64 `protobuf:"varint,2,opt,name=store_bytes,json=storeBytes,proto3" json:"store_bytes,omitempty"`
 	// error carries a structured failure (empty on success).
@@ -441,10 +441,10 @@ func (x *ImageFsInfoResponse) GetError() *status.Status {
 // FilesystemUsage is a statfs-style measurement of one filesystem at an instant
 // — the CRI FilesystemUsage analog.
 //
-// MEASUREMENT-SHAPED ONLY. It carries raw facts (used / capacity / available
-// bytes, inode usage, and when they were sampled) and DELIBERATELY carries no
-// precomputed reclaimable, budget, threshold, or eligibility field: THE DAEMON
-// DOES THAT MATH. That keeps the wire forward-compatible with whatever image-GC
+// Measurement-shaped only. It carries raw facts (used / capacity / available
+// bytes, inode usage, and when they were sampled) and deliberately carries no
+// precomputed reclaimable, budget, threshold, or eligibility field: the daemon
+// does that math. That keeps the wire forward-compatible with whatever image-GC
 // model B128 lands — a policy number baked into the contract would need
 // redefining (a wire break, or a second confusing field) every time the policy
 // moved, while a raw measurement never expires.
@@ -850,7 +850,7 @@ func (x *SkippedBlob) GetReason() PruneSkipReason {
 // the metadata (reference, format, and the advisory digest/size) and no chunk;
 // every subsequent frame carries a chunk and nothing else.
 //
-// Every field is BYTES OR A SCALAR by design — there is no OCI-typed framing on
+// Every field is bytes or a scalar by design — there is no OCI-typed framing on
 // this stream. The archive's own structure is parsed by the daemon from the
 // bytes; modeling it on the wire would drag an OCI type system into a module
 // whose whole purpose is depending on nothing.
@@ -941,13 +941,13 @@ func (x *LoadImageRequest) GetChunk() []byte {
 	return nil
 }
 
-// LoadImageResponse is the SINGLE TERMINAL RESPONSE of an ingest — v1 reports
+// LoadImageResponse is the single terminal response of an ingest — v1 reports
 // only the finished outcome.
 //
-// Per-chunk progress was considered and DEFERRED. A client-streaming RPC cannot
+// Per-chunk progress was considered and deferred. A client-streaming RPC cannot
 // carry interim server messages at all, so progress is not a field this
-// message's reserved band could ever grow into: it would be a NEW bidirectional
-// RPC. Stated so the omission reads as a decision rather than an oversight.
+// message's reserved band could ever grow into: it would be a new bidirectional
+// RPC.
 type LoadImageResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// images are the images the archive contributed, as recorded in the store —

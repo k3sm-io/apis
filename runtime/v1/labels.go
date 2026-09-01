@@ -30,7 +30,7 @@ package runtimev1
 // already-labelled node and every already-scheduled pod, so treat them the way
 // field numbers are treated: additive only.
 const (
-	// LabelRosetta is the node label reporting that the HOST can execute
+	// LabelRosetta is the node label reporting that the host can execute
 	// linux/amd64 binaries under Rosetta translation — the native-path
 	// capability, advertised by the node itself.
 	//
@@ -39,15 +39,15 @@ const (
 	// workload therefore requires LabelRosettaLinux, never this one.
 	LabelRosetta = "k3sm.io/rosetta"
 
-	// LabelRosettaLinux is the node label reporting that a LINUX GUEST on this
+	// LabelRosettaLinux is the node label reporting that a Linux guest on this
 	// node can execute linux/amd64 payloads under Rosetta.
 	//
-	// It is a COMPOSITION, deliberately not a synonym of LabelRosetta: it is
-	// present only when guest Rosetta is usable AND the VM backend is available
-	// (the same single availability probe the backend selection reads — not a
-	// second, separately-drifting derivation). Either conjunct alone is
-	// insufficient and must not set it: Rosetta with no VM backend has no guest
-	// to translate for, and a VM backend without Rosetta boots arm64 guests only.
+	// It is a composition, not a synonym of LabelRosetta: it is present only
+	// when guest Rosetta is usable and the VM backend is available (the same
+	// single availability probe the backend selection reads — not a second,
+	// separately-drifting derivation). Either conjunct alone is insufficient
+	// and must not set it: Rosetta with no VM backend has no guest to
+	// translate for, and a VM backend without Rosetta boots arm64 guests only.
 	//
 	// Two labels rather than one because they answer different questions — "can
 	// this host run an amd64 Mach-O" and "can a Linux pod on this node run an
@@ -55,17 +55,17 @@ const (
 	// silent lie on every node where the conjuncts disagree.
 	LabelRosettaLinux = "k3sm.io/rosetta-linux"
 
-	// AnnotationImagePlatform is the POD-LEVEL annotation overriding the platform
+	// AnnotationImagePlatform is the pod-level annotation overriding the platform
 	// a multi-platform image reference resolves to (its value is an OCI platform
 	// string, e.g. "linux/amd64" or "linux/arm64/v8").
 	//
-	// It is pod-level and applies to EVERY container in the pod. The k3sm
-	// provider parses it ONCE and stamps the parsed result onto each container's
+	// It applies to every container in the pod. The k3sm provider parses it
+	// once and stamps the parsed result onto each container's
 	// Container.image_platform, so the runtime consumes a normalized message and
 	// never re-parses a user-supplied string — one parse point, one place a
 	// malformed value is rejected.
 	//
-	// There is deliberately NO per-container key form in v1. A per-container
+	// There is deliberately no per-container key form in v1: a per-container
 	// annotation would need a container name inside the key, which makes the key
 	// space unbounded and un-validatable, and mixed-platform containers within
 	// one pod is not a workload k3sm supports (they share one guest, hence one
@@ -73,16 +73,15 @@ const (
 	// explicit surface, not as a key-naming convention.
 	AnnotationImagePlatform = "k3sm.io/image-platform"
 
-	// AnnotationInternetEgress is the POD-LEVEL annotation opting a workload in
+	// AnnotationInternetEgress is the pod-level annotation opting a workload in
 	// to reaching networks beyond the cluster. It is the operator-facing spelling
 	// of SandboxProfile.allow_internet_egress: the k3sm provider reads this
 	// annotation at admission and sets that proto field; nothing else sets it.
 	//
-	// It lives HERE, in the runtime-area package, and deliberately not in
-	// mlx/v1alpha1 — it is a k3sm.io/*-domain key that parameterizes this
-	// runtime contract's SandboxProfile, and it is not MLX-specific (any pod that
-	// must fetch from the internet wants it). The mlx package holds only
-	// mlx.k3sm.io/* keys.
+	// It lives in the runtime-area package, not mlx/v1alpha1: it is a
+	// k3sm.io/*-domain key that parameterizes this runtime contract's
+	// SandboxProfile, and it is not MLX-specific (any pod that must fetch from
+	// the internet wants it). The mlx package holds only mlx.k3sm.io/* keys.
 	//
 	// Enforcement ceiling, stated plainly (the same words the proto field
 	// carries, because a consumer that reads only one of the two must still get

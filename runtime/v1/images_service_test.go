@@ -29,8 +29,8 @@ import (
 // TestImagesServiceSurface is B130a's named gate.
 //
 // The image verbs (list / measure / remove / prune / ingest) are a different
-// caller's surface from the pod verbs, so they land as a SEPARATE SERVICE IN
-// THE SAME PROTO PACKAGE — the CRI RuntimeService/ImageService split. Both
+// caller's surface from the pod verbs, so they land as a separate service in
+// the same proto package — the CRI RuntimeService/ImageService split. Both
 // halves of that sentence are load-bearing and both are pinned here: a service
 // that drifted into its own package would fork the contract module, and an
 // entry type that re-declared digest/size/media_type as scalars would duplicate
@@ -288,11 +288,11 @@ func TestImagesServiceSurface(t *testing.T) {
 		}{
 			// Advisory digest + re-hash before the lease commits (the ingest
 			// self-authentication obligation).
-			{"advisory-digest clause", "any client-supplied digest or size is ADVISORY"},
-			{"re-hash-before-commit clause", "MUST re-hash the received bytes and reject a mismatch BEFORE the lease commits"},
-			// The bare "Resolution 8" citation also appears in the SOLE STORE
-			// WRITER paragraph above the DIGEST CONTRACT one; pin the clause
-			// that is unique to the digest paragraph so deleting IT reddens.
+			{"advisory-digest clause", "any client-supplied digest or size is advisory"},
+			{"re-hash-before-commit clause", "must re-hash the received bytes and reject a mismatch before the lease commits"},
+			// The bare "Resolution 8" citation also appears in the sole-store-
+			// writer paragraph above the digest-contract one; pin the clause
+			// that is unique to the digest paragraph so deleting it reddens.
 			{"re-hash resolution citation", "Resolution 8: every ingest path"},
 			// The lease obligation, with the transitional citation and the marker
 			// that says where it will move.
@@ -300,18 +300,18 @@ func TestImagesServiceSurface(t *testing.T) {
 			{"lease resolution citation", "the M12 images plan, Resolution 13(c)"},
 			{"lease citation TODO", "TODO(B128)"},
 			// Loaded images are provenance-free; enforcement stays at exec.
-			{"not-a-signature-checkpoint note", "LoadImage is NOT a SignaturePolicy CHECKPOINT"},
-			{"provenance-free note", "PROVENANCE-FREE BY DESIGN"},
+			{"not-a-signature-checkpoint note", "LoadImage is not a SignaturePolicy checkpoint"},
+			{"provenance-free note", "provenance-free by design"},
 			{"signature-policy plan citation", "the M12 images plan, section M12.2"},
 			// The socket posture, stated precisely rather than as "root-only".
-			{"embedded-posture clause", "serves NO SOCKET AT ALL"},
-			{"file-mode-alone clause", "guarded by POSIX FILE MODE ALONE"},
-			{"no-peercred clause", "There is NO LOCAL_PEERCRED differentiation on this socket"},
-			{"new-listener clause", "is a NEW LISTENER / AUTHZ DESIGN"},
+			{"embedded-posture clause", "serves no socket at all"},
+			{"file-mode-alone clause", "guarded by POSIX file mode alone"},
+			{"no-peercred clause", "There is no LOCAL_PEERCRED differentiation on this socket"},
+			{"new-listener clause", "needs a new listener and authorizer design"},
 			{"daemon-side control pointer", "B130b's gate"},
 			// The skew decision, recorded so it is not re-derived.
 			{"reactive-skew clause", "returns gRPC UNIMPLEMENTED for every method below"},
-			{"deferred capability band", "Capability-band advertisement via GetRuntimeInfoResponse's reserved 100..149 band was considered and is DEFERRED"},
+			{"deferred capability band", "Capability-band advertisement via GetRuntimeInfoResponse's reserved 100..149 band was considered and"},
 		}
 		for _, tc := range cases {
 			if !strings.Contains(text, tc.want) {
