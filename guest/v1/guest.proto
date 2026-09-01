@@ -45,13 +45,13 @@ option go_package = "k3sm.io/apis/guest/v1;guestv1";
 // socket — never a path inside the pod dir, and never reachable from the pod
 // itself.
 //
-// SINGLE-POD GUEST. One VM hosts exactly one pod, so every RPC below is scoped
+// Single-pod guest. One VM hosts exactly one pod, so every RPC below is scoped
 // to that pod implicitly. Requests still carry pod_id, and the agent MUST
 // reject a pod_id that is not the pod it booted: the id is an assertion the
 // caller reached the guest it meant to reach, not a selector over several.
 // `container` is the real selector within the pod.
 //
-// TRUST: everything the agent returns is GUEST-CONTROLLED DATA. The guest runs
+// Trust: everything the agent returns is guest-controlled data. The guest runs
 // the workload, so a compromised workload can shape these responses. The host
 // reads them with bounded reads and lets them affect nothing beyond that one
 // pod's own status.
@@ -114,21 +114,21 @@ message HealthResponse {
   bool ready = 1;
 
   // guest_ip is the address the guest's DHCP client leased on eth0, in dotted
-  // form; empty until the lease is held. THIS FIELD IS THE SINGLE LIVE-ADDRESS
-  // AUTHORITY for a vm pod: the host consumes what the agent reports here and
+  // form; empty until the lease is held. This field is the single live-address
+  // authority for a vm pod: the host consumes what the agent reports here and
   // never re-derives the address from the network attachment. It feeds
   // k3sm.runtime.v1 PodStatus.guest_transport_address, which is how it crosses
   // to the host's dial paths.
   //
-  // It is the pod's LIVE TRANSPORT address — what the host dials to reach this
+  // It is the pod's live transport address — what the host dials to reach this
   // guest (Service-proxy backend dials, probes, port-forward, and later policy
-  // attribution). It is NOT the pod's published status IP: that stays
+  // attribution). It is not the pod's published status IP: that stays
   // k3sm.runtime.v1 PodStatus.pod_ip / pod_ips, the podCIDR /32 the host
   // assigns and publishes to EndpointSlice, DNS, and the downward API. The two
   // are different addresses on different segments and neither substitutes for
   // the other.
   //
-  // It MAY CHANGE across a guest restart, because it is a lease. A lease change
+  // It may change across a guest restart, because it is a lease. A lease change
   // is therefore observable as a change in this field, and a consumer re-reads
   // it rather than caching it as a stable identifier.
   string guest_ip = 2;
@@ -338,7 +338,7 @@ message GuestContainer {
   // crosses the boundary — no host path does.
   string rootfs_tag = 2;
 
-  // command and args form argv: argv = command + args. They are ALREADY MERGED
+  // command and args form argv: argv = command + args. They are already merged
   // host-side against the image config (Entrypoint/Cmd) per the Kubernetes
   // four-quadrant rule — the guest performs no further merge and consults no
   // image config of its own.

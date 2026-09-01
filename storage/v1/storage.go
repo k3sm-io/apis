@@ -35,7 +35,7 @@ const (
 	// k3sm.io/* form Kubernetes uses for in-tree-style provisioner names.
 	ProvisionerName = "k3sm.io/local-path"
 	// DefaultBasePath is the APFS storage root under which per-PVC dirs live. It
-	// is on the SAME APFS volume as /var/lib/k3sm (kine's SQLite shares it), so a
+	// is on the same APFS volume as /var/lib/k3sm (kine's SQLite shares it), so a
 	// runaway PVC can fill the datastore volume — capacity is not enforced vs
 	// free space (over-commit → write-time ENOSPC).
 	DefaultBasePath = "/var/lib/k3sm/storage"
@@ -228,25 +228,25 @@ func validDNSName(kind, v string, re *regexp.Regexp, max int) error {
 // dir.
 //
 // Both components are validated as strict RFC 1123 names — namespace as a DNS
-// LABEL, claimName as a DNS SUBDOMAIN — and the RAW argument is what is checked,
-// because the raw argument is what path.Join receives. The grammar is a CLOSED
+// label, claimName as a DNS subdomain — and the raw argument is what is checked,
+// because the raw argument is what path.Join receives. The grammar is a closed
 // class rather than a ".."/"/" blacklist for two independent reasons:
 //
-//   - Traversal. path.Join CLEANS its result, so an unchecked ".." component
-//     resolves the dir OUT of the storage root and onto a sibling of it — the
+//   - Traversal. path.Join cleans its result, so an unchecked ".." component
+//     resolves the dir out of the storage root and onto a sibling of it — the
 //     tree that holds the control-plane state next door. A value outside the
 //     class yields no path at all, rather than a path that must be re-checked by
 //     every caller afterwards.
-//   - Aliasing. The default macOS APFS volume is CASE-INSENSITIVE while a
+//   - Aliasing. The default macOS APFS volume is case-insensitive while a
 //     Kubernetes namespace is a case-sensitive byte string, so "Default" and
-//     "default" are two distinct namespaces resolving to ONE directory: a
+//     "default" are two distinct namespaces resolving to one directory: a
 //     cross-namespace data escape that contains no traversal metacharacter and
 //     that a ".."/"/" test passes cleanly. RFC 1123 is lowercase-only, so one
 //     rule closes traversal and aliasing together. This is the same reasoning as
 //     the lowercase-only pod-id class in k3sm.io/runtimed (pkg/image/podid.go).
 //
 // Whitespace is rejected by the same class, closing a live gap: a blank-trimmed
-// emptiness check accepted "ns " and then joined the UNTRIMMED value, so a
+// emptiness check accepted "ns " and then joined the untrimmed value, so a
 // trailing space produced a second, distinct on-disk directory for one namespace.
 //
 // The class costs no reach: it is exactly the set the only producers emit

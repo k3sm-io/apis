@@ -67,13 +67,13 @@ const (
 // socket — never a path inside the pod dir, and never reachable from the pod
 // itself.
 //
-// SINGLE-POD GUEST. One VM hosts exactly one pod, so every RPC below is scoped
+// Single-pod guest. One VM hosts exactly one pod, so every RPC below is scoped
 // to that pod implicitly. Requests still carry pod_id, and the agent MUST
 // reject a pod_id that is not the pod it booted: the id is an assertion the
 // caller reached the guest it meant to reach, not a selector over several.
 // `container` is the real selector within the pod.
 //
-// TRUST: everything the agent returns is GUEST-CONTROLLED DATA. The guest runs
+// Trust: everything the agent returns is guest-controlled data. The guest runs
 // the workload, so a compromised workload can shape these responses. The host
 // reads them with bounded reads and lets them affect nothing beyond that one
 // pod's own status.
@@ -215,13 +215,13 @@ func (c *guestAgentClient) Stop(ctx context.Context, in *StopRequest, opts ...gr
 // socket — never a path inside the pod dir, and never reachable from the pod
 // itself.
 //
-// SINGLE-POD GUEST. One VM hosts exactly one pod, so every RPC below is scoped
+// Single-pod guest. One VM hosts exactly one pod, so every RPC below is scoped
 // to that pod implicitly. Requests still carry pod_id, and the agent MUST
 // reject a pod_id that is not the pod it booted: the id is an assertion the
 // caller reached the guest it meant to reach, not a selector over several.
 // `container` is the real selector within the pod.
 //
-// TRUST: everything the agent returns is GUEST-CONTROLLED DATA. The guest runs
+// Trust: everything the agent returns is guest-controlled data. The guest runs
 // the workload, so a compromised workload can shape these responses. The host
 // reads them with bounded reads and lets them affect nothing beyond that one
 // pod's own status.
