@@ -1,9 +1,9 @@
 ---
 repo: apis
 schema: phases/v1
-current_phase: M5
-updated: 2026-07-11
-updated_by: roadmap-encoder
+current_phase: M7
+updated: 2026-08-31
+updated_by: roadmap-validation-sweep
 
 phases:
   - id: M0
