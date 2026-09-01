@@ -119,8 +119,8 @@ func TestAlphaBrandingDocumented(t *testing.T) {
 	}
 	flat := strings.Join(strings.Fields(strings.ReplaceAll(string(src), "//", " ")), " ")
 	for _, want := range []string{
-		"THIS IS AN ALPHA API — INCOMPATIBLE CHANGES ARE ALLOWED",
-		"may be renamed, retyped, given different defaults, or REMOVED",
+		"alpha — incompatible changes are allowed",
+		"may be renamed, retyped, given different defaults, or removed",
 	} {
 		if !strings.Contains(flat, want) {
 			t.Errorf("doc.go does not carry the alpha-branding clause %q", want)

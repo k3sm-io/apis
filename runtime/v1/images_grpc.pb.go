@@ -1,13 +1,13 @@
-// images.proto is the k3sm node IMAGE contract: the store-facing RPCs the
-// `k3sm image` CLI and the node's image-GC caller drive. It is a SEPARATE
-// SERVICE IN THE SAME PROTO PACKAGE (k3sm.runtime.v1) — the CRI
+// images.proto is the k3sm node image contract: the store-facing RPCs the
+// `k3sm image` CLI and the node's image-GC caller drive. It is a separate
+// service in the same proto package (k3sm.runtime.v1) — the CRI
 // RuntimeService/ImageService split. Image verbs and pod verbs are different
 // callers' surfaces, so they get different services; they share one package,
 // one generated Go package, and one wire namespace, because a second proto
 // package or import path would fork the shared-contracts module for no gain.
 //
-// Stability contract: as in runtime.proto — field numbers are STABLE and the
-// surface is ADDITIVE-ONLY forever. Never renumber or repurpose a field; never
+// Stability contract: as in runtime.proto — field numbers are stable and the
+// surface is additive-only forever. Never renumber or repurpose a field; never
 // reuse a reserved number/name. Every message keeps the file convention's
 // `reserved 100 to 149;` headroom band. `buf breaking` (WIRE_JSON) enforces it.
 
@@ -46,51 +46,50 @@ const (
 // Images is the node-local image service: list, measure, remove, prune, and
 // ingest. It is served by the same native runtime daemon (k3sm.io/runtimed)
 // that serves `service Runtime`, on the same listener — the split is about
-// which CALLER a surface belongs to, not about which process serves it.
+// which caller a surface belongs to, not about which process serves it.
 //
-// TRUST POSTURE (stated precisely — these RPCs are NOT "root-only"):
+// Trust posture (stated precisely — these RPCs are not "root-only"):
 //
-//   - In the INSTALLED posture the runtime is EMBEDDED IN-PROCESS in the one
-//     k3sm binary and serves NO SOCKET AT ALL. The only unix-socket listener is
+//   - In the installed posture the runtime is embedded in-process in the one
+//     k3sm binary and serves no socket at all. The only unix-socket listener is
 //     created by the standalone k3sm-runtimed daemon binary; an embedded node
 //     never constructs one, so it exposes these RPCs to no peer whatsoever.
 //
-//   - The standalone daemon's socket is guarded by POSIX FILE MODE ALONE: the
+//   - The standalone daemon's socket is guarded by POSIX file mode alone: the
 //     socket node is 0600 inside a 0700 parent dir, owned by the daemon's own
 //     euid (the unprivileged `_k3sm` user in the shipped posture; root only if
-//     an operator chooses to run the daemon as root). There is NO LOCAL_PEERCRED
-//     differentiation on this socket — the server installs no peer-credential
-//     check — and pods commonly share the daemon's uid, because the native
-//     hostprocess path has no per-pod uid isolation. Absent an explicit Seatbelt
-//     deny of the socket path, a process at that uid is indistinguishable from
-//     the CLI. The file mode keeps OTHER uids out; it does not partition the
-//     daemon's own uid into callers.
+//     an operator chooses to run the daemon as root). There is no LOCAL_PEERCRED
+//     differentiation on this socket, and pods commonly share the daemon's uid,
+//     because the native hostprocess path has no per-pod uid isolation. Absent
+//     an explicit Seatbelt deny of the socket path, a process at that uid is
+//     indistinguishable from the CLI. The file mode keeps other uids out; it
+//     does not partition the daemon's own uid into callers.
 //
 //   - Consequence for future work: "narrow these RPCs to a subset of callers",
-//     or "let `k3sm image ls` work without sudo", is a NEW LISTENER / AUTHZ
-//     DESIGN — a second socket with its own ownership, plus an authorizer that
-//     can actually tell peers apart — never a permission tweak on this one.
+//     or "let `k3sm image ls` work without sudo", needs a new listener and
+//     authorizer design — a second socket with its own ownership, plus an
+//     authorizer that can actually tell peers apart — never a permission tweak
+//     on this one.
 //
-//   - The MECHANICAL control lives daemon-side, not here: a proto file cannot
+//   - The mechanical control lives daemon-side, not here: a proto file cannot
 //     assert what listener its service is registered on. The assertion that
-//     Images is served by the IDENTICAL server the Runtime service is
+//     Images is served by the identical server the Runtime service is
 //     registered on — so it inherits exactly this socket and no other — is
 //     B130b's gate, in the daemon repo.
 //
-// SKEW (v1 is DELIBERATELY REACTIVE): a daemon that predates this service
+// Skew: v1 is deliberately reactive. A daemon that predates this service
 // returns gRPC UNIMPLEMENTED for every method below, and a client treats that
 // status as "this daemon has no image service". Capability-band advertisement
-// via GetRuntimeInfoResponse's reserved 100..149 band was considered and is
-// DEFERRED: it would cost a field plus a producer and a consumer on both sides
-// to restate what the status code already carries unambiguously. Recorded here
-// so a later reader does not re-derive the question and file it as an omission.
+// via GetRuntimeInfoResponse's reserved 100..149 band was considered and
+// deferred: it would cost a field plus a producer and a consumer on both sides
+// to restate what the status code already carries unambiguously.
 type ImagesClient interface {
 	// ListImages returns the images recorded in the local store. The entries
 	// embed the existing Descriptor / ImageManifest / Platform messages rather
 	// than re-spelling digest, size, or media type as parallel scalars.
 	ListImages(ctx context.Context, in *ListImagesRequest, opts ...grpc.CallOption) (*ListImagesResponse, error)
 	// ImageFsInfo returns raw statfs-style measurements of the filesystem backing
-	// the image store. It is MEASUREMENT-SHAPED ONLY — see FilesystemUsage.
+	// the image store. It is measurement-shaped only — see FilesystemUsage.
 	ImageFsInfo(ctx context.Context, in *ImageFsInfoRequest, opts ...grpc.CallOption) (*ImageFsInfoResponse, error)
 	// RemoveImage removes an image ROOT from the local index (an untag). Root
 	// removal is authorized and local — an explicit operator/lifecycle action,
@@ -98,43 +97,43 @@ type ImagesClient interface {
 	// happens only in PruneImages, which re-derives reachability first.
 	// Idempotent — removing an absent image succeeds.
 	RemoveImage(ctx context.Context, in *RemoveImageRequest, opts ...grpc.CallOption) (*RemoveImageResponse, error)
-	// PruneImages deletes unreferenced content. The REFUSAL SEMANTICS are
+	// PruneImages deletes unreferenced content. The refusal semantics are
 	// daemon-side: deletability is `not reachable(blob, roots)` computed in one
 	// transaction over recorded edges, and every unlink re-verifies before it
 	// runs (the ratified image-GC provenance model — the M12 images plan,
-	// Resolution 13). This wire carries only the TYPED OUTCOME: which digests
+	// Resolution 13). This wire carries only the typed outcome: which digests
 	// went, and a minimal per-digest reason for each one that was kept, so a
-	// dry-run or audit caller can see WHY a blob survived without the daemon
+	// dry-run or audit caller can see why a blob survived without the daemon
 	// exporting its policy.
 	PruneImages(ctx context.Context, in *PruneImagesRequest, opts ...grpc.CallOption) (*PruneImagesResponse, error)
 	// LoadImage ingests an image archive the client streams — the `k3sm image
 	// load` / `import` path.
 	//
-	// CLIENT-STREAMING, and the shape is deliberate: the client sends a metadata
+	// Client-streaming, and the shape is deliberate: the client sends a metadata
 	// frame then chunk frames, and the server replies exactly once at the end.
-	// Runtime's Exec/Attach/PortForward are BIDIRECTIONAL; this is the file's
+	// Runtime's Exec/Attach/PortForward are bidirectional; this is the file's
 	// first client-streaming RPC, because there is nothing for the server to say
 	// until the archive is verified and committed.
 	//
-	// THE DAEMON IS THE SOLE STORE WRITER on this path: the client opens the
+	// The daemon is the sole store writer on this path: the client opens the
 	// operator's archive (the daemon generally cannot read an operator's home)
 	// and streams the bytes; it never writes the content store itself. See the
-	// M12 images plan, Resolution 8 (as AMENDED 2026-08-09).
+	// M12 images plan, Resolution 8 (as amended 2026-08-09).
 	//
-	// DIGEST CONTRACT: any client-supplied digest or size is ADVISORY. The server
-	// MUST re-hash the received bytes and reject a mismatch BEFORE the lease
+	// Digest contract: any client-supplied digest or size is advisory. The server
+	// must re-hash the received bytes and reject a mismatch before the lease
 	// commits — a client-asserted digest is an input to be verified, never a fact
 	// to be trusted (the M12 images plan, Resolution 8: every ingest path
 	// re-hashes content against its claimed digest before commit).
 	//
-	// LEASE OBLIGATION: the server takes its store lease before the first blob
+	// Lease obligation: the server takes its store lease before the first blob
 	// commit and records the reference before releasing it. Citation is
-	// TRANSITIONAL — the M12 images plan, Resolution 13(c). TODO(B128): once the
+	// transitional — the M12 images plan, Resolution 13(c). TODO(B128): once the
 	// store/metastore package is promoted and states this obligation in its own
 	// doc.go, re-point this citation at that package and drop the plan reference.
 	//
-	// LoadImage is NOT a SignaturePolicy CHECKPOINT. Loaded images are
-	// PROVENANCE-FREE BY DESIGN — an operator-CLI-only surface (the M12 images
+	// LoadImage is not a SignaturePolicy checkpoint. Loaded images are
+	// provenance-free by design — an operator-CLI-only surface (the M12 images
 	// plan, section M12.2). This RPC neither evaluates nor records a
 	// SignaturePolicy; enforcement stays where it already is, at materialize/exec.
 	LoadImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[LoadImageRequest, LoadImageResponse], error)
@@ -208,51 +207,50 @@ type Images_LoadImageClient = grpc.ClientStreamingClient[LoadImageRequest, LoadI
 // Images is the node-local image service: list, measure, remove, prune, and
 // ingest. It is served by the same native runtime daemon (k3sm.io/runtimed)
 // that serves `service Runtime`, on the same listener — the split is about
-// which CALLER a surface belongs to, not about which process serves it.
+// which caller a surface belongs to, not about which process serves it.
 //
-// TRUST POSTURE (stated precisely — these RPCs are NOT "root-only"):
+// Trust posture (stated precisely — these RPCs are not "root-only"):
 //
-//   - In the INSTALLED posture the runtime is EMBEDDED IN-PROCESS in the one
-//     k3sm binary and serves NO SOCKET AT ALL. The only unix-socket listener is
+//   - In the installed posture the runtime is embedded in-process in the one
+//     k3sm binary and serves no socket at all. The only unix-socket listener is
 //     created by the standalone k3sm-runtimed daemon binary; an embedded node
 //     never constructs one, so it exposes these RPCs to no peer whatsoever.
 //
-//   - The standalone daemon's socket is guarded by POSIX FILE MODE ALONE: the
+//   - The standalone daemon's socket is guarded by POSIX file mode alone: the
 //     socket node is 0600 inside a 0700 parent dir, owned by the daemon's own
 //     euid (the unprivileged `_k3sm` user in the shipped posture; root only if
-//     an operator chooses to run the daemon as root). There is NO LOCAL_PEERCRED
-//     differentiation on this socket — the server installs no peer-credential
-//     check — and pods commonly share the daemon's uid, because the native
-//     hostprocess path has no per-pod uid isolation. Absent an explicit Seatbelt
-//     deny of the socket path, a process at that uid is indistinguishable from
-//     the CLI. The file mode keeps OTHER uids out; it does not partition the
-//     daemon's own uid into callers.
+//     an operator chooses to run the daemon as root). There is no LOCAL_PEERCRED
+//     differentiation on this socket, and pods commonly share the daemon's uid,
+//     because the native hostprocess path has no per-pod uid isolation. Absent
+//     an explicit Seatbelt deny of the socket path, a process at that uid is
+//     indistinguishable from the CLI. The file mode keeps other uids out; it
+//     does not partition the daemon's own uid into callers.
 //
 //   - Consequence for future work: "narrow these RPCs to a subset of callers",
-//     or "let `k3sm image ls` work without sudo", is a NEW LISTENER / AUTHZ
-//     DESIGN — a second socket with its own ownership, plus an authorizer that
-//     can actually tell peers apart — never a permission tweak on this one.
+//     or "let `k3sm image ls` work without sudo", needs a new listener and
+//     authorizer design — a second socket with its own ownership, plus an
+//     authorizer that can actually tell peers apart — never a permission tweak
+//     on this one.
 //
-//   - The MECHANICAL control lives daemon-side, not here: a proto file cannot
+//   - The mechanical control lives daemon-side, not here: a proto file cannot
 //     assert what listener its service is registered on. The assertion that
-//     Images is served by the IDENTICAL server the Runtime service is
+//     Images is served by the identical server the Runtime service is
 //     registered on — so it inherits exactly this socket and no other — is
 //     B130b's gate, in the daemon repo.
 //
-// SKEW (v1 is DELIBERATELY REACTIVE): a daemon that predates this service
+// Skew: v1 is deliberately reactive. A daemon that predates this service
 // returns gRPC UNIMPLEMENTED for every method below, and a client treats that
 // status as "this daemon has no image service". Capability-band advertisement
-// via GetRuntimeInfoResponse's reserved 100..149 band was considered and is
-// DEFERRED: it would cost a field plus a producer and a consumer on both sides
-// to restate what the status code already carries unambiguously. Recorded here
-// so a later reader does not re-derive the question and file it as an omission.
+// via GetRuntimeInfoResponse's reserved 100..149 band was considered and
+// deferred: it would cost a field plus a producer and a consumer on both sides
+// to restate what the status code already carries unambiguously.
 type ImagesServer interface {
 	// ListImages returns the images recorded in the local store. The entries
 	// embed the existing Descriptor / ImageManifest / Platform messages rather
 	// than re-spelling digest, size, or media type as parallel scalars.
 	ListImages(context.Context, *ListImagesRequest) (*ListImagesResponse, error)
 	// ImageFsInfo returns raw statfs-style measurements of the filesystem backing
-	// the image store. It is MEASUREMENT-SHAPED ONLY — see FilesystemUsage.
+	// the image store. It is measurement-shaped only — see FilesystemUsage.
 	ImageFsInfo(context.Context, *ImageFsInfoRequest) (*ImageFsInfoResponse, error)
 	// RemoveImage removes an image ROOT from the local index (an untag). Root
 	// removal is authorized and local — an explicit operator/lifecycle action,
@@ -260,43 +258,43 @@ type ImagesServer interface {
 	// happens only in PruneImages, which re-derives reachability first.
 	// Idempotent — removing an absent image succeeds.
 	RemoveImage(context.Context, *RemoveImageRequest) (*RemoveImageResponse, error)
-	// PruneImages deletes unreferenced content. The REFUSAL SEMANTICS are
+	// PruneImages deletes unreferenced content. The refusal semantics are
 	// daemon-side: deletability is `not reachable(blob, roots)` computed in one
 	// transaction over recorded edges, and every unlink re-verifies before it
 	// runs (the ratified image-GC provenance model — the M12 images plan,
-	// Resolution 13). This wire carries only the TYPED OUTCOME: which digests
+	// Resolution 13). This wire carries only the typed outcome: which digests
 	// went, and a minimal per-digest reason for each one that was kept, so a
-	// dry-run or audit caller can see WHY a blob survived without the daemon
+	// dry-run or audit caller can see why a blob survived without the daemon
 	// exporting its policy.
 	PruneImages(context.Context, *PruneImagesRequest) (*PruneImagesResponse, error)
 	// LoadImage ingests an image archive the client streams — the `k3sm image
 	// load` / `import` path.
 	//
-	// CLIENT-STREAMING, and the shape is deliberate: the client sends a metadata
+	// Client-streaming, and the shape is deliberate: the client sends a metadata
 	// frame then chunk frames, and the server replies exactly once at the end.
-	// Runtime's Exec/Attach/PortForward are BIDIRECTIONAL; this is the file's
+	// Runtime's Exec/Attach/PortForward are bidirectional; this is the file's
 	// first client-streaming RPC, because there is nothing for the server to say
 	// until the archive is verified and committed.
 	//
-	// THE DAEMON IS THE SOLE STORE WRITER on this path: the client opens the
+	// The daemon is the sole store writer on this path: the client opens the
 	// operator's archive (the daemon generally cannot read an operator's home)
 	// and streams the bytes; it never writes the content store itself. See the
-	// M12 images plan, Resolution 8 (as AMENDED 2026-08-09).
+	// M12 images plan, Resolution 8 (as amended 2026-08-09).
 	//
-	// DIGEST CONTRACT: any client-supplied digest or size is ADVISORY. The server
-	// MUST re-hash the received bytes and reject a mismatch BEFORE the lease
+	// Digest contract: any client-supplied digest or size is advisory. The server
+	// must re-hash the received bytes and reject a mismatch before the lease
 	// commits — a client-asserted digest is an input to be verified, never a fact
 	// to be trusted (the M12 images plan, Resolution 8: every ingest path
 	// re-hashes content against its claimed digest before commit).
 	//
-	// LEASE OBLIGATION: the server takes its store lease before the first blob
+	// Lease obligation: the server takes its store lease before the first blob
 	// commit and records the reference before releasing it. Citation is
-	// TRANSITIONAL — the M12 images plan, Resolution 13(c). TODO(B128): once the
+	// transitional — the M12 images plan, Resolution 13(c). TODO(B128): once the
 	// store/metastore package is promoted and states this obligation in its own
 	// doc.go, re-point this citation at that package and drop the plan reference.
 	//
-	// LoadImage is NOT a SignaturePolicy CHECKPOINT. Loaded images are
-	// PROVENANCE-FREE BY DESIGN — an operator-CLI-only surface (the M12 images
+	// LoadImage is not a SignaturePolicy checkpoint. Loaded images are
+	// provenance-free by design — an operator-CLI-only surface (the M12 images
 	// plan, section M12.2). This RPC neither evaluates nor records a
 	// SignaturePolicy; enforcement stays where it already is, at materialize/exec.
 	LoadImage(grpc.ClientStreamingServer[LoadImageRequest, LoadImageResponse]) error

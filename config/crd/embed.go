@@ -31,13 +31,9 @@ limitations under the License.
 // would silently enlist it, and adopting a CRD into the applied set must be a
 // deliberate, reviewable act.
 //
-// The MeshPeer manifest beside this file (net.k3sm.io_meshpeers.yaml) now has
-// such an accessor, added as exactly the deliberate act that rule demands. It
-// previously had none, on the belief that MeshPeer was applied out-of-band by
-// the bootstrap path — and that belief was wrong: nothing applied it, so every
-// worker join failed at the enroll write until someone installed the CRD by
-// hand. k3sm's server provisions it fail-closed on the mesh path, and the
-// mesh-regression check that adopting it owes rides that consumer change's gate.
+// The MeshPeer manifest beside this file (net.k3sm.io_meshpeers.yaml) has such
+// an accessor: k3sm's server applies it fail-closed on the mesh join path, so
+// every worker join depends on this CRD actually being installed.
 package crd
 
 import (
@@ -55,7 +51,7 @@ var mlxModelCRDYAML string
 // MLXModelCRD returns the mlx.k3sm.io MLXModel CustomResourceDefinition manifest
 // as YAML bytes, ready to apply.
 //
-// It returns a FRESH COPY on every call. The embedded manifest is process-global
+// It returns a fresh copy on every call. The embedded manifest is process-global
 // state, and a caller that decodes in place, appends, or otherwise scribbles on
 // the returned slice would corrupt what every later caller applies — including
 // the one that re-applies during a reconcile loop.
@@ -74,7 +70,7 @@ var meshPeerCRDYAML string
 // MeshPeerCRD returns the net.k3sm.io MeshPeer CustomResourceDefinition manifest
 // as YAML bytes, ready to apply.
 //
-// It returns a FRESH COPY on every call. The embedded manifest is process-global
+// It returns a fresh copy on every call. The embedded manifest is process-global
 // state, and a caller that decodes in place, appends, or otherwise scribbles on
 // the returned slice would corrupt what every later caller applies — including
 // the one that re-applies during a reconcile loop.

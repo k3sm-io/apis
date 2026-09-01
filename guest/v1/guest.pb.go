@@ -155,21 +155,21 @@ type HealthResponse struct {
 	// other RPCs (filesystems mounted, spec read, network configured).
 	Ready bool `protobuf:"varint,1,opt,name=ready,proto3" json:"ready,omitempty"`
 	// guest_ip is the address the guest's DHCP client leased on eth0, in dotted
-	// form; empty until the lease is held. THIS FIELD IS THE SINGLE LIVE-ADDRESS
-	// AUTHORITY for a vm pod: the host consumes what the agent reports here and
+	// form; empty until the lease is held. This field is the single live-address
+	// authority for a vm pod: the host consumes what the agent reports here and
 	// never re-derives the address from the network attachment. It feeds
 	// k3sm.runtime.v1 PodStatus.guest_transport_address, which is how it crosses
 	// to the host's dial paths.
 	//
-	// It is the pod's LIVE TRANSPORT address — what the host dials to reach this
+	// It is the pod's live transport address — what the host dials to reach this
 	// guest (Service-proxy backend dials, probes, port-forward, and later policy
-	// attribution). It is NOT the pod's published status IP: that stays
+	// attribution). It is not the pod's published status IP: that stays
 	// k3sm.runtime.v1 PodStatus.pod_ip / pod_ips, the podCIDR /32 the host
 	// assigns and publishes to EndpointSlice, DNS, and the downward API. The two
 	// are different addresses on different segments and neither substitutes for
 	// the other.
 	//
-	// It MAY CHANGE across a guest restart, because it is a lease. A lease change
+	// It may change across a guest restart, because it is a lease. A lease change
 	// is therefore observable as a change in this field, and a consumer re-reads
 	// it rather than caching it as a stable identifier.
 	GuestIp string `protobuf:"bytes,2,opt,name=guest_ip,json=guestIp,proto3" json:"guest_ip,omitempty"`
@@ -945,7 +945,7 @@ type GuestContainer struct {
 	// read-only at the VZ device); the tag is the only rootfs identity that
 	// crosses the boundary — no host path does.
 	RootfsTag string `protobuf:"bytes,2,opt,name=rootfs_tag,json=rootfsTag,proto3" json:"rootfs_tag,omitempty"`
-	// command and args form argv: argv = command + args. They are ALREADY MERGED
+	// command and args form argv: argv = command + args. They are already merged
 	// host-side against the image config (Entrypoint/Cmd) per the Kubernetes
 	// four-quadrant rule — the guest performs no further merge and consults no
 	// image config of its own.

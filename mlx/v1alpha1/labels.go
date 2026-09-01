@@ -23,7 +23,7 @@ package mlxv1alpha1
 // literal. A literal in a consumer is a second source of truth that compiles
 // perfectly while being wrong.
 //
-// UNLIKE the object shape in this package, these keys are STABLE. The alpha
+// Unlike the object shape in this package, these keys are stable. The alpha
 // licence in the package doc does not extend to them: renaming one breaks every
 // already-labelled node and every already-scheduled pod, and neither is a thing
 // a version bump can migrate.
@@ -34,16 +34,16 @@ const (
 	GroupName = "mlx.k3sm.io"
 
 	// ResourceGPU is the extended resource name a node advertises GPU capacity
-	// under and a pod requests. It is a RESOURCE, not a label: it is counted and
+	// under and a pod requests. It is a resource, not a label: it is counted and
 	// consumed by the scheduler, so requesting it both selects a GPU node and
 	// reserves the GPU against other pods.
 	ResourceGPU = "mlx.k3sm.io/gpu"
 
-	// LabelGPUPresent is the node LABEL reporting that this node has a usable
-	// GPU. It is deliberately a DISTINCT key from ResourceGPU, not the same
-	// string reused: a label answers "does this node have one" for selectors and
-	// for humans reading `kubectl get nodes -L`, while the resource answers "how
-	// many are left" for the scheduler. Reusing one string for both would make a
+	// LabelGPUPresent is the node label reporting that this node has a usable
+	// GPU. It is a distinct key from ResourceGPU, not the same string reused: a
+	// label answers "does this node have one" for selectors and for humans
+	// reading `kubectl get nodes -L`, while the resource answers "how many are
+	// left" for the scheduler. Reusing one string for both would make a
 	// nodeSelector silently match on capacity semantics, and would collide the
 	// two in any tooling that enumerates one namespace.
 	//
@@ -51,9 +51,9 @@ const (
 	// (never present-and-"false", which a selector cannot express).
 	LabelGPUPresent = "mlx.k3sm.io/gpu.present"
 
-	// LabelChip is the node label carrying the exact chip, as a SLUG (e.g.
+	// LabelChip is the node label carrying the exact chip, as a slug (e.g.
 	// "apple-m4-max"). See the chip-slug rule below — the raw GPUFacts.chip_brand
-	// ("Apple M4 Max") is NOT a valid label value.
+	// ("Apple M4 Max") is not a valid label value.
 	LabelChip = "mlx.k3sm.io/chip"
 
 	// LabelChipFamily is the node label carrying the coarser chip family as a
@@ -72,7 +72,7 @@ const (
 
 // Chip-slug normalization rule (the LabelChip / LabelChipFamily value form).
 //
-// GPUFacts.chip_brand and chip_family are carried VERBATIM across the runtime
+// GPUFacts.chip_brand and chip_family are carried verbatim across the runtime
 // contract because they are raw host facts — "Apple M4 Max", spaces and all. A
 // Kubernetes label value may not contain spaces, so the label form is a slug
 // derived from the raw fact by the node advertiser, deterministically:
@@ -87,7 +87,7 @@ const (
 //
 // The rule is documented rather than implemented here on purpose: the derivation
 // belongs to the single consumer that advertises the node (k3sm), which is also
-// the only place that holds the raw facts. What this module owns is the KEY, and
+// the only place that holds the raw facts. What this module owns is the key, and
 // the guarantee that every consumer reading the label agrees on what shape the
 // value has. A consumer must never compare a label value against a raw
 // chip_brand — the raw fact is not the slug, and the comparison silently never
