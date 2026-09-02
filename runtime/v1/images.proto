@@ -24,8 +24,8 @@ import "runtime/v1/runtime.proto";
 
 option go_package = "k3sm.io/apis/runtime/v1;runtimev1";
 
-// Images is the node-local image service: list, measure, remove, prune, and
-// ingest. It is served by the same native runtime daemon (k3sm.io/runtimed)
+// Images is the node-local image service: pull, list, inspect, measure, tag,
+// untag, remove, prune, ingest, and export. It is served by the same native runtime daemon (k3sm.io/runtimed)
 // that serves `service Runtime`, on the same listener — the split is about
 // which caller a surface belongs to, not about which process serves it.
 //
@@ -122,6 +122,110 @@ service Images {
   // plan, section M12.2). This RPC neither evaluates nor records a
   // SignaturePolicy; enforcement stays where it already is, at materialize/exec.
   rpc LoadImage(stream LoadImageRequest) returns (LoadImageResponse);
+
+  // PullImage resolves a reference for a platform and fetches it through the
+  // daemon's OWN puller — the same code path a pod-driven pull takes, so it
+  // inherits (rather than restates) that path's obligations: every fetched blob
+  // is re-hashed against its claimed digest before the lease commits, the
+  // disk-pressure gate applies, and the resulting reference is recorded in the
+  // local image index. A daemon that served this from a second fetch path would
+  // have forked its own verification story.
+  //
+  // This is explicitly the CLI-pull primitive — `k3sm image pull`. It exists so
+  // an operator can WARM and PIN the store ahead of a workload, not so images
+  // can arrive by a route pods do not use.
+  //
+  // Provenance: a successful pull records a reference -> digest index entry — an
+  // edge, plus an OPERATOR root over that reference (the ratified image-GC
+  // provenance model, the M12 images plan, Resolution 13: edges are monotone,
+  // roots are digest-pinned, and root removal is authorized and local). That
+  // root is why a pulled-but-unused image survives PruneImages: it stays
+  // reachable until the operator removes the name with UntagImage.
+  rpc PullImage(PullImageRequest) returns (PullImageResponse);
+
+  // TagImage records an ADDITIONAL reference for a manifest digest that is
+  // already in the local store: a new (reference x platform) index entry
+  // pointing at existing content. It contacts no registry and writes no blob.
+  //
+  // Additive only, and that is the whole safety argument — a tag can make
+  // content reachable, never unreachable. Two consequences are contract, not
+  // implementation detail. The target is named by DIGEST and never by another
+  // (mutable) tag, because roots are digest-pinned and resolving a name here
+  // would let a concurrent re-pull decide what the new tag means. And this RPC
+  // never RE-POINTS an existing entry at a different digest: that would drop the
+  // old edge, which is a root removal wearing a tag's clothes. Re-pointing is
+  // UntagImage then TagImage — two steps the operator explicitly asked for.
+  //
+  // Status contract: NOT_FOUND when the digest is absent from the store (a tag
+  // may not name content the node does not have); FAILED_PRECONDITION when the
+  // (reference x platform) key exists and resolves to a different digest;
+  // idempotent OK when it already resolves to this digest. platform is part of
+  // the key, never a filter.
+  rpc TagImage(TagImageRequest) returns (TagImageResponse);
+
+  // UntagImage removes ONE (reference x platform) index entry. It is the
+  // provenance model's sanctioned EXPLICIT UNTAG — an authorized, local root
+  // removal the operator requested, never a side effect of fetched content (the
+  // M12 images plan, Resolution 13).
+  //
+  // Untag removes a NAME, not bytes. No blob is unlinked here; content is
+  // reclaimed only by PruneImages, which re-derives reachability first. So
+  // untagging a name that a live pod's root still pins leaves the content
+  // reachable and the pod unharmed — that is the point of separating the two
+  // verbs, not a limitation of this one.
+  //
+  // Deliberately distinct from RemoveImage, whose refusal stands: the shipped
+  // daemon answers RemoveImage with UNIMPLEMENTED as a design statement, because
+  // image roots are per-pod records and a request shaped as "remove this image"
+  // does not say which root the caller owns. UntagImage names exactly one
+  // operator-owned entry, which is why it is the removal that can be granted.
+  //
+  // Status contract: NOT_FOUND when the entry does not exist — untag is
+  // deliberately NOT idempotent-by-silence, since the caller asked to remove a
+  // specific name; FAILED_PRECONDITION, removing nothing, when platform is unset
+  // and the reference has more than one platform entry (an ambiguous untag is
+  // never a guess) or when digest is set and the entry resolves elsewhere.
+  rpc UntagImage(UntagImageRequest) returns (UntagImageResponse);
+
+  // InspectImage reports what the store knows about one image — the `docker
+  // inspect` analog, and the read side of the tag verbs above.
+  //
+  // The target is a (reference x platform) key or a manifest digest; a digest
+  // names content directly and needs no platform. Strictly read-only: it
+  // resolves nothing against a registry, takes no lease and records no root, so
+  // it can never make content reachable.
+  //
+  // The entry itself is the EXISTING Image wrapper, so digest, manifest media
+  // type and size, resolved platform, and the config and layer descriptors with
+  // their own digests and sizes are read out of the same Descriptor /
+  // ImageManifest messages ListImages returns; an inspect that re-spelled them
+  // would drift from the list on the first divergent edit. What Image cannot
+  // carry is the decoded image config, which is ImageConfig below.
+  //
+  // Every response field is independently optional: an absent field means the
+  // daemon reported no value for that fact, never that the image asserts an
+  // empty one. That is what lets a later daemon report more without a wire
+  // change.
+  rpc InspectImage(InspectImageRequest) returns (InspectImageResponse);
+
+  // SaveImage streams one image OUT of the store as a tarred OCI image layout —
+  // the `docker save` analog, and the exact inverse of LoadImage's direction.
+  //
+  // Server-streaming, mirroring LoadImage's framing in reverse: the server sends
+  // chunk frames carrying bytes and nothing else, then exactly ONE terminal
+  // frame that carries no chunk and instead reports the exported manifest digest
+  // and the byte count the server sent. A client that reaches the end of the
+  // stream without a terminal frame has a truncated archive and must discard it.
+  //
+  // One (reference x platform) per call, like every other verb here: exporting a
+  // whole multi-platform index is a different archive shape and is not v1.
+  //
+  // Export takes no lease, records no root and unlinks nothing. The client is
+  // the sole writer of the operator's file, the mirror of LoadImage's rule that
+  // the daemon is the sole writer of the store (the M12 images plan, Resolution
+  // 8, as amended 2026-08-09): the daemon generally cannot write into an
+  // operator's home and must not try.
+  rpc SaveImage(SaveImageRequest) returns (stream SaveImageResponse);
 }
 
 // ---------------------------------------------------------------------------
@@ -403,6 +507,284 @@ message LoadImageResponse {
   // error carries a structured failure (empty on success) — notably a digest
   // mismatch, which fails the call and commits nothing.
   google.rpc.Status error = 3;
+
+  reserved 100 to 149;
+}
+
+// ---------------------------------------------------------------------------
+// PullImage
+// ---------------------------------------------------------------------------
+
+// PullImageRequest names the reference to resolve and fetch.
+message PullImageRequest {
+  // reference is the pull reference (registry/repo:tag or registry/repo@digest).
+  string reference = 1;
+
+  // platform selects which manifest of a multi-platform index to fetch. Unset
+  // asks for the daemon's own host platform — the same default a pod-driven
+  // pull takes, never "every platform".
+  Platform platform = 2;
+
+  // policy carries corev1 pull-policy semantics, reusing the EXISTING
+  // ImagePullPolicy enum rather than spelling the same three behaviors a second
+  // time for the CLI. UNSPECIFIED is the legacy pull-through behavior (attempt
+  // the pull, reusing cached blobs) in both skew directions, exactly as it is on
+  // Container.image_pull_policy; NEVER performs no registry round trip at all
+  // and fails NOT_FOUND when the reference is locally absent.
+  ImagePullPolicy policy = 3;
+
+  reserved 100 to 149;
+}
+
+// PullImageResponse reports what the pull resolved to.
+message PullImageResponse {
+  // image is the resolved store entry — the same Image wrapper ListImages
+  // returns, so the resolved digest, the resolved platform, and the manifest
+  // media type and size are read out of the embedded Descriptor /
+  // ImageManifest instead of being re-spelled here as parallel scalars.
+  Image image = 1;
+
+  // already_present is true when the reference already resolved to this digest
+  // locally and no blob was fetched. It is a fact about THIS call, for the
+  // caller's output ("image is up to date"); it never changes what was
+  // recorded, and a pull that hit is as much a root as a pull that fetched.
+  bool already_present = 2;
+
+  // error carries a structured failure (empty on success).
+  google.rpc.Status error = 3;
+
+  reserved 100 to 149;
+}
+
+// ---------------------------------------------------------------------------
+// TagImage / UntagImage
+// ---------------------------------------------------------------------------
+
+// TagImageRequest names existing content and the new reference to record for
+// it. Nothing here can fetch: every field describes an index entry.
+message TagImageRequest {
+  // digest is the manifest digest of the content to name, "<algo>:<hex>". The
+  // target is a digest and never another tag, because roots are digest-pinned:
+  // resolving a mutable name here would let a concurrent re-pull decide what
+  // the new tag ends up meaning.
+  string digest = 1;
+
+  // reference is the NEW pull reference to record for that digest.
+  string reference = 2;
+
+  // platform is part of the index key, not a filter — the store is keyed by
+  // (reference x platform), so the entry this call creates is the pair. Unset
+  // records the entry under the platform the digest itself resolved to.
+  Platform platform = 3;
+
+  reserved 100 to 149;
+}
+
+// TagImageResponse reports the recorded entry.
+message TagImageResponse {
+  // image is the index entry as recorded — the same wrapper ListImages returns,
+  // so a tag and a subsequent list agree by construction.
+  Image image = 1;
+
+  // already_present is true when the (reference x platform) key already
+  // resolved to this digest and nothing was written: the idempotent repeat.
+  bool already_present = 2;
+
+  // error carries a structured failure (empty on success).
+  google.rpc.Status error = 3;
+
+  reserved 100 to 149;
+}
+
+// UntagImageRequest names the single index entry to remove.
+message UntagImageRequest {
+  // reference is the pull reference whose entry to remove.
+  string reference = 1;
+
+  // platform selects the entry when the reference has more than one. Unset
+  // selects the reference's single entry and is an error, removing nothing,
+  // when several exist. Unlike RemoveImageRequest.platform, unset NEVER means
+  // "every platform" — this verb removes one name.
+  Platform platform = 2;
+
+  // digest, when set, requires the entry to currently resolve to this manifest
+  // digest; the call fails and removes nothing if it does not. It is the guard
+  // against a concurrent re-pull of a mutable tag moving the entry between the
+  // caller's read and this write.
+  string digest = 3;
+
+  reserved 100 to 149;
+}
+
+// UntagImageResponse reports the entry whose name was removed.
+message UntagImageResponse {
+  // removed is the entry as it stood immediately before removal — the same
+  // wrapper ListImages returns, so the caller can report exactly which digest
+  // lost a name. The bytes it describes are still on disk: only the name is
+  // gone, and only PruneImages reclaims content.
+  Image removed = 1;
+
+  // error carries a structured failure (empty on success) — NOT_FOUND when the
+  // entry did not exist.
+  google.rpc.Status error = 2;
+
+  reserved 100 to 149;
+}
+
+// ---------------------------------------------------------------------------
+// InspectImage
+// ---------------------------------------------------------------------------
+
+// InspectImageRequest names the image to inspect, by reference or by digest.
+message InspectImageRequest {
+  // reference is the pull reference to inspect. Exactly one of reference or
+  // digest identifies the target; setting both is INVALID_ARGUMENT rather than
+  // a precedence rule nobody can remember.
+  string reference = 1;
+
+  // platform selects which entry of a multi-platform reference to inspect.
+  // Unset selects the reference's single entry and is an error when several
+  // exist. Ignored when digest is set — a digest names one manifest.
+  Platform platform = 2;
+
+  // digest names the manifest directly, "<algo>:<hex>".
+  string digest = 3;
+
+  reserved 100 to 149;
+}
+
+// InspectImageResponse carries everything the store knows about one image.
+// Every field is independently optional and additive: an absent field means the
+// daemon reported no value for that fact, never that the image asserts an empty
+// one.
+message InspectImageResponse {
+  // image is the store entry: the manifest descriptor (digest, media type,
+  // size) plus the resolved manifest — config and layer descriptors with their
+  // own digests and sizes, annotations, resolved platform, and index digest.
+  Image image = 1;
+
+  // config is the DECODED image config blob: the facts that live inside the
+  // config's JSON and so cannot be carried by a Descriptor.
+  ImageConfig config = 2;
+
+  // total_size_bytes is the sum of the sizes of the DISTINCT blobs the image is
+  // made of — manifest, config, and each layer counted once. It is what the
+  // image measures, never what removing it would reclaim: layers shared with
+  // another image are counted here and would survive a prune.
+  uint64 total_size_bytes = 3;
+
+  // error carries a structured failure (empty on success).
+  google.rpc.Status error = 4;
+
+  reserved 100 to 149;
+}
+
+// ImageConfig is the decoded OCI image config — the process defaults a runtime
+// merges with the container spec, plus the image's own identity metadata.
+//
+// It is a REPORT of what the image declares, never an input: no field here is
+// applied by writing it back, and the runtime's own merge of Entrypoint/Cmd
+// with a container's command/args is unchanged by this message existing.
+message ImageConfig {
+  // platform is the platform the config blob itself DECLARES. It is the
+  // existing Platform message, and it is NOT the same fact as
+  // ImageManifest.platform, which is the platform the reference resolved to
+  // through an index: they agree on a well-formed image, and a disagreement is
+  // worth being able to see.
+  Platform platform = 1;
+
+  // created is the image's declared creation time.
+  google.protobuf.Timestamp created = 2;
+
+  // entrypoint is the config's Entrypoint, in order.
+  repeated string entrypoint = 3;
+
+  // cmd is the config's Cmd, in order.
+  repeated string cmd = 4;
+
+  // env are the config's environment entries in OCI "KEY=value" form, verbatim
+  // and in order. Deliberately not a map: the OCI form permits repeated keys
+  // and is order-significant, and a map would silently pick a winner.
+  repeated string env = 5;
+
+  // user is the config's User ("uid", "uid:gid", or a name), reported exactly as
+  // the image spells it. Information, not an enforcement claim: the native
+  // hostprocess path has no per-pod uid isolation.
+  string user = 6;
+
+  // working_dir is the config's WorkingDir.
+  string working_dir = 7;
+
+  // labels are the config's Labels.
+  map<string, string> labels = 8;
+
+  reserved 100 to 149;
+}
+
+// ---------------------------------------------------------------------------
+// SaveImage
+// ---------------------------------------------------------------------------
+
+// SaveImageRequest names the single image to export.
+message SaveImageRequest {
+  // reference is the pull reference to export. Exactly one of reference or
+  // digest identifies the target.
+  string reference = 1;
+
+  // platform selects the entry of a multi-platform reference; unset selects the
+  // reference's single entry and is an error when several exist. One
+  // (reference x platform) per call — a whole-index export is a different
+  // archive shape and is not v1.
+  Platform platform = 2;
+
+  // digest names the manifest to export directly, "<algo>:<hex>".
+  string digest = 3;
+
+  // format is the archive format to emit, reusing the EXISTING LoadImageFormat
+  // vocabulary rather than declaring a second spelling of the same two formats
+  // for the opposite direction. UNSPECIFIED means OCI_LAYOUT, the only format
+  // v1 emits; DOCKER_SAVE is nameable on the wire and may be answered
+  // UNIMPLEMENTED.
+  LoadImageFormat format = 4;
+
+  reserved 100 to 149;
+}
+
+// SaveImageResponse is one frame of the export stream. Every frame but the last
+// carries a chunk and nothing else; the LAST frame carries no chunk and instead
+// reports the exported manifest digest and the byte count the server sent.
+//
+// The framing mirrors LoadImage in reverse — metadata frame first there, summary
+// frame last here — for the same reason it works there: the fact worth reporting
+// is only known once the transfer ends. A client that reaches the end of the
+// stream WITHOUT a terminal frame has a truncated archive and must discard it,
+// because a short final chunk is otherwise indistinguishable from a complete
+// one.
+//
+// Apart from the shared error status, the frame carries bytes and scalars only,
+// exactly as LoadImageRequest does: the archive's structure travels in its own
+// bytes, and modeling it on the wire would drag an OCI type system into a module
+// whose whole purpose is depending on nothing.
+message SaveImageResponse {
+  // chunk is the next slice of archive bytes. Chunk boundaries carry no
+  // meaning; the client concatenates them in arrival order.
+  bytes chunk = 1;
+
+  // digest is the exported manifest's digest, "<algo>:<hex>", set on the
+  // terminal frame only. Unlike LoadImage's advisory client claim, this is the
+  // server reporting what it exported.
+  string digest = 2;
+
+  // sent_bytes is the total archive length the SERVER wrote to the stream, set
+  // on the terminal frame only. A client that counted a different number has a
+  // truncated archive.
+  int64 sent_bytes = 3;
+
+  // error carries a structured failure (empty on success). A failure that
+  // happens mid-transfer arrives as a terminal frame with error set and no
+  // chunk, so a client never has to infer failure from a stream that merely
+  // stopped.
+  google.rpc.Status error = 4;
 
   reserved 100 to 149;
 }

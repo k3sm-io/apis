@@ -1015,6 +1015,860 @@ func (x *LoadImageResponse) GetError() *status.Status {
 	return nil
 }
 
+// PullImageRequest names the reference to resolve and fetch.
+type PullImageRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// reference is the pull reference (registry/repo:tag or registry/repo@digest).
+	Reference string `protobuf:"bytes,1,opt,name=reference,proto3" json:"reference,omitempty"`
+	// platform selects which manifest of a multi-platform index to fetch. Unset
+	// asks for the daemon's own host platform — the same default a pod-driven
+	// pull takes, never "every platform".
+	Platform *Platform `protobuf:"bytes,2,opt,name=platform,proto3" json:"platform,omitempty"`
+	// policy carries corev1 pull-policy semantics, reusing the EXISTING
+	// ImagePullPolicy enum rather than spelling the same three behaviors a second
+	// time for the CLI. UNSPECIFIED is the legacy pull-through behavior (attempt
+	// the pull, reusing cached blobs) in both skew directions, exactly as it is on
+	// Container.image_pull_policy; NEVER performs no registry round trip at all
+	// and fails NOT_FOUND when the reference is locally absent.
+	Policy        ImagePullPolicy `protobuf:"varint,3,opt,name=policy,proto3,enum=k3sm.runtime.v1.ImagePullPolicy" json:"policy,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PullImageRequest) Reset() {
+	*x = PullImageRequest{}
+	mi := &file_runtime_v1_images_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PullImageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PullImageRequest) ProtoMessage() {}
+
+func (x *PullImageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_images_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PullImageRequest.ProtoReflect.Descriptor instead.
+func (*PullImageRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *PullImageRequest) GetReference() string {
+	if x != nil {
+		return x.Reference
+	}
+	return ""
+}
+
+func (x *PullImageRequest) GetPlatform() *Platform {
+	if x != nil {
+		return x.Platform
+	}
+	return nil
+}
+
+func (x *PullImageRequest) GetPolicy() ImagePullPolicy {
+	if x != nil {
+		return x.Policy
+	}
+	return ImagePullPolicy_IMAGE_PULL_POLICY_UNSPECIFIED
+}
+
+// PullImageResponse reports what the pull resolved to.
+type PullImageResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// image is the resolved store entry — the same Image wrapper ListImages
+	// returns, so the resolved digest, the resolved platform, and the manifest
+	// media type and size are read out of the embedded Descriptor /
+	// ImageManifest instead of being re-spelled here as parallel scalars.
+	Image *Image `protobuf:"bytes,1,opt,name=image,proto3" json:"image,omitempty"`
+	// already_present is true when the reference already resolved to this digest
+	// locally and no blob was fetched. It is a fact about THIS call, for the
+	// caller's output ("image is up to date"); it never changes what was
+	// recorded, and a pull that hit is as much a root as a pull that fetched.
+	AlreadyPresent bool `protobuf:"varint,2,opt,name=already_present,json=alreadyPresent,proto3" json:"already_present,omitempty"`
+	// error carries a structured failure (empty on success).
+	Error         *status.Status `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PullImageResponse) Reset() {
+	*x = PullImageResponse{}
+	mi := &file_runtime_v1_images_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PullImageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PullImageResponse) ProtoMessage() {}
+
+func (x *PullImageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_images_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PullImageResponse.ProtoReflect.Descriptor instead.
+func (*PullImageResponse) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *PullImageResponse) GetImage() *Image {
+	if x != nil {
+		return x.Image
+	}
+	return nil
+}
+
+func (x *PullImageResponse) GetAlreadyPresent() bool {
+	if x != nil {
+		return x.AlreadyPresent
+	}
+	return false
+}
+
+func (x *PullImageResponse) GetError() *status.Status {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+// TagImageRequest names existing content and the new reference to record for
+// it. Nothing here can fetch: every field describes an index entry.
+type TagImageRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// digest is the manifest digest of the content to name, "<algo>:<hex>". The
+	// target is a digest and never another tag, because roots are digest-pinned:
+	// resolving a mutable name here would let a concurrent re-pull decide what
+	// the new tag ends up meaning.
+	Digest string `protobuf:"bytes,1,opt,name=digest,proto3" json:"digest,omitempty"`
+	// reference is the NEW pull reference to record for that digest.
+	Reference string `protobuf:"bytes,2,opt,name=reference,proto3" json:"reference,omitempty"`
+	// platform is part of the index key, not a filter — the store is keyed by
+	// (reference x platform), so the entry this call creates is the pair. Unset
+	// records the entry under the platform the digest itself resolved to.
+	Platform      *Platform `protobuf:"bytes,3,opt,name=platform,proto3" json:"platform,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TagImageRequest) Reset() {
+	*x = TagImageRequest{}
+	mi := &file_runtime_v1_images_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TagImageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TagImageRequest) ProtoMessage() {}
+
+func (x *TagImageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_images_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TagImageRequest.ProtoReflect.Descriptor instead.
+func (*TagImageRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *TagImageRequest) GetDigest() string {
+	if x != nil {
+		return x.Digest
+	}
+	return ""
+}
+
+func (x *TagImageRequest) GetReference() string {
+	if x != nil {
+		return x.Reference
+	}
+	return ""
+}
+
+func (x *TagImageRequest) GetPlatform() *Platform {
+	if x != nil {
+		return x.Platform
+	}
+	return nil
+}
+
+// TagImageResponse reports the recorded entry.
+type TagImageResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// image is the index entry as recorded — the same wrapper ListImages returns,
+	// so a tag and a subsequent list agree by construction.
+	Image *Image `protobuf:"bytes,1,opt,name=image,proto3" json:"image,omitempty"`
+	// already_present is true when the (reference x platform) key already
+	// resolved to this digest and nothing was written: the idempotent repeat.
+	AlreadyPresent bool `protobuf:"varint,2,opt,name=already_present,json=alreadyPresent,proto3" json:"already_present,omitempty"`
+	// error carries a structured failure (empty on success).
+	Error         *status.Status `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TagImageResponse) Reset() {
+	*x = TagImageResponse{}
+	mi := &file_runtime_v1_images_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TagImageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TagImageResponse) ProtoMessage() {}
+
+func (x *TagImageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_images_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TagImageResponse.ProtoReflect.Descriptor instead.
+func (*TagImageResponse) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *TagImageResponse) GetImage() *Image {
+	if x != nil {
+		return x.Image
+	}
+	return nil
+}
+
+func (x *TagImageResponse) GetAlreadyPresent() bool {
+	if x != nil {
+		return x.AlreadyPresent
+	}
+	return false
+}
+
+func (x *TagImageResponse) GetError() *status.Status {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+// UntagImageRequest names the single index entry to remove.
+type UntagImageRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// reference is the pull reference whose entry to remove.
+	Reference string `protobuf:"bytes,1,opt,name=reference,proto3" json:"reference,omitempty"`
+	// platform selects the entry when the reference has more than one. Unset
+	// selects the reference's single entry and is an error, removing nothing,
+	// when several exist. Unlike RemoveImageRequest.platform, unset NEVER means
+	// "every platform" — this verb removes one name.
+	Platform *Platform `protobuf:"bytes,2,opt,name=platform,proto3" json:"platform,omitempty"`
+	// digest, when set, requires the entry to currently resolve to this manifest
+	// digest; the call fails and removes nothing if it does not. It is the guard
+	// against a concurrent re-pull of a mutable tag moving the entry between the
+	// caller's read and this write.
+	Digest        string `protobuf:"bytes,3,opt,name=digest,proto3" json:"digest,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UntagImageRequest) Reset() {
+	*x = UntagImageRequest{}
+	mi := &file_runtime_v1_images_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UntagImageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UntagImageRequest) ProtoMessage() {}
+
+func (x *UntagImageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_images_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UntagImageRequest.ProtoReflect.Descriptor instead.
+func (*UntagImageRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *UntagImageRequest) GetReference() string {
+	if x != nil {
+		return x.Reference
+	}
+	return ""
+}
+
+func (x *UntagImageRequest) GetPlatform() *Platform {
+	if x != nil {
+		return x.Platform
+	}
+	return nil
+}
+
+func (x *UntagImageRequest) GetDigest() string {
+	if x != nil {
+		return x.Digest
+	}
+	return ""
+}
+
+// UntagImageResponse reports the entry whose name was removed.
+type UntagImageResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// removed is the entry as it stood immediately before removal — the same
+	// wrapper ListImages returns, so the caller can report exactly which digest
+	// lost a name. The bytes it describes are still on disk: only the name is
+	// gone, and only PruneImages reclaims content.
+	Removed *Image `protobuf:"bytes,1,opt,name=removed,proto3" json:"removed,omitempty"`
+	// error carries a structured failure (empty on success) — NOT_FOUND when the
+	// entry did not exist.
+	Error         *status.Status `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UntagImageResponse) Reset() {
+	*x = UntagImageResponse{}
+	mi := &file_runtime_v1_images_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UntagImageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UntagImageResponse) ProtoMessage() {}
+
+func (x *UntagImageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_images_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UntagImageResponse.ProtoReflect.Descriptor instead.
+func (*UntagImageResponse) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *UntagImageResponse) GetRemoved() *Image {
+	if x != nil {
+		return x.Removed
+	}
+	return nil
+}
+
+func (x *UntagImageResponse) GetError() *status.Status {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+// InspectImageRequest names the image to inspect, by reference or by digest.
+type InspectImageRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// reference is the pull reference to inspect. Exactly one of reference or
+	// digest identifies the target; setting both is INVALID_ARGUMENT rather than
+	// a precedence rule nobody can remember.
+	Reference string `protobuf:"bytes,1,opt,name=reference,proto3" json:"reference,omitempty"`
+	// platform selects which entry of a multi-platform reference to inspect.
+	// Unset selects the reference's single entry and is an error when several
+	// exist. Ignored when digest is set — a digest names one manifest.
+	Platform *Platform `protobuf:"bytes,2,opt,name=platform,proto3" json:"platform,omitempty"`
+	// digest names the manifest directly, "<algo>:<hex>".
+	Digest        string `protobuf:"bytes,3,opt,name=digest,proto3" json:"digest,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InspectImageRequest) Reset() {
+	*x = InspectImageRequest{}
+	mi := &file_runtime_v1_images_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InspectImageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InspectImageRequest) ProtoMessage() {}
+
+func (x *InspectImageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_images_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InspectImageRequest.ProtoReflect.Descriptor instead.
+func (*InspectImageRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *InspectImageRequest) GetReference() string {
+	if x != nil {
+		return x.Reference
+	}
+	return ""
+}
+
+func (x *InspectImageRequest) GetPlatform() *Platform {
+	if x != nil {
+		return x.Platform
+	}
+	return nil
+}
+
+func (x *InspectImageRequest) GetDigest() string {
+	if x != nil {
+		return x.Digest
+	}
+	return ""
+}
+
+// InspectImageResponse carries everything the store knows about one image.
+// Every field is independently optional and additive: an absent field means the
+// daemon reported no value for that fact, never that the image asserts an empty
+// one.
+type InspectImageResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// image is the store entry: the manifest descriptor (digest, media type,
+	// size) plus the resolved manifest — config and layer descriptors with their
+	// own digests and sizes, annotations, resolved platform, and index digest.
+	Image *Image `protobuf:"bytes,1,opt,name=image,proto3" json:"image,omitempty"`
+	// config is the DECODED image config blob: the facts that live inside the
+	// config's JSON and so cannot be carried by a Descriptor.
+	Config *ImageConfig `protobuf:"bytes,2,opt,name=config,proto3" json:"config,omitempty"`
+	// total_size_bytes is the sum of the sizes of the DISTINCT blobs the image is
+	// made of — manifest, config, and each layer counted once. It is what the
+	// image measures, never what removing it would reclaim: layers shared with
+	// another image are counted here and would survive a prune.
+	TotalSizeBytes uint64 `protobuf:"varint,3,opt,name=total_size_bytes,json=totalSizeBytes,proto3" json:"total_size_bytes,omitempty"`
+	// error carries a structured failure (empty on success).
+	Error         *status.Status `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InspectImageResponse) Reset() {
+	*x = InspectImageResponse{}
+	mi := &file_runtime_v1_images_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InspectImageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InspectImageResponse) ProtoMessage() {}
+
+func (x *InspectImageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_images_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InspectImageResponse.ProtoReflect.Descriptor instead.
+func (*InspectImageResponse) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *InspectImageResponse) GetImage() *Image {
+	if x != nil {
+		return x.Image
+	}
+	return nil
+}
+
+func (x *InspectImageResponse) GetConfig() *ImageConfig {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+func (x *InspectImageResponse) GetTotalSizeBytes() uint64 {
+	if x != nil {
+		return x.TotalSizeBytes
+	}
+	return 0
+}
+
+func (x *InspectImageResponse) GetError() *status.Status {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+// ImageConfig is the decoded OCI image config — the process defaults a runtime
+// merges with the container spec, plus the image's own identity metadata.
+//
+// It is a REPORT of what the image declares, never an input: no field here is
+// applied by writing it back, and the runtime's own merge of Entrypoint/Cmd
+// with a container's command/args is unchanged by this message existing.
+type ImageConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// platform is the platform the config blob itself DECLARES. It is the
+	// existing Platform message, and it is NOT the same fact as
+	// ImageManifest.platform, which is the platform the reference resolved to
+	// through an index: they agree on a well-formed image, and a disagreement is
+	// worth being able to see.
+	Platform *Platform `protobuf:"bytes,1,opt,name=platform,proto3" json:"platform,omitempty"`
+	// created is the image's declared creation time.
+	Created *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=created,proto3" json:"created,omitempty"`
+	// entrypoint is the config's Entrypoint, in order.
+	Entrypoint []string `protobuf:"bytes,3,rep,name=entrypoint,proto3" json:"entrypoint,omitempty"`
+	// cmd is the config's Cmd, in order.
+	Cmd []string `protobuf:"bytes,4,rep,name=cmd,proto3" json:"cmd,omitempty"`
+	// env are the config's environment entries in OCI "KEY=value" form, verbatim
+	// and in order. Deliberately not a map: the OCI form permits repeated keys
+	// and is order-significant, and a map would silently pick a winner.
+	Env []string `protobuf:"bytes,5,rep,name=env,proto3" json:"env,omitempty"`
+	// user is the config's User ("uid", "uid:gid", or a name), reported exactly as
+	// the image spells it. Information, not an enforcement claim: the native
+	// hostprocess path has no per-pod uid isolation.
+	User string `protobuf:"bytes,6,opt,name=user,proto3" json:"user,omitempty"`
+	// working_dir is the config's WorkingDir.
+	WorkingDir string `protobuf:"bytes,7,opt,name=working_dir,json=workingDir,proto3" json:"working_dir,omitempty"`
+	// labels are the config's Labels.
+	Labels        map[string]string `protobuf:"bytes,8,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ImageConfig) Reset() {
+	*x = ImageConfig{}
+	mi := &file_runtime_v1_images_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImageConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImageConfig) ProtoMessage() {}
+
+func (x *ImageConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_images_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImageConfig.ProtoReflect.Descriptor instead.
+func (*ImageConfig) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *ImageConfig) GetPlatform() *Platform {
+	if x != nil {
+		return x.Platform
+	}
+	return nil
+}
+
+func (x *ImageConfig) GetCreated() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Created
+	}
+	return nil
+}
+
+func (x *ImageConfig) GetEntrypoint() []string {
+	if x != nil {
+		return x.Entrypoint
+	}
+	return nil
+}
+
+func (x *ImageConfig) GetCmd() []string {
+	if x != nil {
+		return x.Cmd
+	}
+	return nil
+}
+
+func (x *ImageConfig) GetEnv() []string {
+	if x != nil {
+		return x.Env
+	}
+	return nil
+}
+
+func (x *ImageConfig) GetUser() string {
+	if x != nil {
+		return x.User
+	}
+	return ""
+}
+
+func (x *ImageConfig) GetWorkingDir() string {
+	if x != nil {
+		return x.WorkingDir
+	}
+	return ""
+}
+
+func (x *ImageConfig) GetLabels() map[string]string {
+	if x != nil {
+		return x.Labels
+	}
+	return nil
+}
+
+// SaveImageRequest names the single image to export.
+type SaveImageRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// reference is the pull reference to export. Exactly one of reference or
+	// digest identifies the target.
+	Reference string `protobuf:"bytes,1,opt,name=reference,proto3" json:"reference,omitempty"`
+	// platform selects the entry of a multi-platform reference; unset selects the
+	// reference's single entry and is an error when several exist. One
+	// (reference x platform) per call — a whole-index export is a different
+	// archive shape and is not v1.
+	Platform *Platform `protobuf:"bytes,2,opt,name=platform,proto3" json:"platform,omitempty"`
+	// digest names the manifest to export directly, "<algo>:<hex>".
+	Digest string `protobuf:"bytes,3,opt,name=digest,proto3" json:"digest,omitempty"`
+	// format is the archive format to emit, reusing the EXISTING LoadImageFormat
+	// vocabulary rather than declaring a second spelling of the same two formats
+	// for the opposite direction. UNSPECIFIED means OCI_LAYOUT, the only format
+	// v1 emits; DOCKER_SAVE is nameable on the wire and may be answered
+	// UNIMPLEMENTED.
+	Format        LoadImageFormat `protobuf:"varint,4,opt,name=format,proto3,enum=k3sm.runtime.v1.LoadImageFormat" json:"format,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveImageRequest) Reset() {
+	*x = SaveImageRequest{}
+	mi := &file_runtime_v1_images_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveImageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveImageRequest) ProtoMessage() {}
+
+func (x *SaveImageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_images_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveImageRequest.ProtoReflect.Descriptor instead.
+func (*SaveImageRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *SaveImageRequest) GetReference() string {
+	if x != nil {
+		return x.Reference
+	}
+	return ""
+}
+
+func (x *SaveImageRequest) GetPlatform() *Platform {
+	if x != nil {
+		return x.Platform
+	}
+	return nil
+}
+
+func (x *SaveImageRequest) GetDigest() string {
+	if x != nil {
+		return x.Digest
+	}
+	return ""
+}
+
+func (x *SaveImageRequest) GetFormat() LoadImageFormat {
+	if x != nil {
+		return x.Format
+	}
+	return LoadImageFormat_LOAD_IMAGE_FORMAT_UNSPECIFIED
+}
+
+// SaveImageResponse is one frame of the export stream. Every frame but the last
+// carries a chunk and nothing else; the LAST frame carries no chunk and instead
+// reports the exported manifest digest and the byte count the server sent.
+//
+// The framing mirrors LoadImage in reverse — metadata frame first there, summary
+// frame last here — for the same reason it works there: the fact worth reporting
+// is only known once the transfer ends. A client that reaches the end of the
+// stream WITHOUT a terminal frame has a truncated archive and must discard it,
+// because a short final chunk is otherwise indistinguishable from a complete
+// one.
+//
+// Apart from the shared error status, the frame carries bytes and scalars only,
+// exactly as LoadImageRequest does: the archive's structure travels in its own
+// bytes, and modeling it on the wire would drag an OCI type system into a module
+// whose whole purpose is depending on nothing.
+type SaveImageResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// chunk is the next slice of archive bytes. Chunk boundaries carry no
+	// meaning; the client concatenates them in arrival order.
+	Chunk []byte `protobuf:"bytes,1,opt,name=chunk,proto3" json:"chunk,omitempty"`
+	// digest is the exported manifest's digest, "<algo>:<hex>", set on the
+	// terminal frame only. Unlike LoadImage's advisory client claim, this is the
+	// server reporting what it exported.
+	Digest string `protobuf:"bytes,2,opt,name=digest,proto3" json:"digest,omitempty"`
+	// sent_bytes is the total archive length the SERVER wrote to the stream, set
+	// on the terminal frame only. A client that counted a different number has a
+	// truncated archive.
+	SentBytes int64 `protobuf:"varint,3,opt,name=sent_bytes,json=sentBytes,proto3" json:"sent_bytes,omitempty"`
+	// error carries a structured failure (empty on success). A failure that
+	// happens mid-transfer arrives as a terminal frame with error set and no
+	// chunk, so a client never has to infer failure from a stream that merely
+	// stopped.
+	Error         *status.Status `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveImageResponse) Reset() {
+	*x = SaveImageResponse{}
+	mi := &file_runtime_v1_images_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveImageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveImageResponse) ProtoMessage() {}
+
+func (x *SaveImageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_images_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveImageResponse.ProtoReflect.Descriptor instead.
+func (*SaveImageResponse) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *SaveImageResponse) GetChunk() []byte {
+	if x != nil {
+		return x.Chunk
+	}
+	return nil
+}
+
+func (x *SaveImageResponse) GetDigest() string {
+	if x != nil {
+		return x.Digest
+	}
+	return ""
+}
+
+func (x *SaveImageResponse) GetSentBytes() int64 {
+	if x != nil {
+		return x.SentBytes
+	}
+	return 0
+}
+
+func (x *SaveImageResponse) GetError() *status.Status {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
 var File_runtime_v1_images_proto protoreflect.FileDescriptor
 
 const file_runtime_v1_images_proto_rawDesc = "" +
@@ -1072,7 +1926,65 @@ const file_runtime_v1_images_proto_rawDesc = "" +
 	"\x11LoadImageResponse\x12.\n" +
 	"\x06images\x18\x01 \x03(\v2\x16.k3sm.runtime.v1.ImageR\x06images\x12%\n" +
 	"\x0ereceived_bytes\x18\x02 \x01(\x03R\rreceivedBytes\x12(\n" +
-	"\x05error\x18\x03 \x01(\v2\x12.google.rpc.StatusR\x05errorJ\x05\bd\x10\x96\x01*\xb6\x01\n" +
+	"\x05error\x18\x03 \x01(\v2\x12.google.rpc.StatusR\x05errorJ\x05\bd\x10\x96\x01\"\xa8\x01\n" +
+	"\x10PullImageRequest\x12\x1c\n" +
+	"\treference\x18\x01 \x01(\tR\treference\x125\n" +
+	"\bplatform\x18\x02 \x01(\v2\x19.k3sm.runtime.v1.PlatformR\bplatform\x128\n" +
+	"\x06policy\x18\x03 \x01(\x0e2 .k3sm.runtime.v1.ImagePullPolicyR\x06policyJ\x05\bd\x10\x96\x01\"\x9b\x01\n" +
+	"\x11PullImageResponse\x12,\n" +
+	"\x05image\x18\x01 \x01(\v2\x16.k3sm.runtime.v1.ImageR\x05image\x12'\n" +
+	"\x0falready_present\x18\x02 \x01(\bR\x0ealreadyPresent\x12(\n" +
+	"\x05error\x18\x03 \x01(\v2\x12.google.rpc.StatusR\x05errorJ\x05\bd\x10\x96\x01\"\x85\x01\n" +
+	"\x0fTagImageRequest\x12\x16\n" +
+	"\x06digest\x18\x01 \x01(\tR\x06digest\x12\x1c\n" +
+	"\treference\x18\x02 \x01(\tR\treference\x125\n" +
+	"\bplatform\x18\x03 \x01(\v2\x19.k3sm.runtime.v1.PlatformR\bplatformJ\x05\bd\x10\x96\x01\"\x9a\x01\n" +
+	"\x10TagImageResponse\x12,\n" +
+	"\x05image\x18\x01 \x01(\v2\x16.k3sm.runtime.v1.ImageR\x05image\x12'\n" +
+	"\x0falready_present\x18\x02 \x01(\bR\x0ealreadyPresent\x12(\n" +
+	"\x05error\x18\x03 \x01(\v2\x12.google.rpc.StatusR\x05errorJ\x05\bd\x10\x96\x01\"\x87\x01\n" +
+	"\x11UntagImageRequest\x12\x1c\n" +
+	"\treference\x18\x01 \x01(\tR\treference\x125\n" +
+	"\bplatform\x18\x02 \x01(\v2\x19.k3sm.runtime.v1.PlatformR\bplatform\x12\x16\n" +
+	"\x06digest\x18\x03 \x01(\tR\x06digestJ\x05\bd\x10\x96\x01\"w\n" +
+	"\x12UntagImageResponse\x120\n" +
+	"\aremoved\x18\x01 \x01(\v2\x16.k3sm.runtime.v1.ImageR\aremoved\x12(\n" +
+	"\x05error\x18\x02 \x01(\v2\x12.google.rpc.StatusR\x05errorJ\x05\bd\x10\x96\x01\"\x89\x01\n" +
+	"\x13InspectImageRequest\x12\x1c\n" +
+	"\treference\x18\x01 \x01(\tR\treference\x125\n" +
+	"\bplatform\x18\x02 \x01(\v2\x19.k3sm.runtime.v1.PlatformR\bplatform\x12\x16\n" +
+	"\x06digest\x18\x03 \x01(\tR\x06digestJ\x05\bd\x10\x96\x01\"\xd5\x01\n" +
+	"\x14InspectImageResponse\x12,\n" +
+	"\x05image\x18\x01 \x01(\v2\x16.k3sm.runtime.v1.ImageR\x05image\x124\n" +
+	"\x06config\x18\x02 \x01(\v2\x1c.k3sm.runtime.v1.ImageConfigR\x06config\x12(\n" +
+	"\x10total_size_bytes\x18\x03 \x01(\x04R\x0etotalSizeBytes\x12(\n" +
+	"\x05error\x18\x04 \x01(\v2\x12.google.rpc.StatusR\x05errorJ\x05\bd\x10\x96\x01\"\xf7\x02\n" +
+	"\vImageConfig\x125\n" +
+	"\bplatform\x18\x01 \x01(\v2\x19.k3sm.runtime.v1.PlatformR\bplatform\x124\n" +
+	"\acreated\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\acreated\x12\x1e\n" +
+	"\n" +
+	"entrypoint\x18\x03 \x03(\tR\n" +
+	"entrypoint\x12\x10\n" +
+	"\x03cmd\x18\x04 \x03(\tR\x03cmd\x12\x10\n" +
+	"\x03env\x18\x05 \x03(\tR\x03env\x12\x12\n" +
+	"\x04user\x18\x06 \x01(\tR\x04user\x12\x1f\n" +
+	"\vworking_dir\x18\a \x01(\tR\n" +
+	"workingDir\x12@\n" +
+	"\x06labels\x18\b \x03(\v2(.k3sm.runtime.v1.ImageConfig.LabelsEntryR\x06labels\x1a9\n" +
+	"\vLabelsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x05\bd\x10\x96\x01\"\xc0\x01\n" +
+	"\x10SaveImageRequest\x12\x1c\n" +
+	"\treference\x18\x01 \x01(\tR\treference\x125\n" +
+	"\bplatform\x18\x02 \x01(\v2\x19.k3sm.runtime.v1.PlatformR\bplatform\x12\x16\n" +
+	"\x06digest\x18\x03 \x01(\tR\x06digest\x128\n" +
+	"\x06format\x18\x04 \x01(\x0e2 .k3sm.runtime.v1.LoadImageFormatR\x06formatJ\x05\bd\x10\x96\x01\"\x91\x01\n" +
+	"\x11SaveImageResponse\x12\x14\n" +
+	"\x05chunk\x18\x01 \x01(\fR\x05chunk\x12\x16\n" +
+	"\x06digest\x18\x02 \x01(\tR\x06digest\x12\x1d\n" +
+	"\n" +
+	"sent_bytes\x18\x03 \x01(\x03R\tsentBytes\x12(\n" +
+	"\x05error\x18\x04 \x01(\v2\x12.google.rpc.StatusR\x05errorJ\x05\bd\x10\x96\x01*\xb6\x01\n" +
 	"\x0fPruneSkipReason\x12!\n" +
 	"\x1dPRUNE_SKIP_REASON_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bPRUNE_SKIP_REASON_REACHABLE\x10\x01\x12\x1c\n" +
@@ -1082,14 +1994,20 @@ const file_runtime_v1_images_proto_rawDesc = "" +
 	"\x0fLoadImageFormat\x12!\n" +
 	"\x1dLOAD_IMAGE_FORMAT_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dLOAD_IMAGE_FORMAT_DOCKER_SAVE\x10\x01\x12 \n" +
-	"\x1cLOAD_IMAGE_FORMAT_OCI_LAYOUT\x10\x022\xc3\x03\n" +
+	"\x1cLOAD_IMAGE_FORMAT_OCI_LAYOUT\x10\x022\xf2\x06\n" +
 	"\x06Images\x12U\n" +
 	"\n" +
 	"ListImages\x12\".k3sm.runtime.v1.ListImagesRequest\x1a#.k3sm.runtime.v1.ListImagesResponse\x12X\n" +
 	"\vImageFsInfo\x12#.k3sm.runtime.v1.ImageFsInfoRequest\x1a$.k3sm.runtime.v1.ImageFsInfoResponse\x12X\n" +
 	"\vRemoveImage\x12#.k3sm.runtime.v1.RemoveImageRequest\x1a$.k3sm.runtime.v1.RemoveImageResponse\x12X\n" +
 	"\vPruneImages\x12#.k3sm.runtime.v1.PruneImagesRequest\x1a$.k3sm.runtime.v1.PruneImagesResponse\x12T\n" +
-	"\tLoadImage\x12!.k3sm.runtime.v1.LoadImageRequest\x1a\".k3sm.runtime.v1.LoadImageResponse(\x01B\xa3\x01\n" +
+	"\tLoadImage\x12!.k3sm.runtime.v1.LoadImageRequest\x1a\".k3sm.runtime.v1.LoadImageResponse(\x01\x12R\n" +
+	"\tPullImage\x12!.k3sm.runtime.v1.PullImageRequest\x1a\".k3sm.runtime.v1.PullImageResponse\x12O\n" +
+	"\bTagImage\x12 .k3sm.runtime.v1.TagImageRequest\x1a!.k3sm.runtime.v1.TagImageResponse\x12U\n" +
+	"\n" +
+	"UntagImage\x12\".k3sm.runtime.v1.UntagImageRequest\x1a#.k3sm.runtime.v1.UntagImageResponse\x12[\n" +
+	"\fInspectImage\x12$.k3sm.runtime.v1.InspectImageRequest\x1a%.k3sm.runtime.v1.InspectImageResponse\x12T\n" +
+	"\tSaveImage\x12!.k3sm.runtime.v1.SaveImageRequest\x1a\".k3sm.runtime.v1.SaveImageResponse0\x01B\xa3\x01\n" +
 	"\x13com.k3sm.runtime.v1B\vImagesProtoP\x01Z!k3sm.io/apis/runtime/v1;runtimev1\xa2\x02\x03KRX\xaa\x02\x0fK3sm.Runtime.V1\xca\x02\x0fK3sm\\Runtime\\V1\xe2\x02\x1bK3sm\\Runtime\\V1\\GPBMetadata\xea\x02\x11K3sm::Runtime::V1b\x06proto3"
 
 var (
@@ -1105,7 +2023,7 @@ func file_runtime_v1_images_proto_rawDescGZIP() []byte {
 }
 
 var file_runtime_v1_images_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_runtime_v1_images_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_runtime_v1_images_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_runtime_v1_images_proto_goTypes = []any{
 	(PruneSkipReason)(0),          // 0: k3sm.runtime.v1.PruneSkipReason
 	(LoadImageFormat)(0),          // 1: k3sm.runtime.v1.LoadImageFormat
@@ -1122,44 +2040,87 @@ var file_runtime_v1_images_proto_goTypes = []any{
 	(*SkippedBlob)(nil),           // 12: k3sm.runtime.v1.SkippedBlob
 	(*LoadImageRequest)(nil),      // 13: k3sm.runtime.v1.LoadImageRequest
 	(*LoadImageResponse)(nil),     // 14: k3sm.runtime.v1.LoadImageResponse
-	(*Platform)(nil),              // 15: k3sm.runtime.v1.Platform
-	(*status.Status)(nil),         // 16: google.rpc.Status
-	(*Descriptor)(nil),            // 17: k3sm.runtime.v1.Descriptor
-	(*ImageManifest)(nil),         // 18: k3sm.runtime.v1.ImageManifest
-	(*timestamppb.Timestamp)(nil), // 19: google.protobuf.Timestamp
+	(*PullImageRequest)(nil),      // 15: k3sm.runtime.v1.PullImageRequest
+	(*PullImageResponse)(nil),     // 16: k3sm.runtime.v1.PullImageResponse
+	(*TagImageRequest)(nil),       // 17: k3sm.runtime.v1.TagImageRequest
+	(*TagImageResponse)(nil),      // 18: k3sm.runtime.v1.TagImageResponse
+	(*UntagImageRequest)(nil),     // 19: k3sm.runtime.v1.UntagImageRequest
+	(*UntagImageResponse)(nil),    // 20: k3sm.runtime.v1.UntagImageResponse
+	(*InspectImageRequest)(nil),   // 21: k3sm.runtime.v1.InspectImageRequest
+	(*InspectImageResponse)(nil),  // 22: k3sm.runtime.v1.InspectImageResponse
+	(*ImageConfig)(nil),           // 23: k3sm.runtime.v1.ImageConfig
+	(*SaveImageRequest)(nil),      // 24: k3sm.runtime.v1.SaveImageRequest
+	(*SaveImageResponse)(nil),     // 25: k3sm.runtime.v1.SaveImageResponse
+	nil,                           // 26: k3sm.runtime.v1.ImageConfig.LabelsEntry
+	(*Platform)(nil),              // 27: k3sm.runtime.v1.Platform
+	(*status.Status)(nil),         // 28: google.rpc.Status
+	(*Descriptor)(nil),            // 29: k3sm.runtime.v1.Descriptor
+	(*ImageManifest)(nil),         // 30: k3sm.runtime.v1.ImageManifest
+	(*timestamppb.Timestamp)(nil), // 31: google.protobuf.Timestamp
+	(ImagePullPolicy)(0),          // 32: k3sm.runtime.v1.ImagePullPolicy
 }
 var file_runtime_v1_images_proto_depIdxs = []int32{
-	15, // 0: k3sm.runtime.v1.ListImagesRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	27, // 0: k3sm.runtime.v1.ListImagesRequest.platform:type_name -> k3sm.runtime.v1.Platform
 	4,  // 1: k3sm.runtime.v1.ListImagesResponse.images:type_name -> k3sm.runtime.v1.Image
-	16, // 2: k3sm.runtime.v1.ListImagesResponse.error:type_name -> google.rpc.Status
-	17, // 3: k3sm.runtime.v1.Image.manifest_descriptor:type_name -> k3sm.runtime.v1.Descriptor
-	18, // 4: k3sm.runtime.v1.Image.manifest:type_name -> k3sm.runtime.v1.ImageManifest
+	28, // 2: k3sm.runtime.v1.ListImagesResponse.error:type_name -> google.rpc.Status
+	29, // 3: k3sm.runtime.v1.Image.manifest_descriptor:type_name -> k3sm.runtime.v1.Descriptor
+	30, // 4: k3sm.runtime.v1.Image.manifest:type_name -> k3sm.runtime.v1.ImageManifest
 	7,  // 5: k3sm.runtime.v1.ImageFsInfoResponse.filesystems:type_name -> k3sm.runtime.v1.FilesystemUsage
-	16, // 6: k3sm.runtime.v1.ImageFsInfoResponse.error:type_name -> google.rpc.Status
-	19, // 7: k3sm.runtime.v1.FilesystemUsage.timestamp:type_name -> google.protobuf.Timestamp
-	15, // 8: k3sm.runtime.v1.RemoveImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	16, // 9: k3sm.runtime.v1.RemoveImageResponse.error:type_name -> google.rpc.Status
+	28, // 6: k3sm.runtime.v1.ImageFsInfoResponse.error:type_name -> google.rpc.Status
+	31, // 7: k3sm.runtime.v1.FilesystemUsage.timestamp:type_name -> google.protobuf.Timestamp
+	27, // 8: k3sm.runtime.v1.RemoveImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	28, // 9: k3sm.runtime.v1.RemoveImageResponse.error:type_name -> google.rpc.Status
 	12, // 10: k3sm.runtime.v1.PruneImagesResponse.skipped:type_name -> k3sm.runtime.v1.SkippedBlob
-	16, // 11: k3sm.runtime.v1.PruneImagesResponse.error:type_name -> google.rpc.Status
+	28, // 11: k3sm.runtime.v1.PruneImagesResponse.error:type_name -> google.rpc.Status
 	0,  // 12: k3sm.runtime.v1.SkippedBlob.reason:type_name -> k3sm.runtime.v1.PruneSkipReason
 	1,  // 13: k3sm.runtime.v1.LoadImageRequest.format:type_name -> k3sm.runtime.v1.LoadImageFormat
 	4,  // 14: k3sm.runtime.v1.LoadImageResponse.images:type_name -> k3sm.runtime.v1.Image
-	16, // 15: k3sm.runtime.v1.LoadImageResponse.error:type_name -> google.rpc.Status
-	2,  // 16: k3sm.runtime.v1.Images.ListImages:input_type -> k3sm.runtime.v1.ListImagesRequest
-	5,  // 17: k3sm.runtime.v1.Images.ImageFsInfo:input_type -> k3sm.runtime.v1.ImageFsInfoRequest
-	8,  // 18: k3sm.runtime.v1.Images.RemoveImage:input_type -> k3sm.runtime.v1.RemoveImageRequest
-	10, // 19: k3sm.runtime.v1.Images.PruneImages:input_type -> k3sm.runtime.v1.PruneImagesRequest
-	13, // 20: k3sm.runtime.v1.Images.LoadImage:input_type -> k3sm.runtime.v1.LoadImageRequest
-	3,  // 21: k3sm.runtime.v1.Images.ListImages:output_type -> k3sm.runtime.v1.ListImagesResponse
-	6,  // 22: k3sm.runtime.v1.Images.ImageFsInfo:output_type -> k3sm.runtime.v1.ImageFsInfoResponse
-	9,  // 23: k3sm.runtime.v1.Images.RemoveImage:output_type -> k3sm.runtime.v1.RemoveImageResponse
-	11, // 24: k3sm.runtime.v1.Images.PruneImages:output_type -> k3sm.runtime.v1.PruneImagesResponse
-	14, // 25: k3sm.runtime.v1.Images.LoadImage:output_type -> k3sm.runtime.v1.LoadImageResponse
-	21, // [21:26] is the sub-list for method output_type
-	16, // [16:21] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	28, // 15: k3sm.runtime.v1.LoadImageResponse.error:type_name -> google.rpc.Status
+	27, // 16: k3sm.runtime.v1.PullImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	32, // 17: k3sm.runtime.v1.PullImageRequest.policy:type_name -> k3sm.runtime.v1.ImagePullPolicy
+	4,  // 18: k3sm.runtime.v1.PullImageResponse.image:type_name -> k3sm.runtime.v1.Image
+	28, // 19: k3sm.runtime.v1.PullImageResponse.error:type_name -> google.rpc.Status
+	27, // 20: k3sm.runtime.v1.TagImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	4,  // 21: k3sm.runtime.v1.TagImageResponse.image:type_name -> k3sm.runtime.v1.Image
+	28, // 22: k3sm.runtime.v1.TagImageResponse.error:type_name -> google.rpc.Status
+	27, // 23: k3sm.runtime.v1.UntagImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	4,  // 24: k3sm.runtime.v1.UntagImageResponse.removed:type_name -> k3sm.runtime.v1.Image
+	28, // 25: k3sm.runtime.v1.UntagImageResponse.error:type_name -> google.rpc.Status
+	27, // 26: k3sm.runtime.v1.InspectImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	4,  // 27: k3sm.runtime.v1.InspectImageResponse.image:type_name -> k3sm.runtime.v1.Image
+	23, // 28: k3sm.runtime.v1.InspectImageResponse.config:type_name -> k3sm.runtime.v1.ImageConfig
+	28, // 29: k3sm.runtime.v1.InspectImageResponse.error:type_name -> google.rpc.Status
+	27, // 30: k3sm.runtime.v1.ImageConfig.platform:type_name -> k3sm.runtime.v1.Platform
+	31, // 31: k3sm.runtime.v1.ImageConfig.created:type_name -> google.protobuf.Timestamp
+	26, // 32: k3sm.runtime.v1.ImageConfig.labels:type_name -> k3sm.runtime.v1.ImageConfig.LabelsEntry
+	27, // 33: k3sm.runtime.v1.SaveImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	1,  // 34: k3sm.runtime.v1.SaveImageRequest.format:type_name -> k3sm.runtime.v1.LoadImageFormat
+	28, // 35: k3sm.runtime.v1.SaveImageResponse.error:type_name -> google.rpc.Status
+	2,  // 36: k3sm.runtime.v1.Images.ListImages:input_type -> k3sm.runtime.v1.ListImagesRequest
+	5,  // 37: k3sm.runtime.v1.Images.ImageFsInfo:input_type -> k3sm.runtime.v1.ImageFsInfoRequest
+	8,  // 38: k3sm.runtime.v1.Images.RemoveImage:input_type -> k3sm.runtime.v1.RemoveImageRequest
+	10, // 39: k3sm.runtime.v1.Images.PruneImages:input_type -> k3sm.runtime.v1.PruneImagesRequest
+	13, // 40: k3sm.runtime.v1.Images.LoadImage:input_type -> k3sm.runtime.v1.LoadImageRequest
+	15, // 41: k3sm.runtime.v1.Images.PullImage:input_type -> k3sm.runtime.v1.PullImageRequest
+	17, // 42: k3sm.runtime.v1.Images.TagImage:input_type -> k3sm.runtime.v1.TagImageRequest
+	19, // 43: k3sm.runtime.v1.Images.UntagImage:input_type -> k3sm.runtime.v1.UntagImageRequest
+	21, // 44: k3sm.runtime.v1.Images.InspectImage:input_type -> k3sm.runtime.v1.InspectImageRequest
+	24, // 45: k3sm.runtime.v1.Images.SaveImage:input_type -> k3sm.runtime.v1.SaveImageRequest
+	3,  // 46: k3sm.runtime.v1.Images.ListImages:output_type -> k3sm.runtime.v1.ListImagesResponse
+	6,  // 47: k3sm.runtime.v1.Images.ImageFsInfo:output_type -> k3sm.runtime.v1.ImageFsInfoResponse
+	9,  // 48: k3sm.runtime.v1.Images.RemoveImage:output_type -> k3sm.runtime.v1.RemoveImageResponse
+	11, // 49: k3sm.runtime.v1.Images.PruneImages:output_type -> k3sm.runtime.v1.PruneImagesResponse
+	14, // 50: k3sm.runtime.v1.Images.LoadImage:output_type -> k3sm.runtime.v1.LoadImageResponse
+	16, // 51: k3sm.runtime.v1.Images.PullImage:output_type -> k3sm.runtime.v1.PullImageResponse
+	18, // 52: k3sm.runtime.v1.Images.TagImage:output_type -> k3sm.runtime.v1.TagImageResponse
+	20, // 53: k3sm.runtime.v1.Images.UntagImage:output_type -> k3sm.runtime.v1.UntagImageResponse
+	22, // 54: k3sm.runtime.v1.Images.InspectImage:output_type -> k3sm.runtime.v1.InspectImageResponse
+	25, // 55: k3sm.runtime.v1.Images.SaveImage:output_type -> k3sm.runtime.v1.SaveImageResponse
+	46, // [46:56] is the sub-list for method output_type
+	36, // [36:46] is the sub-list for method input_type
+	36, // [36:36] is the sub-list for extension type_name
+	36, // [36:36] is the sub-list for extension extendee
+	0,  // [0:36] is the sub-list for field type_name
 }
 
 func init() { file_runtime_v1_images_proto_init() }
@@ -1174,7 +2135,7 @@ func file_runtime_v1_images_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_runtime_v1_images_proto_rawDesc), len(file_runtime_v1_images_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   13,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

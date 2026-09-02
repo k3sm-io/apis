@@ -32,19 +32,24 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Images_ListImages_FullMethodName  = "/k3sm.runtime.v1.Images/ListImages"
-	Images_ImageFsInfo_FullMethodName = "/k3sm.runtime.v1.Images/ImageFsInfo"
-	Images_RemoveImage_FullMethodName = "/k3sm.runtime.v1.Images/RemoveImage"
-	Images_PruneImages_FullMethodName = "/k3sm.runtime.v1.Images/PruneImages"
-	Images_LoadImage_FullMethodName   = "/k3sm.runtime.v1.Images/LoadImage"
+	Images_ListImages_FullMethodName   = "/k3sm.runtime.v1.Images/ListImages"
+	Images_ImageFsInfo_FullMethodName  = "/k3sm.runtime.v1.Images/ImageFsInfo"
+	Images_RemoveImage_FullMethodName  = "/k3sm.runtime.v1.Images/RemoveImage"
+	Images_PruneImages_FullMethodName  = "/k3sm.runtime.v1.Images/PruneImages"
+	Images_LoadImage_FullMethodName    = "/k3sm.runtime.v1.Images/LoadImage"
+	Images_PullImage_FullMethodName    = "/k3sm.runtime.v1.Images/PullImage"
+	Images_TagImage_FullMethodName     = "/k3sm.runtime.v1.Images/TagImage"
+	Images_UntagImage_FullMethodName   = "/k3sm.runtime.v1.Images/UntagImage"
+	Images_InspectImage_FullMethodName = "/k3sm.runtime.v1.Images/InspectImage"
+	Images_SaveImage_FullMethodName    = "/k3sm.runtime.v1.Images/SaveImage"
 )
 
 // ImagesClient is the client API for Images service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// Images is the node-local image service: list, measure, remove, prune, and
-// ingest. It is served by the same native runtime daemon (k3sm.io/runtimed)
+// Images is the node-local image service: pull, list, inspect, measure, tag,
+// untag, remove, prune, ingest, and export. It is served by the same native runtime daemon (k3sm.io/runtimed)
 // that serves `service Runtime`, on the same listener — the split is about
 // which caller a surface belongs to, not about which process serves it.
 //
@@ -137,6 +142,105 @@ type ImagesClient interface {
 	// plan, section M12.2). This RPC neither evaluates nor records a
 	// SignaturePolicy; enforcement stays where it already is, at materialize/exec.
 	LoadImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[LoadImageRequest, LoadImageResponse], error)
+	// PullImage resolves a reference for a platform and fetches it through the
+	// daemon's OWN puller — the same code path a pod-driven pull takes, so it
+	// inherits (rather than restates) that path's obligations: every fetched blob
+	// is re-hashed against its claimed digest before the lease commits, the
+	// disk-pressure gate applies, and the resulting reference is recorded in the
+	// local image index. A daemon that served this from a second fetch path would
+	// have forked its own verification story.
+	//
+	// This is explicitly the CLI-pull primitive — `k3sm image pull`. It exists so
+	// an operator can WARM and PIN the store ahead of a workload, not so images
+	// can arrive by a route pods do not use.
+	//
+	// Provenance: a successful pull records a reference -> digest index entry — an
+	// edge, plus an OPERATOR root over that reference (the ratified image-GC
+	// provenance model, the M12 images plan, Resolution 13: edges are monotone,
+	// roots are digest-pinned, and root removal is authorized and local). That
+	// root is why a pulled-but-unused image survives PruneImages: it stays
+	// reachable until the operator removes the name with UntagImage.
+	PullImage(ctx context.Context, in *PullImageRequest, opts ...grpc.CallOption) (*PullImageResponse, error)
+	// TagImage records an ADDITIONAL reference for a manifest digest that is
+	// already in the local store: a new (reference x platform) index entry
+	// pointing at existing content. It contacts no registry and writes no blob.
+	//
+	// Additive only, and that is the whole safety argument — a tag can make
+	// content reachable, never unreachable. Two consequences are contract, not
+	// implementation detail. The target is named by DIGEST and never by another
+	// (mutable) tag, because roots are digest-pinned and resolving a name here
+	// would let a concurrent re-pull decide what the new tag means. And this RPC
+	// never RE-POINTS an existing entry at a different digest: that would drop the
+	// old edge, which is a root removal wearing a tag's clothes. Re-pointing is
+	// UntagImage then TagImage — two steps the operator explicitly asked for.
+	//
+	// Status contract: NOT_FOUND when the digest is absent from the store (a tag
+	// may not name content the node does not have); FAILED_PRECONDITION when the
+	// (reference x platform) key exists and resolves to a different digest;
+	// idempotent OK when it already resolves to this digest. platform is part of
+	// the key, never a filter.
+	TagImage(ctx context.Context, in *TagImageRequest, opts ...grpc.CallOption) (*TagImageResponse, error)
+	// UntagImage removes ONE (reference x platform) index entry. It is the
+	// provenance model's sanctioned EXPLICIT UNTAG — an authorized, local root
+	// removal the operator requested, never a side effect of fetched content (the
+	// M12 images plan, Resolution 13).
+	//
+	// Untag removes a NAME, not bytes. No blob is unlinked here; content is
+	// reclaimed only by PruneImages, which re-derives reachability first. So
+	// untagging a name that a live pod's root still pins leaves the content
+	// reachable and the pod unharmed — that is the point of separating the two
+	// verbs, not a limitation of this one.
+	//
+	// Deliberately distinct from RemoveImage, whose refusal stands: the shipped
+	// daemon answers RemoveImage with UNIMPLEMENTED as a design statement, because
+	// image roots are per-pod records and a request shaped as "remove this image"
+	// does not say which root the caller owns. UntagImage names exactly one
+	// operator-owned entry, which is why it is the removal that can be granted.
+	//
+	// Status contract: NOT_FOUND when the entry does not exist — untag is
+	// deliberately NOT idempotent-by-silence, since the caller asked to remove a
+	// specific name; FAILED_PRECONDITION, removing nothing, when platform is unset
+	// and the reference has more than one platform entry (an ambiguous untag is
+	// never a guess) or when digest is set and the entry resolves elsewhere.
+	UntagImage(ctx context.Context, in *UntagImageRequest, opts ...grpc.CallOption) (*UntagImageResponse, error)
+	// InspectImage reports what the store knows about one image — the `docker
+	// inspect` analog, and the read side of the tag verbs above.
+	//
+	// The target is a (reference x platform) key or a manifest digest; a digest
+	// names content directly and needs no platform. Strictly read-only: it
+	// resolves nothing against a registry, takes no lease and records no root, so
+	// it can never make content reachable.
+	//
+	// The entry itself is the EXISTING Image wrapper, so digest, manifest media
+	// type and size, resolved platform, and the config and layer descriptors with
+	// their own digests and sizes are read out of the same Descriptor /
+	// ImageManifest messages ListImages returns; an inspect that re-spelled them
+	// would drift from the list on the first divergent edit. What Image cannot
+	// carry is the decoded image config, which is ImageConfig below.
+	//
+	// Every response field is independently optional: an absent field means the
+	// daemon reported no value for that fact, never that the image asserts an
+	// empty one. That is what lets a later daemon report more without a wire
+	// change.
+	InspectImage(ctx context.Context, in *InspectImageRequest, opts ...grpc.CallOption) (*InspectImageResponse, error)
+	// SaveImage streams one image OUT of the store as a tarred OCI image layout —
+	// the `docker save` analog, and the exact inverse of LoadImage's direction.
+	//
+	// Server-streaming, mirroring LoadImage's framing in reverse: the server sends
+	// chunk frames carrying bytes and nothing else, then exactly ONE terminal
+	// frame that carries no chunk and instead reports the exported manifest digest
+	// and the byte count the server sent. A client that reaches the end of the
+	// stream without a terminal frame has a truncated archive and must discard it.
+	//
+	// One (reference x platform) per call, like every other verb here: exporting a
+	// whole multi-platform index is a different archive shape and is not v1.
+	//
+	// Export takes no lease, records no root and unlinks nothing. The client is
+	// the sole writer of the operator's file, the mirror of LoadImage's rule that
+	// the daemon is the sole writer of the store (the M12 images plan, Resolution
+	// 8, as amended 2026-08-09): the daemon generally cannot write into an
+	// operator's home and must not try.
+	SaveImage(ctx context.Context, in *SaveImageRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SaveImageResponse], error)
 }
 
 type imagesClient struct {
@@ -200,12 +304,71 @@ func (c *imagesClient) LoadImage(ctx context.Context, opts ...grpc.CallOption) (
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Images_LoadImageClient = grpc.ClientStreamingClient[LoadImageRequest, LoadImageResponse]
 
+func (c *imagesClient) PullImage(ctx context.Context, in *PullImageRequest, opts ...grpc.CallOption) (*PullImageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PullImageResponse)
+	err := c.cc.Invoke(ctx, Images_PullImage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *imagesClient) TagImage(ctx context.Context, in *TagImageRequest, opts ...grpc.CallOption) (*TagImageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TagImageResponse)
+	err := c.cc.Invoke(ctx, Images_TagImage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *imagesClient) UntagImage(ctx context.Context, in *UntagImageRequest, opts ...grpc.CallOption) (*UntagImageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UntagImageResponse)
+	err := c.cc.Invoke(ctx, Images_UntagImage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *imagesClient) InspectImage(ctx context.Context, in *InspectImageRequest, opts ...grpc.CallOption) (*InspectImageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InspectImageResponse)
+	err := c.cc.Invoke(ctx, Images_InspectImage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *imagesClient) SaveImage(ctx context.Context, in *SaveImageRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SaveImageResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Images_ServiceDesc.Streams[1], Images_SaveImage_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[SaveImageRequest, SaveImageResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Images_SaveImageClient = grpc.ServerStreamingClient[SaveImageResponse]
+
 // ImagesServer is the server API for Images service.
 // All implementations must embed UnimplementedImagesServer
 // for forward compatibility.
 //
-// Images is the node-local image service: list, measure, remove, prune, and
-// ingest. It is served by the same native runtime daemon (k3sm.io/runtimed)
+// Images is the node-local image service: pull, list, inspect, measure, tag,
+// untag, remove, prune, ingest, and export. It is served by the same native runtime daemon (k3sm.io/runtimed)
 // that serves `service Runtime`, on the same listener — the split is about
 // which caller a surface belongs to, not about which process serves it.
 //
@@ -298,6 +461,105 @@ type ImagesServer interface {
 	// plan, section M12.2). This RPC neither evaluates nor records a
 	// SignaturePolicy; enforcement stays where it already is, at materialize/exec.
 	LoadImage(grpc.ClientStreamingServer[LoadImageRequest, LoadImageResponse]) error
+	// PullImage resolves a reference for a platform and fetches it through the
+	// daemon's OWN puller — the same code path a pod-driven pull takes, so it
+	// inherits (rather than restates) that path's obligations: every fetched blob
+	// is re-hashed against its claimed digest before the lease commits, the
+	// disk-pressure gate applies, and the resulting reference is recorded in the
+	// local image index. A daemon that served this from a second fetch path would
+	// have forked its own verification story.
+	//
+	// This is explicitly the CLI-pull primitive — `k3sm image pull`. It exists so
+	// an operator can WARM and PIN the store ahead of a workload, not so images
+	// can arrive by a route pods do not use.
+	//
+	// Provenance: a successful pull records a reference -> digest index entry — an
+	// edge, plus an OPERATOR root over that reference (the ratified image-GC
+	// provenance model, the M12 images plan, Resolution 13: edges are monotone,
+	// roots are digest-pinned, and root removal is authorized and local). That
+	// root is why a pulled-but-unused image survives PruneImages: it stays
+	// reachable until the operator removes the name with UntagImage.
+	PullImage(context.Context, *PullImageRequest) (*PullImageResponse, error)
+	// TagImage records an ADDITIONAL reference for a manifest digest that is
+	// already in the local store: a new (reference x platform) index entry
+	// pointing at existing content. It contacts no registry and writes no blob.
+	//
+	// Additive only, and that is the whole safety argument — a tag can make
+	// content reachable, never unreachable. Two consequences are contract, not
+	// implementation detail. The target is named by DIGEST and never by another
+	// (mutable) tag, because roots are digest-pinned and resolving a name here
+	// would let a concurrent re-pull decide what the new tag means. And this RPC
+	// never RE-POINTS an existing entry at a different digest: that would drop the
+	// old edge, which is a root removal wearing a tag's clothes. Re-pointing is
+	// UntagImage then TagImage — two steps the operator explicitly asked for.
+	//
+	// Status contract: NOT_FOUND when the digest is absent from the store (a tag
+	// may not name content the node does not have); FAILED_PRECONDITION when the
+	// (reference x platform) key exists and resolves to a different digest;
+	// idempotent OK when it already resolves to this digest. platform is part of
+	// the key, never a filter.
+	TagImage(context.Context, *TagImageRequest) (*TagImageResponse, error)
+	// UntagImage removes ONE (reference x platform) index entry. It is the
+	// provenance model's sanctioned EXPLICIT UNTAG — an authorized, local root
+	// removal the operator requested, never a side effect of fetched content (the
+	// M12 images plan, Resolution 13).
+	//
+	// Untag removes a NAME, not bytes. No blob is unlinked here; content is
+	// reclaimed only by PruneImages, which re-derives reachability first. So
+	// untagging a name that a live pod's root still pins leaves the content
+	// reachable and the pod unharmed — that is the point of separating the two
+	// verbs, not a limitation of this one.
+	//
+	// Deliberately distinct from RemoveImage, whose refusal stands: the shipped
+	// daemon answers RemoveImage with UNIMPLEMENTED as a design statement, because
+	// image roots are per-pod records and a request shaped as "remove this image"
+	// does not say which root the caller owns. UntagImage names exactly one
+	// operator-owned entry, which is why it is the removal that can be granted.
+	//
+	// Status contract: NOT_FOUND when the entry does not exist — untag is
+	// deliberately NOT idempotent-by-silence, since the caller asked to remove a
+	// specific name; FAILED_PRECONDITION, removing nothing, when platform is unset
+	// and the reference has more than one platform entry (an ambiguous untag is
+	// never a guess) or when digest is set and the entry resolves elsewhere.
+	UntagImage(context.Context, *UntagImageRequest) (*UntagImageResponse, error)
+	// InspectImage reports what the store knows about one image — the `docker
+	// inspect` analog, and the read side of the tag verbs above.
+	//
+	// The target is a (reference x platform) key or a manifest digest; a digest
+	// names content directly and needs no platform. Strictly read-only: it
+	// resolves nothing against a registry, takes no lease and records no root, so
+	// it can never make content reachable.
+	//
+	// The entry itself is the EXISTING Image wrapper, so digest, manifest media
+	// type and size, resolved platform, and the config and layer descriptors with
+	// their own digests and sizes are read out of the same Descriptor /
+	// ImageManifest messages ListImages returns; an inspect that re-spelled them
+	// would drift from the list on the first divergent edit. What Image cannot
+	// carry is the decoded image config, which is ImageConfig below.
+	//
+	// Every response field is independently optional: an absent field means the
+	// daemon reported no value for that fact, never that the image asserts an
+	// empty one. That is what lets a later daemon report more without a wire
+	// change.
+	InspectImage(context.Context, *InspectImageRequest) (*InspectImageResponse, error)
+	// SaveImage streams one image OUT of the store as a tarred OCI image layout —
+	// the `docker save` analog, and the exact inverse of LoadImage's direction.
+	//
+	// Server-streaming, mirroring LoadImage's framing in reverse: the server sends
+	// chunk frames carrying bytes and nothing else, then exactly ONE terminal
+	// frame that carries no chunk and instead reports the exported manifest digest
+	// and the byte count the server sent. A client that reaches the end of the
+	// stream without a terminal frame has a truncated archive and must discard it.
+	//
+	// One (reference x platform) per call, like every other verb here: exporting a
+	// whole multi-platform index is a different archive shape and is not v1.
+	//
+	// Export takes no lease, records no root and unlinks nothing. The client is
+	// the sole writer of the operator's file, the mirror of LoadImage's rule that
+	// the daemon is the sole writer of the store (the M12 images plan, Resolution
+	// 8, as amended 2026-08-09): the daemon generally cannot write into an
+	// operator's home and must not try.
+	SaveImage(*SaveImageRequest, grpc.ServerStreamingServer[SaveImageResponse]) error
 	mustEmbedUnimplementedImagesServer()
 }
 
@@ -322,6 +584,21 @@ func (UnimplementedImagesServer) PruneImages(context.Context, *PruneImagesReques
 }
 func (UnimplementedImagesServer) LoadImage(grpc.ClientStreamingServer[LoadImageRequest, LoadImageResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method LoadImage not implemented")
+}
+func (UnimplementedImagesServer) PullImage(context.Context, *PullImageRequest) (*PullImageResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PullImage not implemented")
+}
+func (UnimplementedImagesServer) TagImage(context.Context, *TagImageRequest) (*TagImageResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TagImage not implemented")
+}
+func (UnimplementedImagesServer) UntagImage(context.Context, *UntagImageRequest) (*UntagImageResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UntagImage not implemented")
+}
+func (UnimplementedImagesServer) InspectImage(context.Context, *InspectImageRequest) (*InspectImageResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method InspectImage not implemented")
+}
+func (UnimplementedImagesServer) SaveImage(*SaveImageRequest, grpc.ServerStreamingServer[SaveImageResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method SaveImage not implemented")
 }
 func (UnimplementedImagesServer) mustEmbedUnimplementedImagesServer() {}
 func (UnimplementedImagesServer) testEmbeddedByValue()                {}
@@ -423,6 +700,89 @@ func _Images_LoadImage_Handler(srv interface{}, stream grpc.ServerStream) error 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Images_LoadImageServer = grpc.ClientStreamingServer[LoadImageRequest, LoadImageResponse]
 
+func _Images_PullImage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PullImageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ImagesServer).PullImage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Images_PullImage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ImagesServer).PullImage(ctx, req.(*PullImageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Images_TagImage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TagImageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ImagesServer).TagImage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Images_TagImage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ImagesServer).TagImage(ctx, req.(*TagImageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Images_UntagImage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UntagImageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ImagesServer).UntagImage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Images_UntagImage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ImagesServer).UntagImage(ctx, req.(*UntagImageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Images_InspectImage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InspectImageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ImagesServer).InspectImage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Images_InspectImage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ImagesServer).InspectImage(ctx, req.(*InspectImageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Images_SaveImage_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SaveImageRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ImagesServer).SaveImage(m, &grpc.GenericServerStream[SaveImageRequest, SaveImageResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Images_SaveImageServer = grpc.ServerStreamingServer[SaveImageResponse]
+
 // Images_ServiceDesc is the grpc.ServiceDesc for Images service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -446,12 +806,33 @@ var Images_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "PruneImages",
 			Handler:    _Images_PruneImages_Handler,
 		},
+		{
+			MethodName: "PullImage",
+			Handler:    _Images_PullImage_Handler,
+		},
+		{
+			MethodName: "TagImage",
+			Handler:    _Images_TagImage_Handler,
+		},
+		{
+			MethodName: "UntagImage",
+			Handler:    _Images_UntagImage_Handler,
+		},
+		{
+			MethodName: "InspectImage",
+			Handler:    _Images_InspectImage_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "LoadImage",
 			Handler:       _Images_LoadImage_Handler,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "SaveImage",
+			Handler:       _Images_SaveImage_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "runtime/v1/images.proto",
