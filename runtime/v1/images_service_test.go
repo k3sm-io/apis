@@ -20,10 +20,12 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // TestImagesServiceSurface is B130a's named gate.
@@ -36,29 +38,38 @@ import (
 // entry type that re-declared digest/size/media_type as scalars would duplicate
 // exactly what this module exists to single-source.
 //
-// The gate pins four structural facts and one textual one:
+// The gate pins five structural facts and one textual one:
 //
-//   - the service exists at k3sm.runtime.v1.Images with EXACTLY five methods,
-//     and LoadImage alone is client-streaming (the file's first — its siblings
-//     Exec/Attach/PortForward are bidirectional, and getting that wrong is a
-//     wire-shape mistake no later additive change can repair);
-//   - ListImages' entry type reaches the EXISTING Descriptor / ImageManifest /
-//     Platform messages, never parallel ones;
-//   - LoadImageRequest carries bytes and scalars ONLY (no OCI-typed framing —
-//     apis depends on nothing);
+//   - the service exists at k3sm.runtime.v1.Images with EXACTLY ten methods —
+//     the five store verbs it opened with plus the five image primitives
+//     (pull / tag / untag / inspect / save) — each bound to its OWN request and
+//     response type, so a later carve cannot quietly re-home a verb onto a
+//     sibling's message;
+//   - the streaming shapes: LoadImage is client-streaming (ingest) and
+//     SaveImage is server-streaming (export), and nothing else streams. Its
+//     siblings Exec/Attach/PortForward are bidirectional, and getting a stream
+//     direction wrong is a wire-shape mistake no later additive change repairs;
+//   - the entry types reach the EXISTING Descriptor / ImageManifest / Platform
+//     messages and the existing ImagePullPolicy / LoadImageFormat enums, never
+//     parallel ones;
+//   - LoadImageRequest and SaveImageResponse carry bytes and scalars ONLY (no
+//     OCI-typed framing — apis depends on nothing);
 //   - every new message keeps the file's `reserved 100 to 149` headroom, and
 //     every new message survives a wire round-trip.
 //
 // And the textual one: the contract comments in images.proto — the advisory
 // digest / re-hash-before-commit clause, the lease obligation with its
 // transitional citation, the socket-posture precision, the not-a-signature-
-// checkpoint note, and the reactive-skew decision — are asserted as SOURCE
-// TEXT. They are the parts of this contract a compiler cannot check and a
+// checkpoint note, the reactive-skew decision, and the provenance contracts the
+// image primitives are bound by (pull records an operator root; a tag is
+// additive and never re-points; untag is the sanctioned explicit root removal
+// and RemoveImage's refusal stands; export's terminal frame) — are asserted as
+// SOURCE TEXT. They are the parts of this contract a compiler cannot check and a
 // daemon implementer must read; deleting any of them reddens this test.
 func TestImagesServiceSurface(t *testing.T) {
 	fd := File_runtime_v1_images_proto
 
-	t.Run("the service lives in the runtime package with exactly five methods", func(t *testing.T) {
+	t.Run("the service lives in the runtime package with exactly ten methods", func(t *testing.T) {
 		// Same package as runtime.proto: the CRI split is service-level, never a
 		// second proto package or import path.
 		siblingPkg := (&Descriptor{}).ProtoReflect().Descriptor().ParentFile().Package()
@@ -77,6 +88,8 @@ func TestImagesServiceSurface(t *testing.T) {
 		want := map[string]bool{
 			"ListImages": false, "ImageFsInfo": false, "RemoveImage": false,
 			"PruneImages": false, "LoadImage": false,
+			"PullImage": false, "TagImage": false, "UntagImage": false,
+			"InspectImage": false, "SaveImage": false,
 		}
 		ms := sd.Methods()
 		if ms.Len() != len(want) {
@@ -86,7 +99,7 @@ func TestImagesServiceSurface(t *testing.T) {
 			name := string(ms.Get(i).Name())
 			seen, known := want[name]
 			if !known {
-				t.Errorf("unexpected method %s on Images (the surface is exactly five verbs)", name)
+				t.Errorf("unexpected method %s on Images (the surface is exactly ten verbs)", name)
 				continue
 			}
 			if seen {
@@ -101,7 +114,7 @@ func TestImagesServiceSurface(t *testing.T) {
 		}
 	})
 
-	t.Run("LoadImage is client-streaming and the other four are unary", func(t *testing.T) {
+	t.Run("LoadImage is client-streaming, SaveImage server-streaming, the rest unary", func(t *testing.T) {
 		sd := fd.Services().ByName("Images")
 		if sd == nil {
 			t.Fatal("service Images does not exist")
@@ -114,11 +127,18 @@ func TestImagesServiceSurface(t *testing.T) {
 			{"ImageFsInfo", false, false},
 			{"RemoveImage", false, false},
 			{"PruneImages", false, false},
-			// The one asymmetry in the file: the client streams an archive, the
-			// server answers once. Bidi (the Exec/Attach/PortForward shape) would
-			// be the wrong contract — there is nothing to say until the ingest
-			// commits.
+			{"PullImage", false, false},
+			{"TagImage", false, false},
+			{"UntagImage", false, false},
+			{"InspectImage", false, false},
+			// The two asymmetries in the file, and they point opposite ways.
+			// Ingest: the client streams an archive and the server answers once —
+			// there is nothing to say until the ingest commits. Export: the
+			// server streams the archive and the client says nothing after the
+			// request. Bidi (the Exec/Attach/PortForward shape) would be the
+			// wrong contract for either.
 			{"LoadImage", true, false},
+			{"SaveImage", false, true},
 		}
 		for _, tc := range cases {
 			md := sd.Methods().ByName(protoreflect.Name(tc.name))
@@ -135,20 +155,71 @@ func TestImagesServiceSurface(t *testing.T) {
 		}
 
 		// The generated grpc.ServiceDesc is what a daemon actually registers, so
-		// pin it too: four unary handlers plus one client-stream.
+		// pin it too: eight unary handlers plus the two streams, one in each
+		// direction.
 		if got, want := Images_ServiceDesc.ServiceName, "k3sm.runtime.v1.Images"; got != want {
 			t.Errorf("Images_ServiceDesc.ServiceName = %q, want %q", got, want)
 		}
-		if got := len(Images_ServiceDesc.Methods); got != 4 {
-			t.Errorf("Images_ServiceDesc has %d unary methods, want 4", got)
+		if got := len(Images_ServiceDesc.Methods); got != 8 {
+			t.Errorf("Images_ServiceDesc has %d unary methods, want 8", got)
 		}
-		if got := len(Images_ServiceDesc.Streams); got != 1 {
-			t.Fatalf("Images_ServiceDesc has %d streams, want 1 (LoadImage)", got)
+		if got := len(Images_ServiceDesc.Streams); got != 2 {
+			t.Fatalf("Images_ServiceDesc has %d streams, want 2 (LoadImage, SaveImage)", got)
 		}
-		st := Images_ServiceDesc.Streams[0]
-		if st.StreamName != "LoadImage" || !st.ClientStreams || st.ServerStreams {
-			t.Errorf("stream = %+v, want LoadImage with ClientStreams=true, ServerStreams=false",
-				grpc.StreamDesc{StreamName: st.StreamName, ClientStreams: st.ClientStreams, ServerStreams: st.ServerStreams})
+		wantStreams := map[string]grpc.StreamDesc{
+			"LoadImage": {StreamName: "LoadImage", ClientStreams: true, ServerStreams: false},
+			"SaveImage": {StreamName: "SaveImage", ClientStreams: false, ServerStreams: true},
+		}
+		for _, st := range Images_ServiceDesc.Streams {
+			w, ok := wantStreams[st.StreamName]
+			if !ok {
+				t.Errorf("unexpected stream %q on Images_ServiceDesc", st.StreamName)
+				continue
+			}
+			if st.ClientStreams != w.ClientStreams || st.ServerStreams != w.ServerStreams {
+				t.Errorf("stream %s = ClientStreams:%v ServerStreams:%v, want ClientStreams:%v ServerStreams:%v",
+					st.StreamName, st.ClientStreams, st.ServerStreams, w.ClientStreams, w.ServerStreams)
+			}
+		}
+	})
+
+	t.Run("every verb is bound to its own request and response type", func(t *testing.T) {
+		// Per-RPC identity, pinned pairwise. Reusing a sibling's message would
+		// couple two verbs' evolution forever: the reserved band that protects
+		// one would have to be spent for the other, and buf's
+		// RPC_REQUEST_RESPONSE_UNIQUE exemption (deliberately scoped to
+		// guest.proto and runtime.proto, never this file) would have to widen.
+		sd := fd.Services().ByName("Images")
+		if sd == nil {
+			t.Fatal("service Images does not exist")
+		}
+		cases := []struct{ method, in, out string }{
+			{"ListImages", "ListImagesRequest", "ListImagesResponse"},
+			{"ImageFsInfo", "ImageFsInfoRequest", "ImageFsInfoResponse"},
+			{"RemoveImage", "RemoveImageRequest", "RemoveImageResponse"},
+			{"PruneImages", "PruneImagesRequest", "PruneImagesResponse"},
+			{"LoadImage", "LoadImageRequest", "LoadImageResponse"},
+			{"PullImage", "PullImageRequest", "PullImageResponse"},
+			{"TagImage", "TagImageRequest", "TagImageResponse"},
+			{"UntagImage", "UntagImageRequest", "UntagImageResponse"},
+			{"InspectImage", "InspectImageRequest", "InspectImageResponse"},
+			{"SaveImage", "SaveImageRequest", "SaveImageResponse"},
+		}
+		if len(cases) != sd.Methods().Len() {
+			t.Errorf("the identity table covers %d verbs, the service has %d", len(cases), sd.Methods().Len())
+		}
+		for _, tc := range cases {
+			md := sd.Methods().ByName(protoreflect.Name(tc.method))
+			if md == nil {
+				t.Errorf("method %s is missing", tc.method)
+				continue
+			}
+			if got, want := string(md.Input().FullName()), "k3sm.runtime.v1."+tc.in; got != want {
+				t.Errorf("%s request = %s, want %s", tc.method, got, want)
+			}
+			if got, want := string(md.Output().FullName()), "k3sm.runtime.v1."+tc.out; got != want {
+				t.Errorf("%s response = %s, want %s", tc.method, got, want)
+			}
 		}
 	})
 
@@ -167,6 +238,21 @@ func TestImagesServiceSurface(t *testing.T) {
 			{(&ListImagesRequest{}).ProtoReflect().Descriptor(), "platform", "k3sm.runtime.v1.Platform"},
 			{(&RemoveImageRequest{}).ProtoReflect().Descriptor(), "platform", "k3sm.runtime.v1.Platform"},
 			{(&LoadImageResponse{}).ProtoReflect().Descriptor(), "images", "k3sm.runtime.v1.Image"},
+			// The image primitives reuse the same wrapper and the same platform
+			// message: a pull, a tag and a list must agree on what an entry IS.
+			{(&PullImageRequest{}).ProtoReflect().Descriptor(), "platform", "k3sm.runtime.v1.Platform"},
+			{(&PullImageResponse{}).ProtoReflect().Descriptor(), "image", "k3sm.runtime.v1.Image"},
+			{(&TagImageRequest{}).ProtoReflect().Descriptor(), "platform", "k3sm.runtime.v1.Platform"},
+			{(&TagImageResponse{}).ProtoReflect().Descriptor(), "image", "k3sm.runtime.v1.Image"},
+			{(&UntagImageRequest{}).ProtoReflect().Descriptor(), "platform", "k3sm.runtime.v1.Platform"},
+			{(&UntagImageResponse{}).ProtoReflect().Descriptor(), "removed", "k3sm.runtime.v1.Image"},
+			{(&InspectImageRequest{}).ProtoReflect().Descriptor(), "platform", "k3sm.runtime.v1.Platform"},
+			{(&InspectImageResponse{}).ProtoReflect().Descriptor(), "image", "k3sm.runtime.v1.Image"},
+			{(&InspectImageResponse{}).ProtoReflect().Descriptor(), "config", "k3sm.runtime.v1.ImageConfig"},
+			// The DECLARED platform of the config blob — the existing Platform
+			// message again, not a third os/arch spelling.
+			{(&ImageConfig{}).ProtoReflect().Descriptor(), "platform", "k3sm.runtime.v1.Platform"},
+			{(&SaveImageRequest{}).ProtoReflect().Descriptor(), "platform", "k3sm.runtime.v1.Platform"},
 		}
 		for _, tc := range cases {
 			f := tc.owner.Fields().ByName(tc.field)
@@ -188,6 +274,47 @@ func TestImagesServiceSurface(t *testing.T) {
 		for _, n := range []protoreflect.Name{"digest", "size", "size_bytes", "media_type"} {
 			if imd.Fields().ByName(n) != nil {
 				t.Errorf("Image.%s exists; that fact belongs to the embedded Descriptor, not a parallel scalar", n)
+			}
+		}
+
+		// Nor may the wrapper-carrying responses re-spell them alongside the
+		// wrapper: two spellings of one digest drift on the first divergent edit.
+		for _, tc := range []struct {
+			owner protoreflect.MessageDescriptor
+			names []protoreflect.Name
+		}{
+			{(&PullImageResponse{}).ProtoReflect().Descriptor(), []protoreflect.Name{"digest", "platform", "media_type"}},
+			{(&TagImageResponse{}).ProtoReflect().Descriptor(), []protoreflect.Name{"digest", "platform"}},
+			{(&InspectImageResponse{}).ProtoReflect().Descriptor(), []protoreflect.Name{"digest", "media_type", "layers"}},
+		} {
+			for _, n := range tc.names {
+				if tc.owner.Fields().ByName(n) != nil {
+					t.Errorf("%s.%s exists; that fact belongs to the embedded Image, not a parallel field", tc.owner.Name(), n)
+				}
+			}
+		}
+
+		// The primitives reuse the file's EXISTING enums rather than minting
+		// CLI-only twins of the same vocabulary.
+		for _, tc := range []struct {
+			owner protoreflect.MessageDescriptor
+			field protoreflect.Name
+			want  string
+		}{
+			{(&PullImageRequest{}).ProtoReflect().Descriptor(), "policy", "k3sm.runtime.v1.ImagePullPolicy"},
+			{(&SaveImageRequest{}).ProtoReflect().Descriptor(), "format", "k3sm.runtime.v1.LoadImageFormat"},
+		} {
+			f := tc.owner.Fields().ByName(tc.field)
+			if f == nil {
+				t.Errorf("%s.%s does not exist", tc.owner.Name(), tc.field)
+				continue
+			}
+			if f.Enum() == nil {
+				t.Errorf("%s.%s is not an enum field (kind %v)", tc.owner.Name(), tc.field, f.Kind())
+				continue
+			}
+			if got := string(f.Enum().FullName()); got != tc.want {
+				t.Errorf("%s.%s = %s, want the existing %s", tc.owner.Name(), tc.field, got, tc.want)
 			}
 		}
 	})
@@ -221,6 +348,41 @@ func TestImagesServiceSurface(t *testing.T) {
 		}
 		if f := md.Fields().ByName("size"); f == nil || f.Kind() != protoreflect.Int64Kind {
 			t.Errorf("LoadImageRequest.size must exist as an int64 metadata field")
+		}
+	})
+
+	t.Run("SaveImageResponse mirrors that framing in reverse", func(t *testing.T) {
+		// Export is ingest with the arrow turned around, so it gets the same
+		// discipline: bytes and scalars only (apart from the shared error
+		// status), a chunk field, and a terminal frame whose digest + sent_bytes
+		// are what tells a client the archive is COMPLETE. Without a terminal
+		// frame, truncation is indistinguishable from a short final chunk.
+		md := (&SaveImageResponse{}).ProtoReflect().Descriptor()
+		for i := range md.Fields().Len() {
+			f := md.Fields().Get(i)
+			if f.Name() == "error" { // the file-wide google.rpc.Status outcome field
+				continue
+			}
+			switch f.Kind() {
+			case protoreflect.MessageKind, protoreflect.GroupKind:
+				t.Errorf("SaveImageResponse.%s is a %v field; the stream carries bytes and scalars only", f.Name(), f.Kind())
+			}
+			if f.IsMap() || f.IsList() {
+				t.Errorf("SaveImageResponse.%s is a composite field; the stream carries bytes and scalars only", f.Name())
+			}
+		}
+		if f := md.Fields().ByName("chunk"); f == nil || f.Kind() != protoreflect.BytesKind {
+			t.Error("SaveImageResponse.chunk must exist as a bytes field; there is nothing to stream")
+		}
+		if f := md.Fields().ByName("digest"); f == nil || f.Kind() != protoreflect.StringKind {
+			t.Error("SaveImageResponse.digest must exist as a string terminal-frame field")
+		}
+		if f := md.Fields().ByName("sent_bytes"); f == nil || f.Kind() != protoreflect.Int64Kind {
+			t.Error("SaveImageResponse.sent_bytes must exist as an int64 terminal-frame field")
+		}
+		if f := md.Fields().ByName("error"); f == nil || f.Message() == nil ||
+			string(f.Message().FullName()) != "google.rpc.Status" {
+			t.Error("SaveImageResponse.error must exist as a google.rpc.Status")
 		}
 	})
 
@@ -312,6 +474,27 @@ func TestImagesServiceSurface(t *testing.T) {
 			// The skew decision, recorded so it is not re-derived.
 			{"reactive-skew clause", "returns gRPC UNIMPLEMENTED for every method below"},
 			{"deferred capability band", "Capability-band advertisement via GetRuntimeInfoResponse's reserved 100..149 band was considered and"},
+			// The image primitives' provenance contracts. These are what bind a
+			// daemon implementer: the proto alone must say that a pull is the
+			// pod path plus an operator root, that a tag is monotone, that
+			// untag — not RemoveImage — is the sanctioned root removal, and
+			// that an export is complete only at its terminal frame.
+			{"pull-uses-the-pod-path clause", "the same code path a pod-driven pull takes"},
+			{"pull-is-the-CLI-primitive clause", "explicitly the CLI-pull primitive"},
+			{"pull-records-an-operator-root clause", "an edge, plus an OPERATOR root over that reference"},
+			{"provenance-model citation", "Resolution 13: edges are monotone, roots are digest-pinned, and root removal is authorized and local"},
+			{"tag-is-monotone clause", "a tag can make content reachable, never unreachable"},
+			{"tag-never-repoints clause", "never RE-POINTS an existing entry at a different digest"},
+			{"tag-needs-present-content clause", "NOT_FOUND when the digest is absent from the store"},
+			{"explicit-untag clause", "provenance model's sanctioned EXPLICIT UNTAG"},
+			{"untag-removes-a-name clause", "Untag removes a NAME, not bytes"},
+			{"untag-leaves-pinned-content clause", "leaves the content reachable and the pod unharmed"},
+			{"RemoveImage-refusal-stands clause", "Deliberately distinct from RemoveImage, whose refusal stands"},
+			{"inspect-is-read-only clause", "it resolves nothing against a registry, takes no lease and records no root"},
+			{"inspect-fields-are-optional clause", "an absent field means the daemon reported no value for that fact, never that the image asserts an empty one"},
+			{"save-inverts-load clause", "the exact inverse of LoadImage's direction"},
+			{"save-terminal-frame clause", "exactly ONE terminal frame"},
+			{"save-truncation clause", "has a truncated archive and must discard it"},
 		}
 		for _, tc := range cases {
 			if !strings.Contains(text, tc.want) {
@@ -329,6 +512,11 @@ func newMessages() []proto.Message {
 		&RemoveImageRequest{}, &RemoveImageResponse{},
 		&PruneImagesRequest{}, &PruneImagesResponse{}, &SkippedBlob{},
 		&LoadImageRequest{}, &LoadImageResponse{},
+		&PullImageRequest{}, &PullImageResponse{},
+		&TagImageRequest{}, &TagImageResponse{},
+		&UntagImageRequest{}, &UntagImageResponse{},
+		&InspectImageRequest{}, &InspectImageResponse{}, &ImageConfig{},
+		&SaveImageRequest{}, &SaveImageResponse{},
 	}
 }
 
@@ -384,5 +572,47 @@ func populatedMessages() []proto.Message {
 			Chunk:     []byte("archive bytes"),
 		},
 		&LoadImageResponse{Images: []*Image{img}, ReceivedBytes: 1024},
+		&PullImageRequest{
+			Reference: "example.com/img:tag",
+			Platform:  &Platform{Os: "darwin", Architecture: "arm64"},
+			Policy:    ImagePullPolicy_IMAGE_PULL_POLICY_IF_NOT_PRESENT,
+		},
+		&PullImageResponse{Image: img, AlreadyPresent: true},
+		&TagImageRequest{
+			Digest:    "sha256:aaaa",
+			Reference: "example.com/img:pinned",
+			Platform:  &Platform{Os: "darwin", Architecture: "arm64"},
+		},
+		&TagImageResponse{Image: img},
+		&UntagImageRequest{
+			Reference: "example.com/img:pinned",
+			Platform:  &Platform{Os: "darwin", Architecture: "arm64"},
+			Digest:    "sha256:aaaa",
+		},
+		&UntagImageResponse{Removed: img},
+		&InspectImageRequest{Reference: "example.com/img:tag", Platform: &Platform{Os: "darwin", Architecture: "arm64"}},
+		&InspectImageResponse{
+			Image: img,
+			Config: &ImageConfig{
+				Platform:   &Platform{Os: "linux", Architecture: "arm64", Variant: "v8"},
+				Created:    timestamppb.New(time.Unix(1, 0).UTC()),
+				Entrypoint: []string{"/usr/bin/blightmud"},
+				Cmd:        []string{"--help"},
+				Env:        []string{"PATH=/usr/bin", "TERM=xterm"},
+				User:       "1000:1000",
+				WorkingDir: "/srv",
+				Labels:     map[string]string{"org.opencontainers.image.title": "blightmud"},
+			},
+			TotalSizeBytes: 1040,
+		},
+		&ImageConfig{Entrypoint: []string{"/bin/sh"}, Env: []string{"A=1"}},
+		&SaveImageRequest{
+			Reference: "example.com/img:tag",
+			Platform:  &Platform{Os: "darwin", Architecture: "arm64"},
+			Format:    LoadImageFormat_LOAD_IMAGE_FORMAT_OCI_LAYOUT,
+		},
+		&SaveImageResponse{Chunk: []byte("layout bytes")},
+		// The terminal frame: no chunk, digest + the server's own byte count.
+		&SaveImageResponse{Digest: "sha256:aaaa", SentBytes: 1024},
 	}
 }
