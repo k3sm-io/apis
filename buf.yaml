@@ -23,7 +23,7 @@ lint:
     - SERVICE_SUFFIX
     - RPC_RESPONSE_STANDARD_NAME
   ignore_only:
-    # guest/v1's GuestAgent Exec/Logs REUSE the k3sm.runtime.v1 stream messages
+    # guest/v1's GuestAgent Exec/Logs/Attach REUSE the k3sm.runtime.v1 stream messages
     # verbatim (ExecRequest/ExecResponse, GetLogsRequest/LogEntry): the guest
     # verbs are the same verbs one hop further in, so declaring parallel copies
     # is exactly the duplication this shared-contracts module exists to prevent

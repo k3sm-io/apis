@@ -1504,7 +1504,7 @@ const file_guest_v1_guest_proto_rawDesc = "" +
 	"\x1cGUEST_MOUNT_KIND_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19GUEST_MOUNT_KIND_VIRTIOFS\x10\x01\x12\x1a\n" +
 	"\x16GUEST_MOUNT_KIND_TMPFS\x10\x02\x12\x19\n" +
-	"\x15GUEST_MOUNT_KIND_BIND\x10\x032\xc2\x03\n" +
+	"\x15GUEST_MOUNT_KIND_BIND\x10\x032\x91\x04\n" +
 	"\n" +
 	"GuestAgent\x12E\n" +
 	"\x06Health\x12\x1c.k3sm.guest.v1.HealthRequest\x1a\x1d.k3sm.guest.v1.HealthResponse\x12Y\n" +
@@ -1512,7 +1512,8 @@ const file_guest_v1_guest_proto_rawDesc = "" +
 	"\x04Exec\x12\x1c.k3sm.runtime.v1.ExecRequest\x1a\x1d.k3sm.runtime.v1.ExecResponse(\x010\x01\x12D\n" +
 	"\x04Logs\x12\x1f.k3sm.runtime.v1.GetLogsRequest\x1a\x19.k3sm.runtime.v1.LogEntry0\x01\x12B\n" +
 	"\x05Stats\x12\x1b.k3sm.guest.v1.StatsRequest\x1a\x1c.k3sm.guest.v1.StatsResponse\x12?\n" +
-	"\x04Stop\x12\x1a.k3sm.guest.v1.StopRequest\x1a\x1b.k3sm.guest.v1.StopResponseB\x94\x01\n" +
+	"\x04Stop\x12\x1a.k3sm.guest.v1.StopRequest\x1a\x1b.k3sm.guest.v1.StopResponse\x12M\n" +
+	"\x06Attach\x12\x1e.k3sm.runtime.v1.AttachRequest\x1a\x1f.k3sm.runtime.v1.AttachResponse(\x010\x01B\x94\x01\n" +
 	"\x11com.k3sm.guest.v1B\n" +
 	"GuestProtoP\x01Z\x1dk3sm.io/apis/guest/v1;guestv1\xa2\x02\x03KGX\xaa\x02\rK3sm.Guest.V1\xca\x02\rK3sm\\Guest\\V1\xe2\x02\x19K3sm\\Guest\\V1\\GPBMetadata\xea\x02\x0fK3sm::Guest::V1b\x06proto3"
 
@@ -1552,8 +1553,10 @@ var file_guest_v1_guest_proto_goTypes = []any{
 	(*timestamppb.Timestamp)(nil),  // 18: google.protobuf.Timestamp
 	(*v1.ExecRequest)(nil),         // 19: k3sm.runtime.v1.ExecRequest
 	(*v1.GetLogsRequest)(nil),      // 20: k3sm.runtime.v1.GetLogsRequest
-	(*v1.ExecResponse)(nil),        // 21: k3sm.runtime.v1.ExecResponse
-	(*v1.LogEntry)(nil),            // 22: k3sm.runtime.v1.LogEntry
+	(*v1.AttachRequest)(nil),       // 21: k3sm.runtime.v1.AttachRequest
+	(*v1.ExecResponse)(nil),        // 22: k3sm.runtime.v1.ExecResponse
+	(*v1.LogEntry)(nil),            // 23: k3sm.runtime.v1.LogEntry
+	(*v1.AttachResponse)(nil),      // 24: k3sm.runtime.v1.AttachResponse
 }
 var file_guest_v1_guest_proto_depIdxs = []int32{
 	18, // 0: k3sm.guest.v1.ContainerEvent.timestamp:type_name -> google.protobuf.Timestamp
@@ -1572,14 +1575,16 @@ var file_guest_v1_guest_proto_depIdxs = []int32{
 	20, // 13: k3sm.guest.v1.GuestAgent.Logs:input_type -> k3sm.runtime.v1.GetLogsRequest
 	7,  // 14: k3sm.guest.v1.GuestAgent.Stats:input_type -> k3sm.guest.v1.StatsRequest
 	10, // 15: k3sm.guest.v1.GuestAgent.Stop:input_type -> k3sm.guest.v1.StopRequest
-	2,  // 16: k3sm.guest.v1.GuestAgent.Health:output_type -> k3sm.guest.v1.HealthResponse
-	4,  // 17: k3sm.guest.v1.GuestAgent.ContainerEvents:output_type -> k3sm.guest.v1.ContainerEvent
-	21, // 18: k3sm.guest.v1.GuestAgent.Exec:output_type -> k3sm.runtime.v1.ExecResponse
-	22, // 19: k3sm.guest.v1.GuestAgent.Logs:output_type -> k3sm.runtime.v1.LogEntry
-	8,  // 20: k3sm.guest.v1.GuestAgent.Stats:output_type -> k3sm.guest.v1.StatsResponse
-	11, // 21: k3sm.guest.v1.GuestAgent.Stop:output_type -> k3sm.guest.v1.StopResponse
-	16, // [16:22] is the sub-list for method output_type
-	10, // [10:16] is the sub-list for method input_type
+	21, // 16: k3sm.guest.v1.GuestAgent.Attach:input_type -> k3sm.runtime.v1.AttachRequest
+	2,  // 17: k3sm.guest.v1.GuestAgent.Health:output_type -> k3sm.guest.v1.HealthResponse
+	4,  // 18: k3sm.guest.v1.GuestAgent.ContainerEvents:output_type -> k3sm.guest.v1.ContainerEvent
+	22, // 19: k3sm.guest.v1.GuestAgent.Exec:output_type -> k3sm.runtime.v1.ExecResponse
+	23, // 20: k3sm.guest.v1.GuestAgent.Logs:output_type -> k3sm.runtime.v1.LogEntry
+	8,  // 21: k3sm.guest.v1.GuestAgent.Stats:output_type -> k3sm.guest.v1.StatsResponse
+	11, // 22: k3sm.guest.v1.GuestAgent.Stop:output_type -> k3sm.guest.v1.StopResponse
+	24, // 23: k3sm.guest.v1.GuestAgent.Attach:output_type -> k3sm.runtime.v1.AttachResponse
+	17, // [17:24] is the sub-list for method output_type
+	10, // [10:17] is the sub-list for method input_type
 	10, // [10:10] is the sub-list for extension type_name
 	10, // [10:10] is the sub-list for extension extendee
 	0,  // [0:10] is the sub-list for field type_name

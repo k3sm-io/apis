@@ -55,6 +55,7 @@ const (
 	GuestAgent_Logs_FullMethodName            = "/k3sm.guest.v1.GuestAgent/Logs"
 	GuestAgent_Stats_FullMethodName           = "/k3sm.guest.v1.GuestAgent/Stats"
 	GuestAgent_Stop_FullMethodName            = "/k3sm.guest.v1.GuestAgent/Stop"
+	GuestAgent_Attach_FullMethodName          = "/k3sm.guest.v1.GuestAgent/Attach"
 )
 
 // GuestAgentClient is the client API for GuestAgent service.
@@ -114,6 +115,41 @@ type GuestAgentClient interface {
 	// The caller's grace budget must fit inside the daemon's own launchd exit
 	// timeout; a larger grace is clamped by the host before it is sent.
 	Stop(ctx context.Context, in *StopRequest, opts ...grpc.CallOption) (*StopResponse, error)
+	// Attach serves `kubectl attach` for a vm pod: it bridges the client's
+	// streams to the RETAINED stdio endpoints of an already-running guest
+	// container, reusing the runtime/v1 attach stream messages verbatim exactly
+	// as Exec does. In AttachRequest, pod_id MUST equal the pod this guest booted
+	// (the agent rejects any other) and container selects within it; stdin /
+	// stdout / stderr / stdin_data / resize keep their runtime/v1 meaning.
+	//
+	// Attach starts nothing, and DETACH IS NOT KILL. The container is already
+	// running before the first frame and keeps running after the last: closing
+	// the client stream only unsubscribes that client. The container process is
+	// never signaled, its stdio endpoints stay open, and a later attach
+	// reconnects to the same process.
+	//
+	// Concurrent attaches are ALLOWED. Several clients may be attached to one
+	// container at once; each sees the same output, and stdin from all of them is
+	// interleaved into the single stdin endpoint in arrival order. The agent
+	// arbitrates nothing — sorting out interleaved input is the operator's
+	// affair, and pretending otherwise would mean silently dropping a client's
+	// keystrokes.
+	//
+	// A first frame requesting stdin against a container that has NO retained
+	// stdin endpoint (spawned with GuestContainer.stdin false) fails with
+	// FailedPrecondition. Stdin is never silently dropped: a client that believes
+	// it is typing into a process must be told when it is not.
+	//
+	// tty is ADVISORY on Attach. Tty-ness was decided at container spawn
+	// (GuestContainer.tty) and attaching cannot change it; the field states what
+	// the client expects, and resize frames take effect only when the container
+	// actually holds a pty.
+	//
+	// Output is SUBSCRIBE-THEN-SNAPSHOT: the agent subscribes the client to the
+	// live stream first, then replays the recent buffered output, then follows —
+	// so nothing produced while the attach was being set up is lost. When the
+	// container exits, the stream ends with a final AttachResponse carrying exit.
+	Attach(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[v1.AttachRequest, v1.AttachResponse], error)
 }
 
 type guestAgentClient struct {
@@ -205,6 +241,19 @@ func (c *guestAgentClient) Stop(ctx context.Context, in *StopRequest, opts ...gr
 	return out, nil
 }
 
+func (c *guestAgentClient) Attach(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[v1.AttachRequest, v1.AttachResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &GuestAgent_ServiceDesc.Streams[3], GuestAgent_Attach_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[v1.AttachRequest, v1.AttachResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type GuestAgent_AttachClient = grpc.BidiStreamingClient[v1.AttachRequest, v1.AttachResponse]
+
 // GuestAgentServer is the server API for GuestAgent service.
 // All implementations must embed UnimplementedGuestAgentServer
 // for forward compatibility.
@@ -262,6 +311,41 @@ type GuestAgentServer interface {
 	// The caller's grace budget must fit inside the daemon's own launchd exit
 	// timeout; a larger grace is clamped by the host before it is sent.
 	Stop(context.Context, *StopRequest) (*StopResponse, error)
+	// Attach serves `kubectl attach` for a vm pod: it bridges the client's
+	// streams to the RETAINED stdio endpoints of an already-running guest
+	// container, reusing the runtime/v1 attach stream messages verbatim exactly
+	// as Exec does. In AttachRequest, pod_id MUST equal the pod this guest booted
+	// (the agent rejects any other) and container selects within it; stdin /
+	// stdout / stderr / stdin_data / resize keep their runtime/v1 meaning.
+	//
+	// Attach starts nothing, and DETACH IS NOT KILL. The container is already
+	// running before the first frame and keeps running after the last: closing
+	// the client stream only unsubscribes that client. The container process is
+	// never signaled, its stdio endpoints stay open, and a later attach
+	// reconnects to the same process.
+	//
+	// Concurrent attaches are ALLOWED. Several clients may be attached to one
+	// container at once; each sees the same output, and stdin from all of them is
+	// interleaved into the single stdin endpoint in arrival order. The agent
+	// arbitrates nothing — sorting out interleaved input is the operator's
+	// affair, and pretending otherwise would mean silently dropping a client's
+	// keystrokes.
+	//
+	// A first frame requesting stdin against a container that has NO retained
+	// stdin endpoint (spawned with GuestContainer.stdin false) fails with
+	// FailedPrecondition. Stdin is never silently dropped: a client that believes
+	// it is typing into a process must be told when it is not.
+	//
+	// tty is ADVISORY on Attach. Tty-ness was decided at container spawn
+	// (GuestContainer.tty) and attaching cannot change it; the field states what
+	// the client expects, and resize frames take effect only when the container
+	// actually holds a pty.
+	//
+	// Output is SUBSCRIBE-THEN-SNAPSHOT: the agent subscribes the client to the
+	// live stream first, then replays the recent buffered output, then follows —
+	// so nothing produced while the attach was being set up is lost. When the
+	// container exits, the stream ends with a final AttachResponse carrying exit.
+	Attach(grpc.BidiStreamingServer[v1.AttachRequest, v1.AttachResponse]) error
 	mustEmbedUnimplementedGuestAgentServer()
 }
 
@@ -289,6 +373,9 @@ func (UnimplementedGuestAgentServer) Stats(context.Context, *StatsRequest) (*Sta
 }
 func (UnimplementedGuestAgentServer) Stop(context.Context, *StopRequest) (*StopResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Stop not implemented")
+}
+func (UnimplementedGuestAgentServer) Attach(grpc.BidiStreamingServer[v1.AttachRequest, v1.AttachResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method Attach not implemented")
 }
 func (UnimplementedGuestAgentServer) mustEmbedUnimplementedGuestAgentServer() {}
 func (UnimplementedGuestAgentServer) testEmbeddedByValue()                    {}
@@ -394,6 +481,13 @@ func _GuestAgent_Stop_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GuestAgent_Attach_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(GuestAgentServer).Attach(&grpc.GenericServerStream[v1.AttachRequest, v1.AttachResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type GuestAgent_AttachServer = grpc.BidiStreamingServer[v1.AttachRequest, v1.AttachResponse]
+
 // GuestAgent_ServiceDesc is the grpc.ServiceDesc for GuestAgent service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -430,6 +524,12 @@ var GuestAgent_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "Logs",
 			Handler:       _GuestAgent_Logs_Handler,
 			ServerStreams: true,
+		},
+		{
+			StreamName:    "Attach",
+			Handler:       _GuestAgent_Attach_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "guest/v1/guest.proto",
