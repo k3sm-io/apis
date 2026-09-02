@@ -29,13 +29,13 @@ import (
 // TestGuestAgentServiceSurface pins the shape of the host↔guest contract that no
 // later additive change can repair if it lands wrong:
 //
-//   - the service is k3sm.guest.v1.GuestAgent with EXACTLY the six verbs;
-//   - each verb's streaming shape (Exec bidirectional, ContainerEvents/Logs
-//     server-streaming, the rest unary) — a wrong stream shape is a wire break,
-//     not a detail;
-//   - Exec and Logs REUSE the k3sm.runtime.v1 stream messages rather than
-//     parallel copies of them, which is the whole reason this package imports
-//     runtime/v1 at all;
+//   - the service is k3sm.guest.v1.GuestAgent with EXACTLY the seven verbs;
+//   - each verb's streaming shape (Exec/Attach bidirectional, ContainerEvents/
+//     Logs server-streaming, the rest unary) — a wrong stream shape is a wire
+//     break, not a detail;
+//   - Exec, Logs, and Attach REUSE the k3sm.runtime.v1 stream messages rather
+//     than parallel copies of them, which is the whole reason this package
+//     imports runtime/v1 at all;
 //   - Health carries api_version, the field that makes unsupported
 //     initramfs/daemon skew a legible rejection instead of stream garbage.
 func TestGuestAgentServiceSurface(t *testing.T) {
@@ -47,13 +47,13 @@ func TestGuestAgentServiceSurface(t *testing.T) {
 		t.Fatal("service GuestAgent does not exist in guest.proto")
 	}
 
-	t.Run("the service is k3sm.guest.v1.GuestAgent with exactly six verbs", func(t *testing.T) {
+	t.Run("the service is k3sm.guest.v1.GuestAgent with exactly seven verbs", func(t *testing.T) {
 		if got, want := string(sd.FullName()), "k3sm.guest.v1.GuestAgent"; got != want {
 			t.Errorf("service full name = %q, want %q", got, want)
 		}
 		want := map[string]bool{
 			"Health": false, "ContainerEvents": false, "Exec": false,
-			"Logs": false, "Stats": false, "Stop": false,
+			"Logs": false, "Stats": false, "Stop": false, "Attach": false,
 		}
 		ms := sd.Methods()
 		if ms.Len() != len(want) {
@@ -63,7 +63,7 @@ func TestGuestAgentServiceSurface(t *testing.T) {
 			name := string(ms.Get(i).Name())
 			seen, known := want[name]
 			if !known {
-				t.Errorf("unexpected method %s on GuestAgent (the surface is exactly six verbs)", name)
+				t.Errorf("unexpected method %s on GuestAgent (the surface is exactly seven verbs)", name)
 				continue
 			}
 			if seen {
@@ -96,6 +96,9 @@ func TestGuestAgentServiceSurface(t *testing.T) {
 			// On demand, never a sampling ticker against a guest.
 			{"Stats", false, false},
 			{"Stop", false, false},
+			// Bidirectional like Exec, but bridging an already-running
+			// container's retained stdio rather than spawning a process.
+			{"Attach", true, true},
 		}
 		for _, tc := range cases {
 			md := sd.Methods().ByName(tc.name)
@@ -112,7 +115,7 @@ func TestGuestAgentServiceSurface(t *testing.T) {
 		}
 	})
 
-	t.Run("Exec and Logs reuse the runtime/v1 stream messages", func(t *testing.T) {
+	t.Run("Exec, Logs, and Attach reuse the runtime/v1 stream messages", func(t *testing.T) {
 		// A parallel guest-local copy of these messages is exactly the duplication
 		// the shared-contracts module exists to prevent: two shapes for one stream
 		// drift, and the runtimed side would have to translate between them on the
@@ -124,6 +127,7 @@ func TestGuestAgentServiceSurface(t *testing.T) {
 		}{
 			{"Exec", "k3sm.runtime.v1.ExecRequest", "k3sm.runtime.v1.ExecResponse", &runtimev1.ExecRequest{}},
 			{"Logs", "k3sm.runtime.v1.GetLogsRequest", "k3sm.runtime.v1.LogEntry", &runtimev1.GetLogsRequest{}},
+			{"Attach", "k3sm.runtime.v1.AttachRequest", "k3sm.runtime.v1.AttachResponse", &runtimev1.AttachRequest{}},
 		}
 		for _, tc := range cases {
 			md := sd.Methods().ByName(tc.method)

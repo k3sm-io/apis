@@ -31,7 +31,7 @@ syntax = "proto3";
 package k3sm.guest.v1;
 
 import "google/protobuf/timestamp.proto";
-// runtime/v1 is imported so Exec and Logs can NAME the existing
+// runtime/v1 is imported so Exec, Logs, and Attach can NAME the existing
 // k3sm.runtime.v1 stream messages rather than declare parallel copies of them —
 // the guest verbs are the same verbs, one hop further in. A proto file import
 // is not a Go module dependency: both packages are in k3sm.io/apis.
@@ -97,6 +97,42 @@ service GuestAgent {
   // The caller's grace budget must fit inside the daemon's own launchd exit
   // timeout; a larger grace is clamped by the host before it is sent.
   rpc Stop(StopRequest) returns (StopResponse);
+
+  // Attach serves `kubectl attach` for a vm pod: it bridges the client's
+  // streams to the RETAINED stdio endpoints of an already-running guest
+  // container, reusing the runtime/v1 attach stream messages verbatim exactly
+  // as Exec does. In AttachRequest, pod_id MUST equal the pod this guest booted
+  // (the agent rejects any other) and container selects within it; stdin /
+  // stdout / stderr / stdin_data / resize keep their runtime/v1 meaning.
+  //
+  // Attach starts nothing, and DETACH IS NOT KILL. The container is already
+  // running before the first frame and keeps running after the last: closing
+  // the client stream only unsubscribes that client. The container process is
+  // never signaled, its stdio endpoints stay open, and a later attach
+  // reconnects to the same process.
+  //
+  // Concurrent attaches are ALLOWED. Several clients may be attached to one
+  // container at once; each sees the same output, and stdin from all of them is
+  // interleaved into the single stdin endpoint in arrival order. The agent
+  // arbitrates nothing — sorting out interleaved input is the operator's
+  // affair, and pretending otherwise would mean silently dropping a client's
+  // keystrokes.
+  //
+  // A first frame requesting stdin against a container that has NO retained
+  // stdin endpoint (spawned with GuestContainer.stdin false) fails with
+  // FailedPrecondition. Stdin is never silently dropped: a client that believes
+  // it is typing into a process must be told when it is not.
+  //
+  // tty is ADVISORY on Attach. Tty-ness was decided at container spawn
+  // (GuestContainer.tty) and attaching cannot change it; the field states what
+  // the client expects, and resize frames take effect only when the container
+  // actually holds a pty.
+  //
+  // Output is SUBSCRIBE-THEN-SNAPSHOT: the agent subscribes the client to the
+  // live stream first, then replays the recent buffered output, then follows —
+  // so nothing produced while the attach was being set up is lost. When the
+  // container exits, the stream ends with a final AttachResponse carrying exit.
+  rpc Attach(stream k3sm.runtime.v1.AttachRequest) returns (stream k3sm.runtime.v1.AttachResponse);
 }
 
 // ---------------------------------------------------------------------------
