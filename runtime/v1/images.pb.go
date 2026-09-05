@@ -445,9 +445,9 @@ func (x *ImageFsInfoResponse) GetError() *status.Status {
 // bytes, inode usage, and when they were sampled) and deliberately carries no
 // precomputed reclaimable, budget, threshold, or eligibility field: the daemon
 // does that math. That keeps the wire forward-compatible with whatever image-GC
-// model B128 lands — a policy number baked into the contract would need
-// redefining (a wire break, or a second confusing field) every time the policy
-// moved, while a raw measurement never expires.
+// policy the daemon later adopts — a policy number baked into the contract
+// would need redefining (a wire break, or a second confusing field) every time
+// the policy moved, while a raw measurement never expires.
 type FilesystemUsage struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// timestamp is when the sample was taken.

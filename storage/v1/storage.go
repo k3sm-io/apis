@@ -31,7 +31,7 @@ const (
 	// DefaultStorageClassName is the name of the k3sm local-path StorageClass.
 	DefaultStorageClassName = "local-path"
 	// ProvisionerName is the StorageClass.provisioner value identifying the k3sm
-	// local-path provisioner controller (k3sm:M3). It is the reverse-DNS-free
+	// local-path provisioner controller. It is the reverse-DNS-free
 	// k3sm.io/* form Kubernetes uses for in-tree-style provisioner names.
 	ProvisionerName = "k3sm.io/local-path"
 	// DefaultBasePath is the APFS storage root under which per-PVC dirs live. It
@@ -53,17 +53,17 @@ type ReclaimPolicy string
 
 const (
 	// ReclaimRetain keeps the backing dir after the PVC is deleted (manual
-	// reclamation). It is the ONLY policy k3sm M3 supports: there is no
+	// reclamation). It is the ONLY policy k3sm supports: there is no
 	// volume-delete RPC, and root-rmdir'ing the dir would bypass the pod SBPL
 	// deny-set.
 	ReclaimRetain ReclaimPolicy = "Retain"
 	// ReclaimDelete is the upstream delete-on-release policy. It is a well-formed
-	// value but is NOT supported by k3sm M3 (LocalPathClass.Validate rejects it).
+	// value but is NOT supported by k3sm (LocalPathClass.Validate rejects it).
 	ReclaimDelete ReclaimPolicy = "Delete"
 )
 
 // Valid reports whether p is a well-formed reclaim policy value (Retain or
-// Delete). It does not assert M3 support — LocalPathClass.Validate enforces the
+// Delete). It does not assert k3sm's support — LocalPathClass.Validate enforces the
 // Retain-only invariant.
 func (p ReclaimPolicy) Valid() bool {
 	switch p {
@@ -81,11 +81,11 @@ type VolumeBindingMode string
 const (
 	// BindingWaitForFirstConsumer delays provisioning until a pod that uses the
 	// PVC is scheduled, so the PV is created on (and node-affinity-pinned to) that
-	// pod's node. It is the ONLY mode k3sm M3 supports — a local PV pinned to the
+	// pod's node. It is the ONLY mode k3sm supports — a local PV pinned to the
 	// wrong Mac mounts empty storage.
 	BindingWaitForFirstConsumer VolumeBindingMode = "WaitForFirstConsumer"
 	// BindingImmediate provisions as soon as the PVC is created. It is a
-	// well-formed value but is NOT supported by k3sm M3 (it cannot pin topology).
+	// well-formed value but is NOT supported by k3sm (it cannot pin topology).
 	BindingImmediate VolumeBindingMode = "Immediate"
 )
 
@@ -104,8 +104,8 @@ func (m VolumeBindingMode) Valid() bool {
 var ErrInvalid = errors.New("storagev1: invalid storage contract")
 
 // LocalPathClass is the k3sm local-path StorageClass / provisioner contract: the
-// parameters the provisioner controller (k3sm:M3) stamps onto the StorageClass
-// it owns and that the runtime binder (runtimed:M3) resolves a per-PVC dir
+// parameters the provisioner controller stamps onto the StorageClass
+// it owns and that the runtime binder (runtimed) resolves a per-PVC dir
 // against. It is the cross-repo agreement; the served Kubernetes object remains
 // an upstream storage.k8s.io StorageClass.
 type LocalPathClass struct {
@@ -116,10 +116,10 @@ type LocalPathClass struct {
 	// BasePath is the APFS storage root per-PVC dirs are created under
 	// (DefaultBasePath). It must be absolute.
 	BasePath string `json:"basePath"`
-	// ReclaimPolicy is the PV reclaim policy (M3: ReclaimRetain only).
+	// ReclaimPolicy is the PV reclaim policy (ReclaimRetain only).
 	ReclaimPolicy ReclaimPolicy `json:"reclaimPolicy"`
-	// VolumeBindingMode is when the PV is provisioned (M3:
-	// BindingWaitForFirstConsumer only).
+	// VolumeBindingMode is when the PV is provisioned (BindingWaitForFirstConsumer
+	// only).
 	VolumeBindingMode VolumeBindingMode `json:"volumeBindingMode"`
 	// Parameters are extra StorageClass.parameters passed through verbatim
 	// (additive headroom; empty for the default class).
@@ -161,8 +161,8 @@ func (c LocalPathClass) WithDefaults() LocalPathClass {
 	return out
 }
 
-// Validate reports whether the class is usable by the k3sm M3 provisioner: a
-// name and provisioner, an absolute BasePath, and the M3-supported policies
+// Validate reports whether the class is usable by the k3sm provisioner: a
+// name and provisioner, an absolute BasePath, and the supported policies
 // (ReclaimRetain + BindingWaitForFirstConsumer). It rejects the well-formed but
 // unsupported Delete / Immediate values fail-fast rather than provisioning a
 // volume k3sm cannot honor. Errors wrap ErrInvalid.

@@ -1,5 +1,5 @@
 # MLXModel CRD (mlx.k3sm.io/v1alpha1) — the native Apple-Silicon ML serving
-# contract (apis:M8.1).
+# contract.
 #
 # Hand-authored (apis runs no controller-gen) to match the Go type in
 # k3sm.io/apis/mlx/v1alpha1 (mlxmodel.go). k3sm's CRD-ensure applies THIS
