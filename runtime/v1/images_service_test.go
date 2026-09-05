@@ -455,22 +455,22 @@ func TestImagesServiceSurface(t *testing.T) {
 			// The bare "Resolution 8" citation also appears in the sole-store-
 			// writer paragraph above the digest-contract one; pin the clause
 			// that is unique to the digest paragraph so deleting it reddens.
-			{"re-hash resolution citation", "Resolution 8: every ingest path"},
+			{"re-hash obligation clause", "every ingest path re-hashes content against its claimed digest before commit"},
 			// The lease obligation, with the transitional citation and the marker
 			// that says where it will move.
 			{"lease obligation", "the server takes its store lease before the first blob commit and records the reference before releasing it"},
-			{"lease resolution citation", "the M12 images plan, Resolution 13(c)"},
-			{"lease citation TODO", "TODO(B128)"},
+			{"lease citation placement note", "stated here only until the store/metastore package can carry it in its own doc.go"},
+			{"lease citation TODO", "TODO: once that package is promoted, re-point this citation there"},
 			// Loaded images are provenance-free; enforcement stays at exec.
 			{"not-a-signature-checkpoint note", "LoadImage is not a SignaturePolicy checkpoint"},
 			{"provenance-free note", "provenance-free by design"},
-			{"signature-policy plan citation", "the M12 images plan, section M12.2"},
+			{"operator-CLI-only surface clause", "an operator-CLI-only surface"},
 			// The socket posture, stated precisely rather than as "root-only".
 			{"embedded-posture clause", "serves no socket at all"},
 			{"file-mode-alone clause", "guarded by POSIX file mode alone"},
 			{"no-peercred clause", "There is no LOCAL_PEERCRED differentiation on this socket"},
 			{"new-listener clause", "needs a new listener and authorizer design"},
-			{"daemon-side control pointer", "B130b's gate"},
+			{"daemon-side control pointer", "asserted by a gate in the daemon repo"},
 			// The skew decision, recorded so it is not re-derived.
 			{"reactive-skew clause", "returns gRPC UNIMPLEMENTED for every method below"},
 			{"deferred capability band", "Capability-band advertisement via GetRuntimeInfoResponse's reserved 100..149 band was considered and"},
@@ -482,7 +482,7 @@ func TestImagesServiceSurface(t *testing.T) {
 			{"pull-uses-the-pod-path clause", "the same code path a pod-driven pull takes"},
 			{"pull-is-the-CLI-primitive clause", "explicitly the CLI-pull primitive"},
 			{"pull-records-an-operator-root clause", "an edge, plus an OPERATOR root over that reference"},
-			{"provenance-model citation", "Resolution 13: edges are monotone, roots are digest-pinned, and root removal is authorized and local"},
+			{"provenance-model citation", "provenance model: edges are monotone, roots are digest-pinned, and root removal is authorized and local"},
 			{"tag-is-monotone clause", "a tag can make content reachable, never unreachable"},
 			{"tag-never-repoints clause", "never RE-POINTS an existing entry at a different digest"},
 			{"tag-needs-present-content clause", "NOT_FOUND when the digest is absent from the store"},

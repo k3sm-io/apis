@@ -28,8 +28,9 @@ import (
 // topology (a second Mac, a VZ-capable host, a live Postgres instance, a
 // GitHub-hosted macOS runner, a host the test may safely reboot). The set
 // below covers every distinct string k3sm/hack/acceptance/phases.json's
-// "requires" arrays use across every milestone gate (m0 through the
-// M10-lab tail) as of the apis M7.2-d2 carve — see doc.go.
+// "requires" arrays use across every milestone gate (from the earliest
+// walking-skeleton gate through the conformance-hardening lab tail) as of
+// this package's initial carve — see doc.go.
 type Capability string
 
 const (
@@ -51,7 +52,8 @@ const (
 	Signing Capability = "signing"
 
 	// AppleGPU is a Metal-capable Apple GPU available to the process — the
-	// capability runtimed's M8.2-a4 gates its MLX path on. DECLARED.
+	// capability runtimed's MLX acceptance gate checks before exercising its
+	// MLX path. DECLARED.
 	AppleGPU Capability = "apple-gpu"
 
 	// TwoMacs is a two-machine lab topology, as used by the mesh and

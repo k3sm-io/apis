@@ -31,12 +31,12 @@ limitations under the License.
 // rather than copied into each repo (a copy drifts) or reached for sideways
 // (which apis's "depends on nothing in k3sm.io/*" rule forbids).
 //
-// This carve is deliberately narrow: it is the one piece of apis M7.2
-// (docs/PHASES.md M7.2-d2) that runtimed's M8.2-a4 (SkipUnless(t,
-// "apple-gpu")) needs before the wider M7.2 milestone (which also owns the
-// still-deferred CI-config slice, M7.2-d1) is ready to open. Nothing here
-// touches CI configuration; it is a pure-Go, stdlib-only package like the
-// rest of this module.
+// This carve is deliberately narrow: it is the one piece of apis's public
+// CI and test-support work that runtimed's MLX acceptance gate
+// (SkipUnless(t, "apple-gpu")) needs before the wider public-CI milestone
+// (which also owns the still-deferred CI workflow itself) is ready to open.
+// Nothing here touches CI configuration; it is a pure-Go, stdlib-only
+// package like the rest of this module.
 //
 // # Skip vs. fatal
 //

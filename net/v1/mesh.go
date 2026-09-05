@@ -25,7 +25,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// MeshPeer CRD (net.k3sm.io/v1) — the wireguard mesh-topology contract (M3.2).
+// MeshPeer CRD (net.k3sm.io/v1) — the wireguard mesh-topology contract.
 //
 // A MeshPeer is a real Kubernetes custom resource: kine-stored, apiserver-served
 // and -watched, and reconciled by the darwin-net mesh (k3sm.io/darwin-net), and
@@ -42,8 +42,8 @@ const GroupName = "net.k3sm.io"
 // MeshPeerSchemaVersion is the current MeshPeer spec payload version. The spec
 // carries it (SchemaVersion) so the wireguard mesh encoding has an explicit
 // evolution seam INSIDE the served net.k3sm.io/v1 GVK: a future protocol change
-// bumps this, and readers gate on it, giving M4+ node-by-node rolls a
-// compatibility window without a CRD version bump. M3 ships version 1.
+// bumps this, and readers gate on it, giving a future node-by-node roll a
+// compatibility window without a CRD version bump. This is version 1.
 const MeshPeerSchemaVersion int32 = 1
 
 // DefaultPersistentKeepaliveSeconds is the wireguard PersistentKeepalive a peer
@@ -83,7 +83,7 @@ func addKnownTypes(s *runtime.Scheme) error {
 // MeshPeer is one node's wireguard mesh membership: its PUBLIC key, reachable
 // endpoint, pod /24, and the symmetric AllowedIPs the mesh programs. It is
 // cluster-scoped and named for the node it represents (one MeshPeer per node);
-// under M3's AlwaysAllow authorizer a node may write only its own MeshPeer
+// under the AlwaysAllow authorizer a node may write only its own MeshPeer
 // (enroll is controller-/admission-mediated so a node cannot forge another's
 // mesh membership — DESIGN §5b).
 // Mirrors the Kubernetes object conventions (TypeMeta + ObjectMeta) so it is a
@@ -112,7 +112,7 @@ type MeshPeerSpec struct {
 	// key NEVER leaves the node and is never carried here.
 	PublicKey string `json:"publicKey"`
 	// Endpoint is the host:port the node's wireguard is reachable at (a
-	// mutually-routable / same-L2 address — there is no relay in M3).
+	// mutually-routable / same-L2 address — there is no relay).
 	Endpoint string `json:"endpoint"`
 	// PodCIDR is the node's pod /24 (from node.spec.podCIDR). It is the single
 	// source of truth for this node's pod address range.
@@ -297,10 +297,10 @@ func (in *MeshPeerList) DeepCopyObject() runtime.Object {
 }
 
 // ---------------------------------------------------------------------------
-// Mesh-enroll join payloads (M3.2) — the bootstrap join HTTP exchange wire
+// Mesh-enroll join payloads — the bootstrap join HTTP exchange wire
 // format. These are plain Go structs (NOT a CRD, NOT proto): k3sm's join client
 // and supervisor marshal them over the join HTTP exchange. They are
-// version-stamped from day one (SchemaVersion) so an M4+ node-by-node roll has a
+// version-stamped from day one (SchemaVersion) so a future node-by-node roll has a
 // compatibility seam. Mesh-enroll (wg pubkey + endpoint + podCIDR) rides the
 // join (DESIGN §5b/§5c); thereafter darwin-net watches the MeshPeer CRD.
 // ---------------------------------------------------------------------------

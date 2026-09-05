@@ -34,9 +34,9 @@ const (
 )
 
 // ContainerRestartPolicy mirrors corev1 container-level restartPolicy (KEP-753
-// native sidecars, k8s 1.33 GA). UNSPECIFIED = the field is unset = pre-M10.2
-// behavior (an init container runs to completion; a regular container follows the
-// pod-level policy).
+// native sidecars, k8s 1.33 GA). UNSPECIFIED = the field is unset = the legacy
+// behavior from before this field existed (an init container runs to
+// completion; a regular container follows the pod-level policy).
 type ContainerRestartPolicy int32
 
 const (
@@ -84,8 +84,9 @@ func (ContainerRestartPolicy) EnumDescriptor() ([]byte, []int) {
 }
 
 // ImagePullPolicy mirrors corev1.Container.ImagePullPolicy. UNSPECIFIED = the
-// field is unset = the pre-M12 legacy pull-through behavior in BOTH skew
-// directions (an old provider never sets it; a new runtimed reads absent as
+// field is unset = the legacy pull-through behavior from before this field
+// existed, in BOTH skew directions (an old provider never sets it; a new
+// runtimed reads absent as
 // legacy, not as NEVER), so every explicit policy is non-zero and can never be
 // selected by accident. Defaulting is NOT this enum's job: the embedded
 // apiserver stamps ALWAYS for a `:latest`/untagged reference and IF_NOT_PRESENT
@@ -653,7 +654,7 @@ type PodBox struct {
 	// PodBox (FAILURE_REASON_INVALID_POD_BOX), never coerced to the derived path
 	// and never retried. No producer sets this field today, empty is the only
 	// value a producer can safely send, and the field is planned for
-	// consumer-first removal, tracked as B147. Its sibling
+	// consumer-first removal. Its sibling
 	// SandboxProfile.data_volume_path is validated by a DIFFERENT rule — it
 	// accepts a two-spelling derived set, not this single derivation — so do not
 	// generalize this field's accept set to it. This validation is path
@@ -682,7 +683,7 @@ type PodBox struct {
 	Labels      map[string]string `protobuf:"bytes,13,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Annotations map[string]string `protobuf:"bytes,14,rep,name=annotations,proto3" json:"annotations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// volumes are the pod-level volume sources Container.volume_mounts reference
-	// by name. runtimed:M2 materializes payloads inside the pod data-volume; the
+	// by name. runtimed materializes payloads inside the pod data-volume; the
 	// proto carries only the source spec. Mirrors corev1.PodSpec.Volumes.
 	Volumes []*Volume `protobuf:"bytes,15,rep,name=volumes,proto3" json:"volumes,omitempty"`
 	// pod_security_context is the pod-scoped privilege configuration. fs_group
@@ -698,10 +699,11 @@ type PodBox struct {
 	// Mirrors corev1.PodSpec.ImagePullSecrets.
 	ImagePullSecrets []*LocalObjectReference `protobuf:"bytes,18,rep,name=image_pull_secrets,json=imagePullSecrets,proto3" json:"image_pull_secrets,omitempty"`
 	// memory_limit_bytes is the resolved per-pod memory limit in bytes (the
-	// provider converts the corev1 resource.Quantity). runtimed:M2.2 compares the
+	// provider converts the corev1 resource.Quantity). runtimed compares the
 	// pod's ri_phys_footprint (proc_pid_rusage — NOT RSS) against this to drive
 	// OOMKilled. 0 means no memory limit (BestEffort). This typed field replaces
-	// the M2.1 k3sm.io/memory-limit-bytes annotation seam runtimed bridged it on.
+	// the earlier k3sm.io/memory-limit-bytes annotation seam runtimed bridged it
+	// on.
 	MemoryLimitBytes int64 `protobuf:"varint,100,opt,name=memory_limit_bytes,json=memoryLimitBytes,proto3" json:"memory_limit_bytes,omitempty"`
 	// qos_class is the pod's resolved Quality-of-Service class. runtimed uses it
 	// for best-effort CPU policy (k3sm has no CFS millicore enforcement); the
@@ -894,8 +896,8 @@ func (x *PodBox) GetRlimits() []*ResourceLimit {
 	return nil
 }
 
-// Volume is a named pod-level volume with exactly one source set. Mirrors the
-// M2.1 subset of corev1.Volume (configMap / secret / emptyDir / downwardAPI /
+// Volume is a named pod-level volume with exactly one source set. Mirrors a
+// subset of corev1.Volume (configMap / secret / emptyDir / downwardAPI /
 // projected); the source union is modeled as optional message fields, matching
 // the ContainerState pointer-union precedent.
 type Volume struct {
@@ -912,10 +914,10 @@ type Volume struct {
 	Projected   *ProjectedVolumeSource   `protobuf:"bytes,6,opt,name=projected,proto3" json:"projected,omitempty"`
 	// persistent_volume_claim mounts a PersistentVolumeClaim — the durable,
 	// pod-lifecycle-decoupled storage source (the others are pod-ephemeral).
-	// Added in M3.1 (the next free sequential source number; the M2.1 sources
+	// Added later (the next free sequential source number; the earlier sources
 	// took 2..6). Mirrors corev1.Volume.PersistentVolumeClaim.
 	PersistentVolumeClaim *PersistentVolumeClaimVolumeSource `protobuf:"bytes,7,opt,name=persistent_volume_claim,json=persistentVolumeClaim,proto3" json:"persistent_volume_claim,omitempty"`
-	// host_path mounts a path from the NODE's filesystem. Added in M11.1 as the
+	// host_path mounts a path from the NODE's filesystem. Added later as the
 	// next free sequential source number (2..7 were taken). Mirrors
 	// corev1.Volume.HostPath.
 	//
@@ -1173,7 +1175,7 @@ func (x *SecretVolumeSource) GetOptional() bool {
 }
 
 // EmptyDirVolumeSource is an ephemeral scratch volume. Mirrors
-// corev1.EmptyDirVolumeSource (M2.1 subset: medium + size_limit as a string
+// corev1.EmptyDirVolumeSource (subset: medium + size_limit as a string
 // quantity).
 type EmptyDirVolumeSource struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1286,7 +1288,7 @@ func (x *DownwardAPIVolumeSource) GetDefaultMode() int32 {
 }
 
 // DownwardAPIVolumeFile projects one pod field to a file. Mirrors
-// corev1.DownwardAPIVolumeFile (M2.1 subset: field_ref only, no
+// corev1.DownwardAPIVolumeFile (subset: field_ref only, no
 // resourceFieldRef).
 type DownwardAPIVolumeFile struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1409,7 +1411,7 @@ func (x *ProjectedVolumeSource) GetDefaultMode() int32 {
 }
 
 // VolumeProjection is one projection within a ProjectedVolumeSource. Exactly
-// one source is set. Mirrors corev1.VolumeProjection (M2.1 subset: configMap /
+// one source is set. Mirrors corev1.VolumeProjection (subset: configMap /
 // secret / downwardAPI / serviceAccountToken).
 type VolumeProjection struct {
 	state               protoimpl.MessageState         `protogen:"open.v1"`
@@ -1781,9 +1783,9 @@ func (x *KeyToPath) GetMode() int32 {
 }
 
 // PersistentVolumeClaimVolumeSource mounts a PersistentVolumeClaim by name —
-// the durable, pod-lifecycle-decoupled storage source (M3.1). The k3sm APFS
-// local-path provisioner (k3sm:M3) binds the claim to a STABLE per-PVC dir on
-// the same APFS volume as /var/lib/k3sm; runtimed:M3 mounts that dir into the
+// the durable, pod-lifecycle-decoupled storage source. The k3sm APFS
+// local-path provisioner binds the claim to a STABLE per-PVC dir on
+// the same APFS volume as /var/lib/k3sm; runtimed mounts that dir into the
 // container and does NOT delete it on pod teardown (ReclaimPolicy Retain — the
 // path-derivation + storage root the two repos agree on live in the plain-Go
 // k3sm.io/apis/storage/v1 contract). The proto carries only the claim
@@ -1912,7 +1914,7 @@ func (x *HostPathVolumeSource) GetType() string {
 }
 
 // PodSecurityContext is the pod-scoped privilege configuration. fs_group lives
-// HERE (pod-level only). Mirrors the M2.1 subset of corev1.PodSecurityContext.
+// HERE (pod-level only). Mirrors a subset of corev1.PodSecurityContext.
 // int64 mirrors corev1's *int64; 0 is a valid value (root).
 type PodSecurityContext struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -2030,8 +2032,8 @@ type Container struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// name is unique within the pod.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// image is the OCI image reference (or, for the M0 convention, a host binary
-	// path when command/args are empty).
+	// image is the OCI image reference (or, for the host-binary convention, a
+	// host binary path when command/args are empty).
 	Image string `protobuf:"bytes,2,opt,name=image,proto3" json:"image,omitempty"`
 	// command and args form argv: argv = command + args.
 	//
@@ -2039,7 +2041,7 @@ type Container struct {
 	// command is empty, what happens is decided by the shape of `image`, not by
 	// the emptiness alone:
 	//
-	//   - `image` is an absolute path (leading '/') — the M0 host-binary
+	//   - `image` is an absolute path (leading '/') — the host-binary
 	//     convention: the reference is the binary to exec. This convention is
 	//     discriminated, not retired; it stays the native path's way to run a
 	//     host binary with no image at all.
@@ -2368,7 +2370,7 @@ func (x *EnvVar) GetValueFrom() *EnvVarSource {
 }
 
 // VolumeMount mounts a PodBox.volume into a container by name. Mirrors
-// corev1.VolumeMount (M2.1 subset: no mountPropagation/recursiveReadOnly).
+// corev1.VolumeMount (subset: no mountPropagation/recursiveReadOnly).
 type VolumeMount struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// name references a PodBox.volumes[].name.
@@ -2444,7 +2446,7 @@ func (x *VolumeMount) GetSubPath() string {
 }
 
 // ContainerPort declares a named port a container exposes. Mirrors
-// corev1.ContainerPort (M2.1 subset: name + containerPort + protocol; host_port
+// corev1.ContainerPort (subset: name + containerPort + protocol; host_port
 // / host_ip are not modeled — k3sm pods bind the pod IP, not host ports).
 type ContainerPort struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -2920,7 +2922,7 @@ func (x *IntOrString) GetStrVal() string {
 }
 
 // SecurityContext is the container-scoped privilege configuration. fsGroup is
-// NOT here — it is pod-scoped (PodSecurityContext.fs_group). Mirrors the M2.1
+// NOT here — it is pod-scoped (PodSecurityContext.fs_group). Mirrors a
 // subset of corev1.SecurityContext. The int64 *_as_* fields mirror corev1's
 // *int64 (uid/gid); 0 is a valid value (root), so callers needing "unset" must
 // track presence out of band per their own convention.
@@ -3166,7 +3168,7 @@ func (x *SecretEnvSource) GetOptional() bool {
 
 // EnvVarSource is the source for an EnvVar value (the corev1 union). Exactly one
 // of field_ref / config_map_key_ref / secret_key_ref is set. Mirrors
-// corev1.EnvVarSource (M2.1 subset: no resourceFieldRef).
+// corev1.EnvVarSource (subset: no resourceFieldRef).
 type EnvVarSource struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// field_ref sources from the downward API (e.g. spec.nodeName, status.podIP,
@@ -4196,7 +4198,7 @@ type ContainerStatus struct {
 	Started    bool `protobuf:"varint,9,opt,name=started,proto3" json:"started,omitempty"`
 	StartedSet bool `protobuf:"varint,10,opt,name=started_set,json=startedSet,proto3" json:"started_set,omitempty"`
 	// volume_mounts is the status mirror of Container.volume_mounts (the
-	// lossless-mirror pairing for the M2.1 spec field). Mirrors
+	// lossless-mirror pairing for the spec field). Mirrors
 	// corev1.ContainerStatus.VolumeMounts.
 	VolumeMounts []*VolumeMountStatus `protobuf:"bytes,11,rep,name=volume_mounts,json=volumeMounts,proto3" json:"volume_mounts,omitempty"`
 	// user is the effective uid/gid the privilege drop produced (the status
@@ -4344,7 +4346,7 @@ func (x *ContainerStatus) GetAllocatedResources() *ResourceList {
 }
 
 // VolumeMountStatus is the status mirror of a VolumeMount. Mirrors
-// corev1.VolumeMountStatus (M2.1 subset: name, mountPath, readOnly).
+// corev1.VolumeMountStatus (subset: name, mountPath, readOnly).
 type VolumeMountStatus struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// name references the VolumeMount/PodBox.volumes name.
@@ -4409,7 +4411,7 @@ func (x *VolumeMountStatus) GetReadOnly() bool {
 }
 
 // ContainerUser is the effective user the container runs as. Mirrors
-// corev1.ContainerUser (M2.1 subset: the linux variant carries the resolved
+// corev1.ContainerUser (subset: the linux variant carries the resolved
 // uid/gid/supplementalGroups — the effective identity after the privilege
 // drop).
 type ContainerUser struct {
@@ -5196,7 +5198,7 @@ func (x *CPUStats) GetUsageCoreNanoSeconds() uint64 {
 
 // MemoryStats is memory usage at an instant. Mirrors the kubelet stats
 // MemoryStats subset. working_set_bytes is sourced from ri_phys_footprint
-// (proc_pid_rusage) — NOT RSS — the same value runtimed:M2.2 compares against
+// (proc_pid_rusage) — NOT RSS — the same value runtimed compares against
 // PodBox.memory_limit_bytes for OOMKilled.
 type MemoryStats struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -6593,8 +6595,8 @@ func (*GetRuntimeInfoRequest) Descriptor() ([]byte, []int) {
 	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{77}
 }
 
-// GetRuntimeInfoResponse reports the daemon version + health for the M2 process
-// split's version-compat handshake.
+// GetRuntimeInfoResponse reports the daemon version + health for the
+// provider/runtimed process split's version-compat handshake.
 type GetRuntimeInfoResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// runtime_name is the implementation name (e.g. "k3sm-runtimed").

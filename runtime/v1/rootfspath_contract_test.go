@@ -56,7 +56,7 @@ func TestRootfsPathContractDocumented(t *testing.T) {
 		{"server-derived", "the value is computed by the daemon; a producer cannot compute it", true},
 		{"byte-equal", "a non-empty value is accepted only on byte-equality with the single derivation", true},
 		{"FAILURE_REASON_INVALID_POD_BOX", "a mismatch rejects the pod; it is never coerced and never retried", false},
-		{"B147", "the field is planned for consumer-first removal under that tracking id", false},
+		{"planned for consumer-first removal", "the field is on a path to removal, not a permanent part of the contract", true},
 	}
 
 	files := []struct {

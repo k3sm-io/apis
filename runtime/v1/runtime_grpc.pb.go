@@ -52,9 +52,10 @@ const (
 // k3sm has no namespaces — a pod is one process group / uid / Seatbelt domain.
 //
 // RPC numbering note: gRPC method names (not numbers) are the wire identity, so
-// there is no numeric range to reserve. The M2 process-split adds resource and
-// metrics RPCs to THIS service — append-only; do not remove or rename the
-// methods below. M2.2 appends ListPodStats and RestartContainer.
+// there is no numeric range to reserve. The provider/runtimed process split
+// adds resource and metrics RPCs to THIS service — append-only; do not remove
+// or rename the methods below. ListPodStats and RestartContainer were added
+// later, append-only.
 type RuntimeClient interface {
 	// CreatePod materializes and starts a PodBox: it creates the per-pod dir,
 	// applies the Seatbelt profile, and posix_spawns each container as a native
@@ -64,7 +65,7 @@ type RuntimeClient interface {
 	// and forgets it. Idempotent: deleting an unknown pod succeeds.
 	DeletePod(ctx context.Context, in *DeletePodRequest, opts ...grpc.CallOption) (*DeletePodResponse, error)
 	// UpdatePod applies an in-place spec change to a running pod (e.g. an
-	// annotation or, at M2, a resource limit). The runtime decides what is
+	// annotation or a resource limit). The runtime decides what is
 	// updatable in place vs. requires recreate; non-updatable fields are an error.
 	UpdatePod(ctx context.Context, in *UpdatePodRequest, opts ...grpc.CallOption) (*UpdatePodResponse, error)
 	// WatchPodStatus is a server stream of PodStatus snapshots. The VK
@@ -88,22 +89,20 @@ type RuntimeClient interface {
 	// PortForward forwards a local stream to a pod port (`kubectl port-forward`).
 	// Bidirectional: framed payloads carry the per-connection port + bytes.
 	PortForward(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PortForwardRequest, PortForwardResponse], error)
-	// GetRuntimeInfo returns the daemon's version and health. The M2 process
-	// split (provider and runtimed as separate processes) uses this for the
-	// version-compat handshake across the IPC boundary.
+	// GetRuntimeInfo returns the daemon's version and health, used for the
+	// version-compat handshake across the provider↔runtimed IPC boundary.
 	GetRuntimeInfo(ctx context.Context, in *GetRuntimeInfoRequest, opts ...grpc.CallOption) (*GetRuntimeInfoResponse, error)
 	// ListPodStats returns a resource-usage snapshot for pods on the node — the
 	// metrics path behind `kubectl top` / the kubelet Summary API. pod_id empty =
 	// all pods on the node; pod_id set = that one pod. runtimed sources each
 	// sample from proc_pid_rusage (ri_phys_footprint, NOT RSS); the provider
-	// serves the Summary API from them. Added in M2.2 (append-only).
+	// serves the Summary API from them.
 	ListPodStats(ctx context.Context, in *ListPodStatsRequest, opts ...grpc.CallOption) (*ListPodStatsResponse, error)
 	// RestartContainer restarts a single container in a running pod in place
 	// (terminate its process within the grace window, then re-spawn from the same
 	// spec) and increments ContainerStatus.restart_count. A failed liveness probe
 	// drives this — it is the runtime action the provider's probe runner invokes
-	// (the seam that, pre-M2.2, only bumped restart_count via a nil restartFunc).
-	// Added in M2.2 (append-only).
+	// (the seam that previously only bumped restart_count via a nil restartFunc).
 	RestartContainer(ctx context.Context, in *RestartContainerRequest, opts ...grpc.CallOption) (*RestartContainerResponse, error)
 }
 
@@ -271,9 +270,10 @@ func (c *runtimeClient) RestartContainer(ctx context.Context, in *RestartContain
 // k3sm has no namespaces — a pod is one process group / uid / Seatbelt domain.
 //
 // RPC numbering note: gRPC method names (not numbers) are the wire identity, so
-// there is no numeric range to reserve. The M2 process-split adds resource and
-// metrics RPCs to THIS service — append-only; do not remove or rename the
-// methods below. M2.2 appends ListPodStats and RestartContainer.
+// there is no numeric range to reserve. The provider/runtimed process split
+// adds resource and metrics RPCs to THIS service — append-only; do not remove
+// or rename the methods below. ListPodStats and RestartContainer were added
+// later, append-only.
 type RuntimeServer interface {
 	// CreatePod materializes and starts a PodBox: it creates the per-pod dir,
 	// applies the Seatbelt profile, and posix_spawns each container as a native
@@ -283,7 +283,7 @@ type RuntimeServer interface {
 	// and forgets it. Idempotent: deleting an unknown pod succeeds.
 	DeletePod(context.Context, *DeletePodRequest) (*DeletePodResponse, error)
 	// UpdatePod applies an in-place spec change to a running pod (e.g. an
-	// annotation or, at M2, a resource limit). The runtime decides what is
+	// annotation or a resource limit). The runtime decides what is
 	// updatable in place vs. requires recreate; non-updatable fields are an error.
 	UpdatePod(context.Context, *UpdatePodRequest) (*UpdatePodResponse, error)
 	// WatchPodStatus is a server stream of PodStatus snapshots. The VK
@@ -307,22 +307,20 @@ type RuntimeServer interface {
 	// PortForward forwards a local stream to a pod port (`kubectl port-forward`).
 	// Bidirectional: framed payloads carry the per-connection port + bytes.
 	PortForward(grpc.BidiStreamingServer[PortForwardRequest, PortForwardResponse]) error
-	// GetRuntimeInfo returns the daemon's version and health. The M2 process
-	// split (provider and runtimed as separate processes) uses this for the
-	// version-compat handshake across the IPC boundary.
+	// GetRuntimeInfo returns the daemon's version and health, used for the
+	// version-compat handshake across the provider↔runtimed IPC boundary.
 	GetRuntimeInfo(context.Context, *GetRuntimeInfoRequest) (*GetRuntimeInfoResponse, error)
 	// ListPodStats returns a resource-usage snapshot for pods on the node — the
 	// metrics path behind `kubectl top` / the kubelet Summary API. pod_id empty =
 	// all pods on the node; pod_id set = that one pod. runtimed sources each
 	// sample from proc_pid_rusage (ri_phys_footprint, NOT RSS); the provider
-	// serves the Summary API from them. Added in M2.2 (append-only).
+	// serves the Summary API from them.
 	ListPodStats(context.Context, *ListPodStatsRequest) (*ListPodStatsResponse, error)
 	// RestartContainer restarts a single container in a running pod in place
 	// (terminate its process within the grace window, then re-spawn from the same
 	// spec) and increments ContainerStatus.restart_count. A failed liveness probe
 	// drives this — it is the runtime action the provider's probe runner invokes
-	// (the seam that, pre-M2.2, only bumped restart_count via a nil restartFunc).
-	// Added in M2.2 (append-only).
+	// (the seam that previously only bumped restart_count via a nil restartFunc).
 	RestartContainer(context.Context, *RestartContainerRequest) (*RestartContainerResponse, error)
 	mustEmbedUnimplementedRuntimeServer()
 }

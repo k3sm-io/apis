@@ -80,7 +80,7 @@ const (
 //     assert what listener its service is registered on. The assertion that
 //     Images is served by the identical server the Runtime service is
 //     registered on — so it inherits exactly this socket and no other — is
-//     B130b's gate, in the daemon repo.
+//     asserted by a gate in the daemon repo.
 //
 // Skew: v1 is deliberately reactive. A daemon that predates this service
 // returns gRPC UNIMPLEMENTED for every method below, and a client treats that
@@ -105,8 +105,9 @@ type ImagesClient interface {
 	// PruneImages deletes unreferenced content. The refusal semantics are
 	// daemon-side: deletability is `not reachable(blob, roots)` computed in one
 	// transaction over recorded edges, and every unlink re-verifies before it
-	// runs (the ratified image-GC provenance model — the M12 images plan,
-	// Resolution 13). This wire carries only the typed outcome: which digests
+	// runs (the ratified image-GC provenance model: edges are monotone, roots are
+	// digest-pinned, and root removal is authorized and local). This wire carries
+	// only the typed outcome: which digests
 	// went, and a minimal per-digest reason for each one that was kept, so a
 	// dry-run or audit caller can see why a blob survived without the daemon
 	// exporting its policy.
@@ -122,25 +123,23 @@ type ImagesClient interface {
 	//
 	// The daemon is the sole store writer on this path: the client opens the
 	// operator's archive (the daemon generally cannot read an operator's home)
-	// and streams the bytes; it never writes the content store itself. See the
-	// M12 images plan, Resolution 8 (as amended 2026-08-09).
+	// and streams the bytes; it never writes the content store itself.
 	//
 	// Digest contract: any client-supplied digest or size is advisory. The server
 	// must re-hash the received bytes and reject a mismatch before the lease
 	// commits — a client-asserted digest is an input to be verified, never a fact
-	// to be trusted (the M12 images plan, Resolution 8: every ingest path
-	// re-hashes content against its claimed digest before commit).
+	// to be trusted (every ingest path re-hashes content against its claimed
+	// digest before commit).
 	//
 	// Lease obligation: the server takes its store lease before the first blob
-	// commit and records the reference before releasing it. Citation is
-	// transitional — the M12 images plan, Resolution 13(c). TODO(B128): once the
-	// store/metastore package is promoted and states this obligation in its own
-	// doc.go, re-point this citation at that package and drop the plan reference.
+	// commit and records the reference before releasing it. This is stated here
+	// only until the store/metastore package can carry it in its own doc.go.
+	// TODO: once that package is promoted, re-point this citation there.
 	//
 	// LoadImage is not a SignaturePolicy checkpoint. Loaded images are
-	// provenance-free by design — an operator-CLI-only surface (the M12 images
-	// plan, section M12.2). This RPC neither evaluates nor records a
-	// SignaturePolicy; enforcement stays where it already is, at materialize/exec.
+	// provenance-free by design — an operator-CLI-only surface. This RPC neither
+	// evaluates nor records a SignaturePolicy; enforcement stays where it already
+	// is, at materialize/exec.
 	LoadImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[LoadImageRequest, LoadImageResponse], error)
 	// PullImage resolves a reference for a platform and fetches it through the
 	// daemon's OWN puller — the same code path a pod-driven pull takes, so it
@@ -156,8 +155,8 @@ type ImagesClient interface {
 	//
 	// Provenance: a successful pull records a reference -> digest index entry — an
 	// edge, plus an OPERATOR root over that reference (the ratified image-GC
-	// provenance model, the M12 images plan, Resolution 13: edges are monotone,
-	// roots are digest-pinned, and root removal is authorized and local). That
+	// provenance model: edges are monotone, roots are digest-pinned, and root
+	// removal is authorized and local). That
 	// root is why a pulled-but-unused image survives PruneImages: it stays
 	// reachable until the operator removes the name with UntagImage.
 	PullImage(ctx context.Context, in *PullImageRequest, opts ...grpc.CallOption) (*PullImageResponse, error)
@@ -182,8 +181,7 @@ type ImagesClient interface {
 	TagImage(ctx context.Context, in *TagImageRequest, opts ...grpc.CallOption) (*TagImageResponse, error)
 	// UntagImage removes ONE (reference x platform) index entry. It is the
 	// provenance model's sanctioned EXPLICIT UNTAG — an authorized, local root
-	// removal the operator requested, never a side effect of fetched content (the
-	// M12 images plan, Resolution 13).
+	// removal the operator requested, never a side effect of fetched content.
 	//
 	// Untag removes a NAME, not bytes. No blob is unlinked here; content is
 	// reclaimed only by PruneImages, which re-derives reachability first. So
@@ -237,9 +235,8 @@ type ImagesClient interface {
 	//
 	// Export takes no lease, records no root and unlinks nothing. The client is
 	// the sole writer of the operator's file, the mirror of LoadImage's rule that
-	// the daemon is the sole writer of the store (the M12 images plan, Resolution
-	// 8, as amended 2026-08-09): the daemon generally cannot write into an
-	// operator's home and must not try.
+	// the daemon is the sole writer of the store: the daemon generally cannot
+	// write into an operator's home and must not try.
 	SaveImage(ctx context.Context, in *SaveImageRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SaveImageResponse], error)
 }
 
@@ -399,7 +396,7 @@ type Images_SaveImageClient = grpc.ServerStreamingClient[SaveImageResponse]
 //     assert what listener its service is registered on. The assertion that
 //     Images is served by the identical server the Runtime service is
 //     registered on — so it inherits exactly this socket and no other — is
-//     B130b's gate, in the daemon repo.
+//     asserted by a gate in the daemon repo.
 //
 // Skew: v1 is deliberately reactive. A daemon that predates this service
 // returns gRPC UNIMPLEMENTED for every method below, and a client treats that
@@ -424,8 +421,9 @@ type ImagesServer interface {
 	// PruneImages deletes unreferenced content. The refusal semantics are
 	// daemon-side: deletability is `not reachable(blob, roots)` computed in one
 	// transaction over recorded edges, and every unlink re-verifies before it
-	// runs (the ratified image-GC provenance model — the M12 images plan,
-	// Resolution 13). This wire carries only the typed outcome: which digests
+	// runs (the ratified image-GC provenance model: edges are monotone, roots are
+	// digest-pinned, and root removal is authorized and local). This wire carries
+	// only the typed outcome: which digests
 	// went, and a minimal per-digest reason for each one that was kept, so a
 	// dry-run or audit caller can see why a blob survived without the daemon
 	// exporting its policy.
@@ -441,25 +439,23 @@ type ImagesServer interface {
 	//
 	// The daemon is the sole store writer on this path: the client opens the
 	// operator's archive (the daemon generally cannot read an operator's home)
-	// and streams the bytes; it never writes the content store itself. See the
-	// M12 images plan, Resolution 8 (as amended 2026-08-09).
+	// and streams the bytes; it never writes the content store itself.
 	//
 	// Digest contract: any client-supplied digest or size is advisory. The server
 	// must re-hash the received bytes and reject a mismatch before the lease
 	// commits — a client-asserted digest is an input to be verified, never a fact
-	// to be trusted (the M12 images plan, Resolution 8: every ingest path
-	// re-hashes content against its claimed digest before commit).
+	// to be trusted (every ingest path re-hashes content against its claimed
+	// digest before commit).
 	//
 	// Lease obligation: the server takes its store lease before the first blob
-	// commit and records the reference before releasing it. Citation is
-	// transitional — the M12 images plan, Resolution 13(c). TODO(B128): once the
-	// store/metastore package is promoted and states this obligation in its own
-	// doc.go, re-point this citation at that package and drop the plan reference.
+	// commit and records the reference before releasing it. This is stated here
+	// only until the store/metastore package can carry it in its own doc.go.
+	// TODO: once that package is promoted, re-point this citation there.
 	//
 	// LoadImage is not a SignaturePolicy checkpoint. Loaded images are
-	// provenance-free by design — an operator-CLI-only surface (the M12 images
-	// plan, section M12.2). This RPC neither evaluates nor records a
-	// SignaturePolicy; enforcement stays where it already is, at materialize/exec.
+	// provenance-free by design — an operator-CLI-only surface. This RPC neither
+	// evaluates nor records a SignaturePolicy; enforcement stays where it already
+	// is, at materialize/exec.
 	LoadImage(grpc.ClientStreamingServer[LoadImageRequest, LoadImageResponse]) error
 	// PullImage resolves a reference for a platform and fetches it through the
 	// daemon's OWN puller — the same code path a pod-driven pull takes, so it
@@ -475,8 +471,8 @@ type ImagesServer interface {
 	//
 	// Provenance: a successful pull records a reference -> digest index entry — an
 	// edge, plus an OPERATOR root over that reference (the ratified image-GC
-	// provenance model, the M12 images plan, Resolution 13: edges are monotone,
-	// roots are digest-pinned, and root removal is authorized and local). That
+	// provenance model: edges are monotone, roots are digest-pinned, and root
+	// removal is authorized and local). That
 	// root is why a pulled-but-unused image survives PruneImages: it stays
 	// reachable until the operator removes the name with UntagImage.
 	PullImage(context.Context, *PullImageRequest) (*PullImageResponse, error)
@@ -501,8 +497,7 @@ type ImagesServer interface {
 	TagImage(context.Context, *TagImageRequest) (*TagImageResponse, error)
 	// UntagImage removes ONE (reference x platform) index entry. It is the
 	// provenance model's sanctioned EXPLICIT UNTAG — an authorized, local root
-	// removal the operator requested, never a side effect of fetched content (the
-	// M12 images plan, Resolution 13).
+	// removal the operator requested, never a side effect of fetched content.
 	//
 	// Untag removes a NAME, not bytes. No blob is unlinked here; content is
 	// reclaimed only by PruneImages, which re-derives reachability first. So
@@ -556,9 +551,8 @@ type ImagesServer interface {
 	//
 	// Export takes no lease, records no root and unlinks nothing. The client is
 	// the sole writer of the operator's file, the mirror of LoadImage's rule that
-	// the daemon is the sole writer of the store (the M12 images plan, Resolution
-	// 8, as amended 2026-08-09): the daemon generally cannot write into an
-	// operator's home and must not try.
+	// the daemon is the sole writer of the store: the daemon generally cannot
+	// write into an operator's home and must not try.
 	SaveImage(*SaveImageRequest, grpc.ServerStreamingServer[SaveImageResponse]) error
 	mustEmbedUnimplementedImagesServer()
 }

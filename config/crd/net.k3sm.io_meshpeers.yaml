@@ -1,4 +1,4 @@
-# MeshPeer CRD (net.k3sm.io/v1) — the wireguard mesh-topology contract (apis:M3.2).
+# MeshPeer CRD (net.k3sm.io/v1) — the wireguard mesh-topology contract.
 #
 # Hand-authored (apis runs no controller-gen) to match the Go type in
 # k3sm.io/apis/net/v1 (mesh.go). k3sm applies this at server bring-up; darwin-net

@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 // Package storagev1 holds the cross-repo Go contract for k3sm's APFS
-// local-path persistent storage (M3.1): the StorageClass / provisioner
+// local-path persistent storage: the StorageClass / provisioner
 // parameters and the PV node-affinity / topology that the local-path
 // provisioner controller (k3sm.io/k3sm, the controller that creates
 // PersistentVolumes) and the runtime binder (k3sm.io/runtimed, which mounts the
@@ -25,7 +25,7 @@ limitations under the License.
 // remain the Kubernetes API surface the provisioner reads and writes; this
 // package does NOT vendor or redefine them. It carries only the small k3sm
 // agreement that genuinely crosses the repo boundary: the provisioner identity,
-// the on-APFS storage root, the reclaim / binding policy M3 supports, and the
+// the on-APFS storage root, the reclaim / binding policy k3sm supports, and the
 // node-topology key used to pin a local PV (and thus its StatefulSet pod) to its
 // owning node. The PV/PVC volume *source* a pod mounts is the proto
 // PersistentVolumeClaimVolumeSource in k3sm.io/apis/runtime/v1 (carried by
