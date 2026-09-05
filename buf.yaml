@@ -15,7 +15,7 @@ lint:
     # k3sm.io/apis/runtime/v1) — the repo is already namespaced as k3sm.io/apis,
     # so a leading k3sm/ dir would stutter.
     - PACKAGE_DIRECTORY_MATCH
-    # Contract names are fixed by the M1.1 design: `service Runtime` (not
+    # Contract names are fixed by the original design: `service Runtime` (not
     # RuntimeService); the watch/logs streams carry domain types PodStatusEvent
     # and LogEntry (not WatchPodStatusResponse / GetLogsResponse). The same
     # exemption covers `service Images` (not ImageService) in images.proto — the
@@ -45,9 +45,9 @@ breaking:
     - WIRE_JSON # additive-only: no field renumber, no wire/JSON-incompatible change
   except:
     # The per-message 100..199 (PodBox) / 100..149 (sibling) ranges are
-    # DOCUMENTED consumable headroom (docs/PHASES.md M2.1/M2.2): M2.2 resource +
+    # DOCUMENTED consumable headroom (see docs/PHASES.md): resource +
     # metrics fields land there so they never collide with the sub-100
-    # sequential M2.1 fields. Narrowing a reserved MESSAGE range to allocate a
+    # sequential original fields. Narrowing a reserved MESSAGE range to allocate a
     # field within it is therefore BY DESIGN, not a wire break — converting
     # never-used reserved headroom into a field is wire- and JSON-safe. Every
     # field-level guard stays ON (FIELD_NO_DELETE, FIELD_SAME_TYPE / _NAME /
