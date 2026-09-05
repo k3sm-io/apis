@@ -177,10 +177,10 @@ func (c LocalPathClass) Validate() error {
 		return fmt.Errorf("%w: storage class %q basePath %q must be an absolute path", ErrInvalid, c.Name, c.BasePath)
 	}
 	if c.ReclaimPolicy != ReclaimRetain {
-		return fmt.Errorf("%w: storage class %q reclaimPolicy %q unsupported (M3 supports %q only)", ErrInvalid, c.Name, c.ReclaimPolicy, ReclaimRetain)
+		return fmt.Errorf("%w: storage class %q reclaimPolicy %q unsupported (only %q is supported)", ErrInvalid, c.Name, c.ReclaimPolicy, ReclaimRetain)
 	}
 	if c.VolumeBindingMode != BindingWaitForFirstConsumer {
-		return fmt.Errorf("%w: storage class %q volumeBindingMode %q unsupported (M3 supports %q only)", ErrInvalid, c.Name, c.VolumeBindingMode, BindingWaitForFirstConsumer)
+		return fmt.Errorf("%w: storage class %q volumeBindingMode %q unsupported (only %q is supported)", ErrInvalid, c.Name, c.VolumeBindingMode, BindingWaitForFirstConsumer)
 	}
 	return nil
 }
