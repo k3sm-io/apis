@@ -907,11 +907,26 @@ message SandboxProfile {
   // provably unable to reach the internet if allow_network is already true.
   bool allow_internet_egress = 103;
 
-  // 100..103 allocated above; 104..149 stay reserved (149 ceiling preserved).
+  // xcode_toolchain_dir, when non-empty, widens the generated profile with READ
+  // access to the developer toolchain rooted at this DEVELOPER_DIR (the node's
+  // `xcode-select -p`): the compilers, linker, and SDKs a build workload needs,
+  // the same shape of opt-in as allow_gpu. The grant is lab-derived by ablation
+  // and path-minimal — it names the toolchain's own subtrees, never the whole
+  // application bundle — and it is read-only: nothing under it becomes writable.
+  // Empty (the default) grants nothing. It is a REQUEST stamped by the provider
+  // from a pod annotation, not an assertion that the host has a toolchain; a
+  // host without one honours it by granting paths that do not exist.
+  //
+  // Enforcement ceiling, stated plainly: the build tool that drives the IDE's
+  // own frameworks (xcodebuild) reaches beyond this grant and is not covered;
+  // the toolchain (swiftc, clang, ld, the SDK) is.
+  string xcode_toolchain_dir = 104;
+
+  // 100..104 allocated above; 105..149 stay reserved (149 ceiling preserved).
   // The headroom is for further per-pod profile opt-ins of the same shape —
   // fine-grained mach-service / sysctl allow rules, and any narrowing of the
   // network grants above once the platform can express one.
-  reserved 104 to 149;
+  reserved 105 to 149;
 }
 
 // SandboxBackend is the pod isolation mechanism. UNSPECIFIED means the runtime

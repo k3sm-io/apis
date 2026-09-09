@@ -91,4 +91,11 @@ const (
 	// (packet-filter) enforcement is tracked as future work. Treat its absence as
 	// an admission-visible declaration, not as a proven network boundary.
 	AnnotationInternetEgress = "k3sm.io/internet-egress"
+
+	// AnnotationXcodeToolchain (k3sm.io/xcode-toolchain) opts a native pod into
+	// read access to the node's developer toolchain — SandboxProfile.xcode_toolchain_dir,
+	// rooted at the node's `xcode-select -p`. Presence opts in; the value is ignored.
+	// Operator-stamped plumbing under the single-trust-domain model, surfaced by a
+	// Warn admission policy when hand-set, exactly like AnnotationInternetEgress.
+	AnnotationXcodeToolchain = "k3sm.io/xcode-toolchain"
 )
