@@ -2,7 +2,7 @@
 repo: apis
 schema: phases/v1
 current_phase: M7
-updated: 2026-08-31
+updated: 2026-09-09
 updated_by: roadmap-validation-sweep
 
 phases:
@@ -459,6 +459,36 @@ phases:
           - id: M12.1-a1
             met: true
             check: "buf breaking vs the PRE-carve committed baseline first, then baseline regenerated; buf generate no-diff; the enum zero value is UNSPECIFIED with the legacy-in-both-skew-directions comment (the restart_policy pattern); the allocated field number is ≥101 and the reserved range re-narrowed; apis/hack/ci.sh green"
+            method: unit
+  - id: M15
+    title: container-vm RuntimeClass (apis slice — handler + backend enum + the guest/v1 host-adapter amendment)
+    status: todo
+    strategy: phased (multi-node launchd rolling restart)
+    depends_on: []
+    note: "Authoritative input: docs/m15-plan.md (workspace) — Phase C encodes ONLY from that doc; the B267 spike's answers are its BINDING inputs. apis is Wave 1 of M15 (consumer-first review order; the three waves ship in one binary, so the only skew is cross-node — hence the named exception). Every change is additive: a new HandlerName + SandboxBackend enum value 5, the sizing fields 100/101 renamed guest_vcpus/guest_memory_bytes with the banner rewritten (same numbers, no wire break), the guest/v1 header amended to admit a host-side-adapter topology with its own lockstep pin and trust note (m15-plan R2), and the GetRuntimeInfoResponse field-101 deferral recorded (R6). NO Swift artifact lives in apis: the helper's stubs are generated in its own package from these .proto files (m15-plan §Seams, Swift codegen)."
+    subphases:
+      - id: M15.1
+        title: HandlerContainerVM + SANDBOX_BACKEND_CONTAINER_VM + guest_vcpus/guest_memory_bytes rename + the guest/v1 header amendment
+        status: todo
+        strategy: phased (multi-node launchd rolling restart)
+        depends_on: []
+        deliverables:
+          - id: M15.1-d1
+            done: false
+            desc: "runtime/v1: HandlerContainerVM = \"container-vm\" + a DefaultHandlerConfig row → SANDBOX_BACKEND_CONTAINER_VM = 5 (purely additive; validBackend accepts it from SandboxBackend_name; ErrUnknownHandler keeps failing closed on anything else)."
+          - id: M15.1-d2
+            done: false
+            desc: "runtime/v1: fields 100/101 renamed guest_vcpus/guest_memory_bytes (same field numbers; the Go identifier rename is an in-repo refactor across consumers in the same wave) and the section banner rewritten from 'Read ONLY when backend == VM' to 'any guest-booting backend'; golden fixtures updated."
+          - id: M15.1-d3
+            done: false
+            desc: "guest/v1: the package header amended — a second supported implementation topology (a host-side adapter that serves GuestAgent on the per-pod socket and translates onto the framework's guest init), its lockstep pin (the vminit digest + the helper build stamp, served in Health.api_version), and the trust note that responses on that path stay untrusted data. Additive only; no RPC changes."
+          - id: M15.1-d4
+            done: false
+            desc: "GetRuntimeInfoResponse field 101 stays reserved with the deferral reason recorded in the proto comment (two capability booleans with reason strings suffice; the structured message is claimed when a third backend fact appears)."
+        acceptance:
+          - id: M15.1-a1
+            met: false
+            check: "buf lint + generate-diff + breaking all green; TestHandlerTable pins the new row and the unknown-handler refusal; the runtime/v1 golden fixtures round-trip the renamed fields at the same numbers"
             method: unit
 ---
 
