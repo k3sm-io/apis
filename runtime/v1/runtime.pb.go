@@ -3527,6 +3527,14 @@ type SandboxProfile struct {
 	// subcommands that only interrogate the installation — -version, -showsdks,
 	// -find-executable.
 	//
+	// Not carried by this field, and not a Seatbelt grant at all: a confined pod
+	// also needs a writable clang module cache, because the toolchain resolves
+	// that path through confstr rather than $TMPDIR and lands on the invoking
+	// uid's shared /var/folders tree. runtimed supplies a per-pod cache through
+	// CLANG_MODULE_CACHE_PATH for EVERY pod, unconditionally, next to TMPDIR —
+	// the same need reproduces on the Command Line Tools with no toolchain grant
+	// of any kind, so it belongs to confining a pod, not to reaching Xcode.
+	//
 	// Enforcement ceiling, stated plainly: driving a full `xcodebuild build` is
 	// NOT covered, and this is a property of the isolation model, not a gap in
 	// the path list — no widening of a READ grant can reach it. Anything that
