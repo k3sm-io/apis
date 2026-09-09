@@ -3522,9 +3522,23 @@ type SandboxProfile struct {
 	// from a pod annotation, not an assertion that the host has a toolchain; a
 	// host without one honours it by granting paths that do not exist.
 	//
-	// Enforcement ceiling, stated plainly: the build tool that drives the IDE's
-	// own frameworks (xcodebuild) reaches beyond this grant and is not covered;
-	// the toolchain (swiftc, clang, ld, the SDK) is.
+	// What it covers: compiling and linking (swiftc, clang, ld, the macOS SDK,
+	// SwiftPM with its own --disable-sandbox), xcrun, and the xcodebuild
+	// subcommands that only interrogate the installation — -version, -showsdks,
+	// -find-executable.
+	//
+	// Enforcement ceiling, stated plainly: driving a full `xcodebuild build` is
+	// NOT covered, and this is a property of the isolation model, not a gap in
+	// the path list — no widening of a READ grant can reach it. Anything that
+	// evaluates a project or package spawns XCBBuildService through launchd
+	// (job-creation), talks to coreservicesd, lsd, FSEvents and DiskArbitration
+	// over Mach, writes the invoking user's shared /var/folders DeveloperTools
+	// cache, and reads that user's LaunchServices preferences under /Users —
+	// which the pod profile denies as a protected prefix, and which are not file
+	// paths this field could name in any case. A workload that needs a full Xcode
+	// build wants a different isolation posture (the vm backend), not a bigger
+	// grant. The line therefore falls at Mach services and host-user state, NOT
+	// at "the IDE's own frameworks": those ARE granted, and xcodebuild loads them.
 	XcodeToolchainDir string `protobuf:"bytes,104,opt,name=xcode_toolchain_dir,json=xcodeToolchainDir,proto3" json:"xcode_toolchain_dir,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
