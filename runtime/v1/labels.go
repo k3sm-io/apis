@@ -94,8 +94,12 @@ const (
 
 	// AnnotationXcodeToolchain (k3sm.io/xcode-toolchain) opts a native pod into
 	// read access to the node's developer toolchain — SandboxProfile.xcode_toolchain_dir,
-	// rooted at the node's `xcode-select -p`. Presence opts in; the value is ignored.
-	// Operator-stamped plumbing under the single-trust-domain model, surfaced by a
-	// Warn admission policy when hand-set, exactly like AnnotationInternetEgress.
+	// a full Xcode developer directory (a path whose base name is "Developer",
+	// e.g. /Applications/Xcode.app/Contents/Developer). A Command Line Tools
+	// root is rejected by the generator, and a Command Line Tools-only node
+	// needs no grant: that tree is already readable under the shipped profile.
+	// Presence opts in; the value is ignored. Operator-stamped plumbing under
+	// the single-trust-domain model, surfaced by a Warn admission policy when
+	// hand-set, exactly like AnnotationInternetEgress.
 	AnnotationXcodeToolchain = "k3sm.io/xcode-toolchain"
 )

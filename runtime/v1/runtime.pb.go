@@ -3513,9 +3513,13 @@ type SandboxProfile struct {
 	// provably unable to reach the internet if allow_network is already true.
 	AllowInternetEgress bool `protobuf:"varint,103,opt,name=allow_internet_egress,json=allowInternetEgress,proto3" json:"allow_internet_egress,omitempty"`
 	// xcode_toolchain_dir, when non-empty, widens the generated profile with READ
-	// access to the developer toolchain rooted at this DEVELOPER_DIR (the node's
-	// `xcode-select -p`): the compilers, linker, and SDKs a build workload needs,
-	// the same shape of opt-in as allow_gpu. The grant is lab-derived by ablation
+	// access to a full Xcode developer directory: the compilers, linker, and SDKs
+	// a build workload needs, the same shape of opt-in as allow_gpu. The value
+	// must be a path whose base name is "Developer" (e.g.
+	// /Applications/Xcode.app/Contents/Developer) — a Command Line Tools root
+	// (e.g. /Library/Developer/CommandLineTools) is rejected. A Command Line
+	// Tools-only node needs no grant here: that tree is already readable under
+	// the shipped default-deny profile. The grant is lab-derived by ablation
 	// and path-minimal — it names the toolchain's own subtrees, never the whole
 	// application bundle — and it is read-only: nothing under it becomes writable.
 	// Empty (the default) grants nothing. It is a REQUEST stamped by the provider
