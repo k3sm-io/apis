@@ -81,14 +81,33 @@ func TestSandboxProfileGPUEgressCarve(t *testing.T) {
 
 	t.Run("the reserved band is re-narrowed and keeps its ceiling", func(t *testing.T) {
 		t.Parallel()
-		lo, hi := bandRange(t, md, 104)
-		if lo != 104 || hi != 149 {
-			t.Errorf("SandboxProfile reserved range = %d..%d, want 104..149", lo, hi)
+		// 104 was carved for xcode_toolchain_dir (B264, 2026-09-09): the band
+		// re-narrows once more and keeps its ceiling.
+		lo, hi := bandRange(t, md, 105)
+		if lo != 105 || hi != 149 {
+			t.Errorf("SandboxProfile reserved range = %d..%d, want 105..149", lo, hi)
 		}
-		for _, n := range []protoreflect.FieldNumber{100, 101, 102, 103} {
+		for _, n := range []protoreflect.FieldNumber{100, 101, 102, 103, 104} {
 			if md.ReservedRanges().Has(n) {
 				t.Errorf("SandboxProfile field %d is both allocated and reserved", n)
 			}
+		}
+	})
+
+	t.Run("xcode_toolchain_dir is field 104, a string, default empty", func(t *testing.T) {
+		t.Parallel()
+		fd := md.Fields().ByName("xcode_toolchain_dir")
+		if fd == nil {
+			t.Fatal("SandboxProfile.xcode_toolchain_dir does not exist")
+		}
+		if fd.Number() != 104 {
+			t.Errorf("xcode_toolchain_dir = field %d, want 104", fd.Number())
+		}
+		if fd.Kind() != protoreflect.StringKind {
+			t.Errorf("xcode_toolchain_dir kind = %v, want string", fd.Kind())
+		}
+		if got := (&SandboxProfile{}).GetXcodeToolchainDir(); got != "" {
+			t.Errorf("default xcode_toolchain_dir = %q, want empty (empty grants nothing)", got)
 		}
 	})
 

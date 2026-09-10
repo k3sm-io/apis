@@ -3512,8 +3512,44 @@ type SandboxProfile struct {
 	// see and refuse), and the runtime cannot yet make a pod that was denied it
 	// provably unable to reach the internet if allow_network is already true.
 	AllowInternetEgress bool `protobuf:"varint,103,opt,name=allow_internet_egress,json=allowInternetEgress,proto3" json:"allow_internet_egress,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// xcode_toolchain_dir, when non-empty, widens the generated profile with READ
+	// access to the developer toolchain rooted at this DEVELOPER_DIR (the node's
+	// `xcode-select -p`): the compilers, linker, and SDKs a build workload needs,
+	// the same shape of opt-in as allow_gpu. The grant is lab-derived by ablation
+	// and path-minimal — it names the toolchain's own subtrees, never the whole
+	// application bundle — and it is read-only: nothing under it becomes writable.
+	// Empty (the default) grants nothing. It is a REQUEST stamped by the provider
+	// from a pod annotation, not an assertion that the host has a toolchain; a
+	// host without one honours it by granting paths that do not exist.
+	//
+	// What it covers: compiling and linking (swiftc, clang, ld, the macOS SDK,
+	// SwiftPM with its own --disable-sandbox), xcrun, and the xcodebuild
+	// subcommands that only interrogate the installation — -version, -showsdks,
+	// -find-executable.
+	//
+	// Not carried by this field, and not a Seatbelt grant at all: a confined pod
+	// also needs a writable clang module cache, because the toolchain resolves
+	// that path through confstr rather than $TMPDIR and lands on the invoking
+	// uid's shared /var/folders tree. runtimed supplies a per-pod cache through
+	// CLANG_MODULE_CACHE_PATH for EVERY pod, unconditionally, next to TMPDIR —
+	// the same need reproduces on the Command Line Tools with no toolchain grant
+	// of any kind, so it belongs to confining a pod, not to reaching Xcode.
+	//
+	// Enforcement ceiling, stated plainly: driving a full `xcodebuild build` is
+	// NOT covered, and this is a property of the isolation model, not a gap in
+	// the path list — no widening of a READ grant can reach it. Anything that
+	// evaluates a project or package spawns XCBBuildService through launchd
+	// (job-creation), talks to coreservicesd, lsd, FSEvents and DiskArbitration
+	// over Mach, writes the invoking user's shared /var/folders DeveloperTools
+	// cache, and reads that user's LaunchServices preferences under /Users —
+	// which the pod profile denies as a protected prefix, and which are not file
+	// paths this field could name in any case. A workload that needs a full Xcode
+	// build wants a different isolation posture (the vm backend), not a bigger
+	// grant. The line therefore falls at Mach services and host-user state, NOT
+	// at "the IDE's own frameworks": those ARE granted, and xcodebuild loads them.
+	XcodeToolchainDir string `protobuf:"bytes,104,opt,name=xcode_toolchain_dir,json=xcodeToolchainDir,proto3" json:"xcode_toolchain_dir,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *SandboxProfile) Reset() {
@@ -3614,6 +3650,13 @@ func (x *SandboxProfile) GetAllowInternetEgress() bool {
 		return x.AllowInternetEgress
 	}
 	return false
+}
+
+func (x *SandboxProfile) GetXcodeToolchainDir() string {
+	if x != nil {
+		return x.XcodeToolchainDir
+	}
+	return ""
 }
 
 // ImageManifest describes an OCI image as an artifact: the config descriptor
@@ -7329,7 +7372,7 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\x11SecretKeySelector\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12\x1a\n" +
-	"\boptional\x18\x03 \x01(\bR\boptional\"\xc4\x03\n" +
+	"\boptional\x18\x03 \x01(\bR\boptional\"\xf4\x03\n" +
 	"\x0eSandboxProfile\x129\n" +
 	"\abackend\x18\x01 \x01(\x0e2\x1f.k3sm.runtime.v1.SandboxBackendR\abackend\x12(\n" +
 	"\x10data_volume_path\x18\x02 \x01(\tR\x0edataVolumePath\x12(\n" +
@@ -7340,7 +7383,8 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\bvm_vcpus\x18d \x01(\rR\avmVcpus\x12&\n" +
 	"\x0fvm_memory_bytes\x18e \x01(\x03R\rvmMemoryBytes\x12\x1b\n" +
 	"\tallow_gpu\x18f \x01(\bR\ballowGpu\x122\n" +
-	"\x15allow_internet_egress\x18g \x01(\bR\x13allowInternetEgressJ\x05\bh\x10\x96\x01\"\xaa\x03\n" +
+	"\x15allow_internet_egress\x18g \x01(\bR\x13allowInternetEgress\x12.\n" +
+	"\x13xcode_toolchain_dir\x18h \x01(\tR\x11xcodeToolchainDirJ\x05\bi\x10\x96\x01\"\xaa\x03\n" +
 	"\rImageManifest\x12\x1c\n" +
 	"\treference\x18\x01 \x01(\tR\treference\x12\x1d\n" +
 	"\n" +
