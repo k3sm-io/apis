@@ -41,6 +41,7 @@ const (
 	Runtime_GetRuntimeInfo_FullMethodName   = "/k3sm.runtime.v1.Runtime/GetRuntimeInfo"
 	Runtime_ListPodStats_FullMethodName     = "/k3sm.runtime.v1.Runtime/ListPodStats"
 	Runtime_RestartContainer_FullMethodName = "/k3sm.runtime.v1.Runtime/RestartContainer"
+	Runtime_StartContainer_FullMethodName   = "/k3sm.runtime.v1.Runtime/StartContainer"
 )
 
 // RuntimeClient is the client API for Runtime service.
@@ -54,12 +55,16 @@ const (
 // RPC numbering note: gRPC method names (not numbers) are the wire identity, so
 // there is no numeric range to reserve. The provider/runtimed process split
 // adds resource and metrics RPCs to THIS service — append-only; do not remove
-// or rename the methods below. ListPodStats and RestartContainer were added
-// later, append-only.
+// or rename the methods below. ListPodStats, RestartContainer, and
+// StartContainer were added later, append-only.
 type RuntimeClient interface {
 	// CreatePod materializes and starts a PodBox: it creates the per-pod dir,
 	// applies the Seatbelt profile, and posix_spawns each container as a native
 	// process. Idempotent on pod id (a second call for a live pod is a no-op).
+	// Success does not mean every container started: a container whose image
+	// cannot be resolved or whose config is invalid leaves the pod created with
+	// that container Waiting and a typed failure_reason, while pod-level failures
+	// still fail the call.
 	CreatePod(ctx context.Context, in *CreatePodRequest, opts ...grpc.CallOption) (*CreatePodResponse, error)
 	// DeletePod kills the pod's process group (SIGKILL), tears down the PodBox,
 	// and forgets it. Idempotent: deleting an unknown pod succeeds.
@@ -104,6 +109,20 @@ type RuntimeClient interface {
 	// drives this — it is the runtime action the provider's probe runner invokes
 	// (the seam that previously only bumped restart_count via a nil restartFunc).
 	RestartContainer(ctx context.Context, in *RestartContainerRequest, opts ...grpc.CallOption) (*RestartContainerResponse, error)
+	// StartContainer starts a container that is Waiting because a previous start
+	// attempt failed before the process was spawned (image resolution, registry
+	// credential, platform match, imagePullPolicy Never, run-spec build, or the
+	// signature gate). It re-runs image resolution and spawn for that one
+	// container: it never changes ContainerStatus.restart_count and never records
+	// a last_termination_state, which is what distinguishes it from
+	// RestartContainer. If the container is an init container and the start
+	// succeeds, the runtime resumes the init sequence and then starts the
+	// remaining containers; their states arrive on WatchPodStatus / GetPodStatus,
+	// not in this response. On failure the response carries the new typed
+	// failure_reason and the container stays Waiting. Calling it on a container
+	// that has a running or terminated process is refused with FailedPrecondition
+	// and FAILURE_REASON_NOT_UPDATABLE.
+	StartContainer(ctx context.Context, in *StartContainerRequest, opts ...grpc.CallOption) (*StartContainerResponse, error)
 }
 
 type runtimeClient struct {
@@ -261,6 +280,16 @@ func (c *runtimeClient) RestartContainer(ctx context.Context, in *RestartContain
 	return out, nil
 }
 
+func (c *runtimeClient) StartContainer(ctx context.Context, in *StartContainerRequest, opts ...grpc.CallOption) (*StartContainerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StartContainerResponse)
+	err := c.cc.Invoke(ctx, Runtime_StartContainer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RuntimeServer is the server API for Runtime service.
 // All implementations must embed UnimplementedRuntimeServer
 // for forward compatibility.
@@ -272,12 +301,16 @@ func (c *runtimeClient) RestartContainer(ctx context.Context, in *RestartContain
 // RPC numbering note: gRPC method names (not numbers) are the wire identity, so
 // there is no numeric range to reserve. The provider/runtimed process split
 // adds resource and metrics RPCs to THIS service — append-only; do not remove
-// or rename the methods below. ListPodStats and RestartContainer were added
-// later, append-only.
+// or rename the methods below. ListPodStats, RestartContainer, and
+// StartContainer were added later, append-only.
 type RuntimeServer interface {
 	// CreatePod materializes and starts a PodBox: it creates the per-pod dir,
 	// applies the Seatbelt profile, and posix_spawns each container as a native
 	// process. Idempotent on pod id (a second call for a live pod is a no-op).
+	// Success does not mean every container started: a container whose image
+	// cannot be resolved or whose config is invalid leaves the pod created with
+	// that container Waiting and a typed failure_reason, while pod-level failures
+	// still fail the call.
 	CreatePod(context.Context, *CreatePodRequest) (*CreatePodResponse, error)
 	// DeletePod kills the pod's process group (SIGKILL), tears down the PodBox,
 	// and forgets it. Idempotent: deleting an unknown pod succeeds.
@@ -322,6 +355,20 @@ type RuntimeServer interface {
 	// drives this — it is the runtime action the provider's probe runner invokes
 	// (the seam that previously only bumped restart_count via a nil restartFunc).
 	RestartContainer(context.Context, *RestartContainerRequest) (*RestartContainerResponse, error)
+	// StartContainer starts a container that is Waiting because a previous start
+	// attempt failed before the process was spawned (image resolution, registry
+	// credential, platform match, imagePullPolicy Never, run-spec build, or the
+	// signature gate). It re-runs image resolution and spawn for that one
+	// container: it never changes ContainerStatus.restart_count and never records
+	// a last_termination_state, which is what distinguishes it from
+	// RestartContainer. If the container is an init container and the start
+	// succeeds, the runtime resumes the init sequence and then starts the
+	// remaining containers; their states arrive on WatchPodStatus / GetPodStatus,
+	// not in this response. On failure the response carries the new typed
+	// failure_reason and the container stays Waiting. Calling it on a container
+	// that has a running or terminated process is refused with FailedPrecondition
+	// and FAILURE_REASON_NOT_UPDATABLE.
+	StartContainer(context.Context, *StartContainerRequest) (*StartContainerResponse, error)
 	mustEmbedUnimplementedRuntimeServer()
 }
 
@@ -367,6 +414,9 @@ func (UnimplementedRuntimeServer) ListPodStats(context.Context, *ListPodStatsReq
 }
 func (UnimplementedRuntimeServer) RestartContainer(context.Context, *RestartContainerRequest) (*RestartContainerResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RestartContainer not implemented")
+}
+func (UnimplementedRuntimeServer) StartContainer(context.Context, *StartContainerRequest) (*StartContainerResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StartContainer not implemented")
 }
 func (UnimplementedRuntimeServer) mustEmbedUnimplementedRuntimeServer() {}
 func (UnimplementedRuntimeServer) testEmbeddedByValue()                 {}
@@ -558,6 +608,24 @@ func _Runtime_RestartContainer_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Runtime_StartContainer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartContainerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeServer).StartContainer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Runtime_StartContainer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeServer).StartContainer(ctx, req.(*StartContainerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Runtime_ServiceDesc is the grpc.ServiceDesc for Runtime service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -592,6 +660,10 @@ var Runtime_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RestartContainer",
 			Handler:    _Runtime_RestartContainer_Handler,
+		},
+		{
+			MethodName: "StartContainer",
+			Handler:    _Runtime_StartContainer_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
