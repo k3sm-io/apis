@@ -11,6 +11,7 @@ syntax = "proto3";
 
 package k3sm.runtime.v1;
 
+import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "google/rpc/status.proto";
 
@@ -1214,6 +1215,15 @@ message ContainerStatus {
   // corev1.ContainerStatus.User.
   ContainerUser user = 12;
 
+  // image_pull is how the container's image was obtained. Set by the runtime
+  // once the image has been resolved for the most recent start attempt; absent
+  // while the container is Waiting on an image failure and before the first
+  // attempt completes. It exists so the node agent can emit the kubelet's
+  // `Pulled` event with the kubelet's two message shapes ("Successfully pulled
+  // image %q in %v" vs "Container image %q already present on machine")
+  // without guessing which one applies.
+  ImagePullOutcome image_pull = 13;
+
   // --- resource mirror (allocated from ContainerStatus's reserved
   // 100..149 band — its reserved comment earmarked these) ---
 
@@ -1229,6 +1239,22 @@ message ContainerStatus {
 
   // 100..101 allocated above; 102..149 stay reserved (149 ceiling preserved).
   reserved 102 to 149;
+}
+
+// ImagePullOutcome records how a container's image was obtained for its most
+// recent start attempt. It has no corev1 mirror: the kubelet learns the same
+// facts from its own pull path, and a provider that only sees the resolved
+// image cannot reconstruct them.
+message ImagePullOutcome {
+  // pulled is true when the runtime fetched the image from a registry for this
+  // start attempt, and false when the image was already present locally.
+  bool pulled = 1;
+  // duration is the wall time the resolution step took. Present in both cases:
+  // for a local hit it is the time spent proving the image was there.
+  google.protobuf.Duration duration = 2;
+
+  // 100..149 is consumable headroom, as in the sibling status messages.
+  reserved 100 to 149;
 }
 
 // VolumeMountStatus is the status mirror of a VolumeMount. Mirrors
