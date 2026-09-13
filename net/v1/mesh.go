@@ -18,6 +18,8 @@ package netv1
 
 import (
 	"fmt"
+	"net"
+	"strconv"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -190,6 +192,9 @@ func (s MeshPeerSpec) Validate() error {
 	if s.Endpoint == "" {
 		return fmt.Errorf("%w: mesh peer %q missing endpoint", ErrInvalid, s.NodeName)
 	}
+	if err := validateHostPort(s.Endpoint); err != nil {
+		return fmt.Errorf("%w: mesh peer %q %w", ErrInvalid, s.NodeName, err)
+	}
 	if s.PodCIDR == "" {
 		return fmt.Errorf("%w: mesh peer %q missing podCIDR", ErrInvalid, s.NodeName)
 	}
@@ -197,6 +202,75 @@ func (s MeshPeerSpec) Validate() error {
 		return fmt.Errorf("%w: mesh peer %q has no allowedIPs", ErrInvalid, s.NodeName)
 	}
 	return nil
+}
+
+// validateHostPort reports whether endpoint is a syntactically well-formed
+// wireguard endpoint: a "host:port" pair whose host is a non-empty IP literal
+// (an IPv6 literal MUST be bracketed, e.g. "[fd00::1]:51820") or a DNS name,
+// and whose port is a decimal number in 1–65535. It is shared by
+// MeshPeerSpec.Validate and MeshEnrollRequest.Validate so both sides of the
+// mesh contract reject the same strings.
+//
+// This is a SYNTAX check only. It cannot say whether the address is reachable,
+// routable, or genuinely the publishing node's — those are not knowable from
+// the string, and none of them is what this guards against. Its job is to stop
+// a malformed endpoint from being written to the API and fanned out to every
+// peer, where it would fail at wireguard-configuration time on each node.
+//
+// The returned error carries no ErrInvalid: callers wrap it with their own
+// field context, so the sentinel is attached exactly once.
+func validateHostPort(endpoint string) error {
+	host, port, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		return fmt.Errorf("endpoint %q is not host:port", endpoint)
+	}
+	if host == "" {
+		return fmt.Errorf("endpoint %q has an empty host", endpoint)
+	}
+	if net.ParseIP(host) == nil && !validDNSName(host) {
+		return fmt.Errorf("endpoint %q has an invalid host %q", endpoint, host)
+	}
+	// ParseUint rejects a sign, a non-decimal digit, and (at bitSize 16)
+	// anything above 65535; port 0 is never a listening wireguard port.
+	n, err := strconv.ParseUint(port, 10, 16)
+	if err != nil || n == 0 {
+		return fmt.Errorf("endpoint %q has an invalid port %q", endpoint, port)
+	}
+	return nil
+}
+
+// validDNSName reports whether h is a syntactically valid DNS name: at most 253
+// characters, dot-separated labels of 1–63 characters drawn from letters,
+// digits, and '-', with no label starting or ending in '-'. A trailing root dot
+// is not accepted — an endpoint is written by a node, not typed as a zone name.
+func validDNSName(h string) bool {
+	if len(h) > 253 {
+		return false
+	}
+	label := 0
+	for i := 0; i < len(h); i++ {
+		c := h[i]
+		switch {
+		case c == '.':
+			if label == 0 || h[i-1] == '-' {
+				return false
+			}
+			label = 0
+			continue
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '-':
+			if label == 0 {
+				return false
+			}
+		default:
+			return false
+		}
+		label++
+		if label > 63 {
+			return false
+		}
+	}
+	return label != 0 && h[len(h)-1] != '-'
 }
 
 // DeepCopyInto copies the receiver into out (hand-written; apis runs no
@@ -350,6 +424,9 @@ func (r MeshEnrollRequest) Validate() error {
 	}
 	if r.Endpoint == "" {
 		return fmt.Errorf("%w: mesh-enroll request missing endpoint", ErrInvalid)
+	}
+	if err := validateHostPort(r.Endpoint); err != nil {
+		return fmt.Errorf("%w: mesh-enroll request %w", ErrInvalid, err)
 	}
 	return nil
 }
