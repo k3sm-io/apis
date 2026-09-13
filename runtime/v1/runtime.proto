@@ -56,8 +56,16 @@ service Runtime {
   // counterpart to WatchPodStatus, for callers that don't want a stream).
   rpc GetPodStatus(GetPodStatusRequest) returns (GetPodStatusResponse);
 
-  // GetLogs is a server stream of a container's combined stdout/stderr. Honors
-  // follow/tail/since like `kubectl logs`.
+  // GetLogs is a server stream of a container's combined stdout/stderr,
+  // honoring follow/tail/since like `kubectl logs`.
+  //
+  // DEPRECATED for native (host-process) pods. Their output is written to disk
+  // in the CRI log format at ContainerStatus.log_path, and the node reads that
+  // file directly exactly as the kubelet does, so runtimed answers Unimplemented
+  // here for a native pod. The RPC and its messages stay: guest/v1's
+  // GuestAgent.Logs reuses GetLogsRequest/LogEntry verbatim, and for a vm pod —
+  // whose output is captured inside the guest, off the node's filesystem — the
+  // stream remains the only way out.
   rpc GetLogs(GetLogsRequest) returns (stream LogEntry);
 
   // Exec runs a command in a container (`kubectl exec`). Bidirectional stream:
@@ -104,6 +112,15 @@ service Runtime {
   // that has a running or terminated process is refused with FailedPrecondition
   // and FAILURE_REASON_NOT_UPDATABLE.
   rpc StartContainer(StartContainerRequest) returns (StartContainerResponse);
+
+  // ReopenContainerLog asks the runtime to reopen the stdout/stderr log file
+  // for the container. It is called after the file has been rotated, so the
+  // container's writers move off the rotated inode and onto the fresh
+  // ContainerStatus.log_path. If the container is not running the runtime
+  // returns an error and MUST NOT create a new log file — an empty file for a
+  // container that can never write to it would read as "no output" rather than
+  // "not running". Appended after StartContainer (the service is append-only).
+  rpc ReopenContainerLog(ReopenContainerLogRequest) returns (ReopenContainerLogResponse);
 }
 
 // ---------------------------------------------------------------------------
@@ -186,6 +203,23 @@ message PodBox {
   // credentials. runtimed confines the credential to the pull client.
   // Mirrors corev1.PodSpec.ImagePullSecrets.
   repeated LocalObjectReference image_pull_secrets = 18;
+
+  // log_directory is the node-computed absolute directory the pod's container
+  // logs are written under, in the kubelet's shape
+  // <podLogsDir>/<namespace>_<name>_<uid>. The node computes it — a runtime
+  // that derived its own would put the logs somewhere the node agent does not
+  // read, which is the whole failure this field exists to prevent.
+  //
+  // REQUIRED: runtimed rejects an empty value with InvalidArgument on
+  // CreatePod rather than falling back to a path of its own choosing. Within
+  // it the runtime creates <log_directory>/<container>/<restartCount>.log per
+  // container instance, in the CRI log format, so every instance of a
+  // restarting container keeps its own file and `kubectl logs --previous`
+  // has something to read.
+  //
+  // Allocated the next free sequential number below 100 (18 was the last),
+  // never inside the 100..199 resource band below.
+  string log_directory = 19;
 
   // --- resource limits (allocated from PodBox's reserved 100..199 band; they
   // never collide with the low-number fields above) ---
@@ -1224,6 +1258,15 @@ message ContainerStatus {
   // without guessing which one applies.
   ImagePullOutcome image_pull = 13;
 
+  // log_path is the absolute path of the CURRENT instance's CRI log file
+  // (<PodBox.log_directory>/<name>/<restart_count>.log). It is the read path
+  // for `kubectl logs`: the node opens this file directly, as the kubelet
+  // does, instead of streaming through the runtime. Mirrors the CRI
+  // ContainerStatus.log_path. Empty while the container has no live instance.
+  // Allocated the next free sequential number below 100 (13 was the last);
+  // the 100..149 band below is untouched.
+  string log_path = 14;
+
   // --- resource mirror (allocated from ContainerStatus's reserved
   // 100..149 band — its reserved comment earmarked these) ---
 
@@ -1327,6 +1370,17 @@ message ContainerStateTerminated {
   google.protobuf.Timestamp started_at = 5;
   google.protobuf.Timestamp finished_at = 6;
   string container_id = 7;
+
+  // log_path is the absolute path of THIS terminated instance's CRI log file.
+  // Carried on the state rather than recomputed from a restart count, because
+  // the count has already moved on by the time a reader sees the termination.
+  // It is what `kubectl logs --previous` reads off
+  // ContainerStatus.last_termination_state, and it is empty once the node has
+  // pruned the file — a stale path would be indistinguishable from an empty log.
+  string log_path = 8;
+
+  // 100..149 is consumable headroom, as in the sibling status messages.
+  reserved 100 to 149;
 }
 
 // ---------------------------------------------------------------------------
@@ -1538,6 +1592,11 @@ message GetPodStatusResponse {
 }
 
 // GetLogsRequest selects a container's logs and the streaming options.
+//
+// DEPRECATED as the read path for native (host-process) pods, with
+// Runtime.GetLogs: the node reads ContainerStatus.log_path off the filesystem
+// instead. The message stays because it is the wire shape guest/v1's
+// GuestAgent.Logs reuses verbatim for a vm pod.
 message GetLogsRequest {
   string pod_id = 1;
   string container = 2;
@@ -1553,6 +1612,9 @@ message GetLogsRequest {
   bool previous = 7;
   // limit_bytes, if > 0, caps the bytes returned.
   int64 limit_bytes = 8;
+
+  // 100..149 is consumable headroom, as in the sibling request messages.
+  reserved 100 to 149;
 }
 
 // LogEntry is one chunk of container output on the GetLogs stream.
@@ -1563,6 +1625,16 @@ message LogEntry {
   google.protobuf.Timestamp timestamp = 2;
   // stream identifies stdout vs stderr.
   LogStream stream = 3;
+
+  // partial is the CRI `P` tag: this entry is a fragment of a longer logical
+  // line, not a line of its own. A reader concatenates consecutive entries
+  // until one arrives with partial=false, which carries the line's end. false
+  // therefore means "this entry completes a line" — the common case, and the
+  // safe default for a producer that never splits.
+  bool partial = 4;
+
+  // 100..149 is consumable headroom, as in the sibling stream messages.
+  reserved 100 to 149;
 }
 
 // LogStream identifies a container output stream.
@@ -1816,6 +1888,22 @@ message StartContainerResponse {
   // failure_reason gives a typed, switchable cause; on failure the container
   // stays Waiting carrying the same reason.
   FailureReason failure_reason = 3;
+  reserved 100 to 149;
+}
+
+// ReopenContainerLogRequest identifies the container whose log file to reopen
+// after the node has rotated it.
+message ReopenContainerLogRequest {
+  // pod_id is the pod whose container log to reopen.
+  string pod_id = 1;
+  // container is the container name within the pod.
+  string container = 2;
+  reserved 100 to 149;
+}
+
+// ReopenContainerLogResponse is empty: success is the absence of an error, and
+// a failure — including the not-running case — arrives as the RPC status.
+message ReopenContainerLogResponse {
   reserved 100 to 149;
 }
 

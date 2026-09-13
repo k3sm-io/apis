@@ -102,7 +102,14 @@ type GuestAgentClient interface {
 	// Logs streams a guest container's output, reusing the runtime/v1 log stream
 	// messages verbatim. In GetLogsRequest, pod_id MUST equal the pod this guest
 	// booted and container selects within it; follow / tail_lines / since_time /
-	// timestamps / previous / limit_bytes keep their runtime/v1 meaning.
+	// timestamps / previous / limit_bytes keep their runtime/v1 meaning. In
+	// LogEntry, partial carries the guest capture's chunk boundary: the agent
+	// sets it when a read returned a fragment of a longer logical line, and the
+	// host concatenates until an entry arrives with partial=false.
+	//
+	// This stream stays the read path for a vm pod even though it is deprecated
+	// for native pods: guest output is captured inside the guest, so there is no
+	// ContainerStatus.log_path on the node for the reader to open.
 	Logs(ctx context.Context, in *v1.GetLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[v1.LogEntry], error)
 	// Stats returns a per-container resource sample read from the guest's cgroup2
 	// hierarchy. It is answered ON DEMAND — the host asks when it needs a sample
@@ -298,7 +305,14 @@ type GuestAgentServer interface {
 	// Logs streams a guest container's output, reusing the runtime/v1 log stream
 	// messages verbatim. In GetLogsRequest, pod_id MUST equal the pod this guest
 	// booted and container selects within it; follow / tail_lines / since_time /
-	// timestamps / previous / limit_bytes keep their runtime/v1 meaning.
+	// timestamps / previous / limit_bytes keep their runtime/v1 meaning. In
+	// LogEntry, partial carries the guest capture's chunk boundary: the agent
+	// sets it when a read returned a fragment of a longer logical line, and the
+	// host concatenates until an entry arrives with partial=false.
+	//
+	// This stream stays the read path for a vm pod even though it is deprecated
+	// for native pods: guest output is captured inside the guest, so there is no
+	// ContainerStatus.log_path on the node for the reader to open.
 	Logs(*v1.GetLogsRequest, grpc.ServerStreamingServer[v1.LogEntry]) error
 	// Stats returns a per-container resource sample read from the guest's cgroup2
 	// hierarchy. It is answered ON DEMAND — the host asks when it needs a sample
