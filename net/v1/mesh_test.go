@@ -251,12 +251,71 @@ func TestMeshPeerSpecValidate(t *testing.T) {
 	}
 }
 
+// TestMeshPeerEndpointMustBeHostPort pins the endpoint syntax both sides of the
+// mesh contract accept. A node republishes its endpoint periodically, so a
+// malformed value would otherwise be written once and fanned out to every peer,
+// failing only at wireguard-configuration time on each of them. MeshPeerSpec
+// and MeshEnrollRequest must agree exactly — they share validateHostPort.
+func TestMeshPeerEndpointMustBeHostPort(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		endpoint string
+		wantErr  bool
+	}{
+		{"ipv4 host:port", "192.168.0.111:51820", false},
+		{"dns host:port", "host.local:51820", false},
+		{"bracketed ipv6", "[fd00::1]:51820", false},
+		{"empty", "", true},
+		{"no port", "192.168.0.111", true},
+		{"port zero", "192.168.0.111:0", true},
+		{"port out of range", "192.168.0.111:70000", true},
+		{"unbracketed ipv6", "fd00::1:51820", true},
+		{"non-numeric port", "192.168.0.111:abc", true},
+		{"leading space", " 192.168.0.111:51820", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			spec := sampleMeshPeer().Spec
+			spec.Endpoint = tc.endpoint
+			specErr := spec.Validate()
+
+			req := MeshEnrollRequest{
+				NodeName:  "studio-1",
+				PublicKey: "fakeBase64PublicKey0000000000000000000000000=",
+				Endpoint:  tc.endpoint,
+			}.WithDefaults()
+			reqErr := req.Validate()
+
+			for _, got := range []struct {
+				who string
+				err error
+			}{{"MeshPeerSpec.Validate", specErr}, {"MeshEnrollRequest.Validate", reqErr}} {
+				if tc.wantErr {
+					if got.err == nil {
+						t.Fatalf("%s(%q) = nil, want error", got.who, tc.endpoint)
+					}
+					if !errors.Is(got.err, ErrInvalid) {
+						t.Fatalf("%s(%q) error %v does not wrap ErrInvalid", got.who, tc.endpoint, got.err)
+					}
+					continue
+				}
+				if got.err != nil {
+					t.Fatalf("%s(%q) = %v, want nil", got.who, tc.endpoint, got.err)
+				}
+			}
+		})
+	}
+}
+
 func TestMeshPeerSpecWithDefaults(t *testing.T) {
 	t.Parallel()
 
 	t.Run("stamps version + keepalive", func(t *testing.T) {
 		t.Parallel()
-		out := MeshPeerSpec{NodeName: "n", PublicKey: "k", Endpoint: "e", PodCIDR: "100.64.2.0/24", AllowedIPs: []string{"100.64.2.0/24"}}.WithDefaults()
+		out := MeshPeerSpec{NodeName: "n", PublicKey: "k", Endpoint: "192.168.1.21:51820", PodCIDR: "100.64.2.0/24", AllowedIPs: []string{"100.64.2.0/24"}}.WithDefaults()
 		if out.SchemaVersion != MeshPeerSchemaVersion {
 			t.Fatalf("SchemaVersion = %d, want %d", out.SchemaVersion, MeshPeerSchemaVersion)
 		}
@@ -375,7 +434,7 @@ func TestMeshEnrollValidate(t *testing.T) {
 		if err := (MeshEnrollRequest{}).Validate(); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("empty request Validate() = %v, want ErrInvalid (unstamped)", err)
 		}
-		ok := MeshEnrollRequest{NodeName: "n", PublicKey: "k", Endpoint: "e"}.WithDefaults()
+		ok := MeshEnrollRequest{NodeName: "n", PublicKey: "k", Endpoint: "192.168.1.21:51820"}.WithDefaults()
 		if err := ok.Validate(); err != nil {
 			t.Fatalf("Validate() = %v, want nil", err)
 		}
