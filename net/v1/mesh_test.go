@@ -263,16 +263,16 @@ func TestMeshPeerEndpointMustBeHostPort(t *testing.T) {
 		endpoint string
 		wantErr  bool
 	}{
-		{"ipv4 host:port", "192.168.0.111:51820", false},
+		{"ipv4 host:port", "192.0.2.111:51820", false},
 		{"dns host:port", "host.local:51820", false},
 		{"bracketed ipv6", "[fd00::1]:51820", false},
 		{"empty", "", true},
-		{"no port", "192.168.0.111", true},
-		{"port zero", "192.168.0.111:0", true},
-		{"port out of range", "192.168.0.111:70000", true},
+		{"no port", "192.0.2.111", true},
+		{"port zero", "192.0.2.111:0", true},
+		{"port out of range", "192.0.2.111:70000", true},
 		{"unbracketed ipv6", "fd00::1:51820", true},
-		{"non-numeric port", "192.168.0.111:abc", true},
-		{"leading space", " 192.168.0.111:51820", true},
+		{"non-numeric port", "192.0.2.111:abc", true},
+		{"leading space", " 192.0.2.111:51820", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
