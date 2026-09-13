@@ -29,19 +29,20 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Runtime_CreatePod_FullMethodName        = "/k3sm.runtime.v1.Runtime/CreatePod"
-	Runtime_DeletePod_FullMethodName        = "/k3sm.runtime.v1.Runtime/DeletePod"
-	Runtime_UpdatePod_FullMethodName        = "/k3sm.runtime.v1.Runtime/UpdatePod"
-	Runtime_WatchPodStatus_FullMethodName   = "/k3sm.runtime.v1.Runtime/WatchPodStatus"
-	Runtime_GetPodStatus_FullMethodName     = "/k3sm.runtime.v1.Runtime/GetPodStatus"
-	Runtime_GetLogs_FullMethodName          = "/k3sm.runtime.v1.Runtime/GetLogs"
-	Runtime_Exec_FullMethodName             = "/k3sm.runtime.v1.Runtime/Exec"
-	Runtime_Attach_FullMethodName           = "/k3sm.runtime.v1.Runtime/Attach"
-	Runtime_PortForward_FullMethodName      = "/k3sm.runtime.v1.Runtime/PortForward"
-	Runtime_GetRuntimeInfo_FullMethodName   = "/k3sm.runtime.v1.Runtime/GetRuntimeInfo"
-	Runtime_ListPodStats_FullMethodName     = "/k3sm.runtime.v1.Runtime/ListPodStats"
-	Runtime_RestartContainer_FullMethodName = "/k3sm.runtime.v1.Runtime/RestartContainer"
-	Runtime_StartContainer_FullMethodName   = "/k3sm.runtime.v1.Runtime/StartContainer"
+	Runtime_CreatePod_FullMethodName          = "/k3sm.runtime.v1.Runtime/CreatePod"
+	Runtime_DeletePod_FullMethodName          = "/k3sm.runtime.v1.Runtime/DeletePod"
+	Runtime_UpdatePod_FullMethodName          = "/k3sm.runtime.v1.Runtime/UpdatePod"
+	Runtime_WatchPodStatus_FullMethodName     = "/k3sm.runtime.v1.Runtime/WatchPodStatus"
+	Runtime_GetPodStatus_FullMethodName       = "/k3sm.runtime.v1.Runtime/GetPodStatus"
+	Runtime_GetLogs_FullMethodName            = "/k3sm.runtime.v1.Runtime/GetLogs"
+	Runtime_Exec_FullMethodName               = "/k3sm.runtime.v1.Runtime/Exec"
+	Runtime_Attach_FullMethodName             = "/k3sm.runtime.v1.Runtime/Attach"
+	Runtime_PortForward_FullMethodName        = "/k3sm.runtime.v1.Runtime/PortForward"
+	Runtime_GetRuntimeInfo_FullMethodName     = "/k3sm.runtime.v1.Runtime/GetRuntimeInfo"
+	Runtime_ListPodStats_FullMethodName       = "/k3sm.runtime.v1.Runtime/ListPodStats"
+	Runtime_RestartContainer_FullMethodName   = "/k3sm.runtime.v1.Runtime/RestartContainer"
+	Runtime_StartContainer_FullMethodName     = "/k3sm.runtime.v1.Runtime/StartContainer"
+	Runtime_ReopenContainerLog_FullMethodName = "/k3sm.runtime.v1.Runtime/ReopenContainerLog"
 )
 
 // RuntimeClient is the client API for Runtime service.
@@ -82,8 +83,16 @@ type RuntimeClient interface {
 	// GetPodStatus returns a single point-in-time PodStatus (the request/response
 	// counterpart to WatchPodStatus, for callers that don't want a stream).
 	GetPodStatus(ctx context.Context, in *GetPodStatusRequest, opts ...grpc.CallOption) (*GetPodStatusResponse, error)
-	// GetLogs is a server stream of a container's combined stdout/stderr. Honors
-	// follow/tail/since like `kubectl logs`.
+	// GetLogs is a server stream of a container's combined stdout/stderr,
+	// honoring follow/tail/since like `kubectl logs`.
+	//
+	// DEPRECATED for native (host-process) pods. Their output is written to disk
+	// in the CRI log format at ContainerStatus.log_path, and the node reads that
+	// file directly exactly as the kubelet does, so runtimed answers Unimplemented
+	// here for a native pod. The RPC and its messages stay: guest/v1's
+	// GuestAgent.Logs reuses GetLogsRequest/LogEntry verbatim, and for a vm pod —
+	// whose output is captured inside the guest, off the node's filesystem — the
+	// stream remains the only way out.
 	GetLogs(ctx context.Context, in *GetLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LogEntry], error)
 	// Exec runs a command in a container (`kubectl exec`). Bidirectional stream:
 	// client sends stdin + a resize channel, server sends stdout/stderr and a
@@ -123,6 +132,14 @@ type RuntimeClient interface {
 	// that has a running or terminated process is refused with FailedPrecondition
 	// and FAILURE_REASON_NOT_UPDATABLE.
 	StartContainer(ctx context.Context, in *StartContainerRequest, opts ...grpc.CallOption) (*StartContainerResponse, error)
+	// ReopenContainerLog asks the runtime to reopen the stdout/stderr log file
+	// for the container. It is called after the file has been rotated, so the
+	// container's writers move off the rotated inode and onto the fresh
+	// ContainerStatus.log_path. If the container is not running the runtime
+	// returns an error and MUST NOT create a new log file — an empty file for a
+	// container that can never write to it would read as "no output" rather than
+	// "not running". Appended after StartContainer (the service is append-only).
+	ReopenContainerLog(ctx context.Context, in *ReopenContainerLogRequest, opts ...grpc.CallOption) (*ReopenContainerLogResponse, error)
 }
 
 type runtimeClient struct {
@@ -290,6 +307,16 @@ func (c *runtimeClient) StartContainer(ctx context.Context, in *StartContainerRe
 	return out, nil
 }
 
+func (c *runtimeClient) ReopenContainerLog(ctx context.Context, in *ReopenContainerLogRequest, opts ...grpc.CallOption) (*ReopenContainerLogResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReopenContainerLogResponse)
+	err := c.cc.Invoke(ctx, Runtime_ReopenContainerLog_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RuntimeServer is the server API for Runtime service.
 // All implementations must embed UnimplementedRuntimeServer
 // for forward compatibility.
@@ -328,8 +355,16 @@ type RuntimeServer interface {
 	// GetPodStatus returns a single point-in-time PodStatus (the request/response
 	// counterpart to WatchPodStatus, for callers that don't want a stream).
 	GetPodStatus(context.Context, *GetPodStatusRequest) (*GetPodStatusResponse, error)
-	// GetLogs is a server stream of a container's combined stdout/stderr. Honors
-	// follow/tail/since like `kubectl logs`.
+	// GetLogs is a server stream of a container's combined stdout/stderr,
+	// honoring follow/tail/since like `kubectl logs`.
+	//
+	// DEPRECATED for native (host-process) pods. Their output is written to disk
+	// in the CRI log format at ContainerStatus.log_path, and the node reads that
+	// file directly exactly as the kubelet does, so runtimed answers Unimplemented
+	// here for a native pod. The RPC and its messages stay: guest/v1's
+	// GuestAgent.Logs reuses GetLogsRequest/LogEntry verbatim, and for a vm pod —
+	// whose output is captured inside the guest, off the node's filesystem — the
+	// stream remains the only way out.
 	GetLogs(*GetLogsRequest, grpc.ServerStreamingServer[LogEntry]) error
 	// Exec runs a command in a container (`kubectl exec`). Bidirectional stream:
 	// client sends stdin + a resize channel, server sends stdout/stderr and a
@@ -369,6 +404,14 @@ type RuntimeServer interface {
 	// that has a running or terminated process is refused with FailedPrecondition
 	// and FAILURE_REASON_NOT_UPDATABLE.
 	StartContainer(context.Context, *StartContainerRequest) (*StartContainerResponse, error)
+	// ReopenContainerLog asks the runtime to reopen the stdout/stderr log file
+	// for the container. It is called after the file has been rotated, so the
+	// container's writers move off the rotated inode and onto the fresh
+	// ContainerStatus.log_path. If the container is not running the runtime
+	// returns an error and MUST NOT create a new log file — an empty file for a
+	// container that can never write to it would read as "no output" rather than
+	// "not running". Appended after StartContainer (the service is append-only).
+	ReopenContainerLog(context.Context, *ReopenContainerLogRequest) (*ReopenContainerLogResponse, error)
 	mustEmbedUnimplementedRuntimeServer()
 }
 
@@ -417,6 +460,9 @@ func (UnimplementedRuntimeServer) RestartContainer(context.Context, *RestartCont
 }
 func (UnimplementedRuntimeServer) StartContainer(context.Context, *StartContainerRequest) (*StartContainerResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StartContainer not implemented")
+}
+func (UnimplementedRuntimeServer) ReopenContainerLog(context.Context, *ReopenContainerLogRequest) (*ReopenContainerLogResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReopenContainerLog not implemented")
 }
 func (UnimplementedRuntimeServer) mustEmbedUnimplementedRuntimeServer() {}
 func (UnimplementedRuntimeServer) testEmbeddedByValue()                 {}
@@ -626,6 +672,24 @@ func _Runtime_StartContainer_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Runtime_ReopenContainerLog_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReopenContainerLogRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeServer).ReopenContainerLog(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Runtime_ReopenContainerLog_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeServer).ReopenContainerLog(ctx, req.(*ReopenContainerLogRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Runtime_ServiceDesc is the grpc.ServiceDesc for Runtime service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -664,6 +728,10 @@ var Runtime_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "StartContainer",
 			Handler:    _Runtime_StartContainer_Handler,
+		},
+		{
+			MethodName: "ReopenContainerLog",
+			Handler:    _Runtime_ReopenContainerLog_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
