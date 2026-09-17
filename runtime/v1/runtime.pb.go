@@ -3525,6 +3525,27 @@ type SandboxProfile struct {
 	// for each, on top of the default-deny, so a same-uid pod cannot drive the
 	// privileged helper. Threaded as data because runtimed cannot import darwin-net.
 	DeniedUnixSocketPaths []string `protobuf:"bytes,6,rep,name=denied_unix_socket_paths,json=deniedUnixSocketPaths,proto3" json:"denied_unix_socket_paths,omitempty"`
+	// denied_local_ports are loopback-only TCP ports the control plane listens
+	// on — notably kine's plaintext datastore port. The k3sm provider stamps
+	// this list; the SBPL generator does not know what listens on a given port,
+	// it only denies. For every pod that requested network (allow_network or
+	// allow_internet_egress), the generator emits, after that pod's network
+	// allow, a last-match-wins
+	// (deny network-outbound (remote ip "localhost:<port>")) for each entry, so
+	// a same-uid pod cannot dial the plaintext datastore. Threaded as data for
+	// the same reason as denied_unix_socket_paths (field 6): runtimed must not
+	// import the distribution.
+	//
+	// Enforcement ceiling, stated plainly: Seatbelt filters network-outbound
+	// rules by port, not by the destination address alone, so a Service that
+	// happens to listen on the same port is ALSO unreachable from a confined
+	// pod — this field cannot distinguish "the control plane's own listener" from
+	// "a workload Service that reused the number".
+	//
+	// An empty list emits nothing (no denial added). Values are 1..65535; there
+	// is no proto validation of that range, matching field 6 — an out-of-range
+	// value is the caller's error, not something this contract catches.
+	DeniedLocalPorts []uint32 `protobuf:"varint,7,rep,packed,name=denied_local_ports,json=deniedLocalPorts,proto3" json:"denied_local_ports,omitempty"`
 	// vm_vcpus is the number of virtual CPUs the micro-VM boots with
 	// (VZVirtualMachineConfiguration.cpuCount). 0 lets the VM backend choose a
 	// default. Ignored unless backend == SANDBOX_BACKEND_VM.
@@ -3675,6 +3696,13 @@ func (x *SandboxProfile) GetAllowNetwork() bool {
 func (x *SandboxProfile) GetDeniedUnixSocketPaths() []string {
 	if x != nil {
 		return x.DeniedUnixSocketPaths
+	}
+	return nil
+}
+
+func (x *SandboxProfile) GetDeniedLocalPorts() []uint32 {
+	if x != nil {
+		return x.DeniedLocalPorts
 	}
 	return nil
 }
@@ -7796,14 +7824,15 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\x11SecretKeySelector\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12\x1a\n" +
-	"\boptional\x18\x03 \x01(\bR\boptional\"\xf4\x03\n" +
+	"\boptional\x18\x03 \x01(\bR\boptional\"\xa2\x04\n" +
 	"\x0eSandboxProfile\x129\n" +
 	"\abackend\x18\x01 \x01(\x0e2\x1f.k3sm.runtime.v1.SandboxBackendR\abackend\x12(\n" +
 	"\x10data_volume_path\x18\x02 \x01(\tR\x0edataVolumePath\x12(\n" +
 	"\x10extra_read_paths\x18\x03 \x03(\tR\x0eextraReadPaths\x12*\n" +
 	"\x11extra_write_paths\x18\x04 \x03(\tR\x0fextraWritePaths\x12#\n" +
 	"\rallow_network\x18\x05 \x01(\bR\fallowNetwork\x127\n" +
-	"\x18denied_unix_socket_paths\x18\x06 \x03(\tR\x15deniedUnixSocketPaths\x12\x19\n" +
+	"\x18denied_unix_socket_paths\x18\x06 \x03(\tR\x15deniedUnixSocketPaths\x12,\n" +
+	"\x12denied_local_ports\x18\a \x03(\rR\x10deniedLocalPorts\x12\x19\n" +
 	"\bvm_vcpus\x18d \x01(\rR\avmVcpus\x12&\n" +
 	"\x0fvm_memory_bytes\x18e \x01(\x03R\rvmMemoryBytes\x12\x1b\n" +
 	"\tallow_gpu\x18f \x01(\bR\ballowGpu\x122\n" +

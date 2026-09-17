@@ -903,6 +903,28 @@ message SandboxProfile {
   // privileged helper. Threaded as data because runtimed cannot import darwin-net.
   repeated string denied_unix_socket_paths = 6;
 
+  // denied_local_ports are loopback-only TCP ports the control plane listens
+  // on — notably kine's plaintext datastore port. The k3sm provider stamps
+  // this list; the SBPL generator does not know what listens on a given port,
+  // it only denies. For every pod that requested network (allow_network or
+  // allow_internet_egress), the generator emits, after that pod's network
+  // allow, a last-match-wins
+  // (deny network-outbound (remote ip "localhost:<port>")) for each entry, so
+  // a same-uid pod cannot dial the plaintext datastore. Threaded as data for
+  // the same reason as denied_unix_socket_paths (field 6): runtimed must not
+  // import the distribution.
+  //
+  // Enforcement ceiling, stated plainly: Seatbelt filters network-outbound
+  // rules by port, not by the destination address alone, so a Service that
+  // happens to listen on the same port is ALSO unreachable from a confined
+  // pod — this field cannot distinguish "the control plane's own listener" from
+  // "a workload Service that reused the number".
+  //
+  // An empty list emits nothing (no denial added). Values are 1..65535; there
+  // is no proto validation of that range, matching field 6 — an out-of-range
+  // value is the caller's error, not something this contract catches.
+  repeated uint32 denied_local_ports = 7;
+
   // --- VM-backend sizing (allocated from SandboxProfile's reserved
   // 100..149 band). Read ONLY when backend == SANDBOX_BACKEND_VM: a
   // Virtualization.framework micro-VM must be given a concrete vCPU count and

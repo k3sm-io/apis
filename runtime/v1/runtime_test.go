@@ -97,6 +97,7 @@ func TestRoundTrip(t *testing.T) {
 		ExtraWritePaths:       []string{"/var/log/app"},
 		AllowNetwork:          true,
 		DeniedUnixSocketPaths: []string{"/var/run/k3sm/netd.sock"},
+		DeniedLocalPorts:      []uint32{2379},
 	}, &SandboxProfile{})
 
 	roundTrip(t, "PodBox", &PodBox{
@@ -607,6 +608,35 @@ func TestSandboxProfileDeniedUnixSocketPaths(t *testing.T) {
 	for i := range want {
 		if got[i] != want[i] {
 			t.Fatalf("denied_unix_socket_paths[%d]: got %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// TestSandboxProfileDeniedLocalPorts proves the additive field 7
+// (denied_local_ports) survives a proto marshal/unmarshal cycle and that its
+// generated getter exists. The k3sm provider fills these loopback-only TCP
+// ports (notably kine's plaintext datastore port); the SBPL generator uses
+// them to emit a per-port network-outbound denial for pods that requested
+// network. Before field 7 existed this test would not compile — after, it
+// asserts the slice reaches the wire intact.
+func TestSandboxProfileDeniedLocalPorts(t *testing.T) {
+	t.Parallel()
+	want := []uint32{2379, 6443}
+	b, err := proto.Marshal(&SandboxProfile{DeniedLocalPorts: want})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	out := &SandboxProfile{}
+	if err := proto.Unmarshal(b, out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	got := out.GetDeniedLocalPorts()
+	if len(got) != len(want) {
+		t.Fatalf("denied_local_ports length: got %d, want %d (%v)", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("denied_local_ports[%d]: got %d, want %d", i, got[i], want[i])
 		}
 	}
 }
