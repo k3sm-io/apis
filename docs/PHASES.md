@@ -490,6 +490,28 @@ phases:
             met: false
             check: "buf lint + generate-diff + breaking all green; TestHandlerTable pins the new row and the unknown-handler refusal; the runtime/v1 golden fixtures round-trip the renamed fields at the same numbers"
             method: unit
+
+  - id: M16
+    title: MLX fleet — upstream-compatible inference serving over native MLX workers (apis slice — docs-only)
+    status: todo
+    strategy: hard cut
+    depends_on: []
+    note: "Authoritative input: docs/m16-plan.md (workspace). apis is DOCS-ONLY in M16 — no proto change, no CRD field, no new type. The mlx.k3sm.io/gpu resource KEY stays stable and is the stable contract; its COUNT semantics become a k3sm node policy (two slots per Mac admitted by a cumulative wired-memory fit — m16-plan R5)."
+    subphases:
+      - id: M16.1
+        title: mlx/v1alpha1 doc.go stability note — capacity COUNT is a k3sm node policy
+        status: todo
+        strategy: hard cut
+        depends_on: []
+        deliverables:
+          - id: M16.1-d1
+            done: false
+            desc: "`mlx/v1alpha1/doc.go` §Stability gains the sentence that the capacity COUNT advertised for `mlx.k3sm.io/gpu` is a k3sm node policy that may exceed 1 (two per node in M16), while the resource KEY and the `.present` label are the stable contract; no Go symbol changes"
+        acceptance:
+          - id: M16.1-a1
+            met: false
+            check: "`go vet ./...` and `go test ./...` green; the doc.go sentence present; `TestMLXKeys` unchanged"
+            method: unit
 ---
 
 # apis — Phase roadmap
@@ -754,3 +776,19 @@ in-code initramfs sha256 pin (`--guest-artifacts-dir` is unsupported skew).
 podnet adapter, provider-side `SetupGuest` **before** `toPodBox` — M10.1 one-authority ordering; the
 102..149 band keeps its earmark); no default-platform field (policy derives runtimed-side); Rosetta
 advertisement rides the existing `RuntimeCondition` repeated field (the B1 precedent).
+
+## M16 — MLX fleet: upstream-compatible inference serving over native MLX workers (apis slice — docs-only) ⬜
+`apis` is **docs-only** in M16 (`docs/m16-plan.md`, workspace, is authoritative): no proto change,
+no CRD field, no new type. The `mlx.k3sm.io/gpu` resource KEY stays stable and is the one stable
+contract; its COUNT semantics become a k3sm node-capacity policy (two slots per Mac, admitted by a
+cumulative wired-memory fit) rather than an `apis` contract change.
+
+### M16.1 — mlx/v1alpha1 doc.go stability note ⬜
+**Deliverables**
+- ⬜ `M16.1-d1` `mlx/v1alpha1/doc.go` §Stability gains the sentence that the capacity COUNT
+  advertised for `mlx.k3sm.io/gpu` is a k3sm node policy that may exceed 1 (two per node in M16),
+  while the resource KEY and the `.present` label are the stable contract; no Go symbol changes.
+
+**Acceptance (exit gate)**
+- ⬜ `M16.1-a1` `go vet ./...` and `go test ./...` green; the doc.go sentence present;
+  `TestMLXKeys` unchanged — *method: unit*
