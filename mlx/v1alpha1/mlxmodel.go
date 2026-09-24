@@ -207,6 +207,13 @@ const MLXModelConditionReady = "Ready"
 //
 // It is CONDITIONS-FIRST: Conditions is the contract, and Phase/Endpoint/
 // ResolvedRevision are derived conveniences on top of it.
+//
+// Two different "revisions" appear here and must not be confused. The replica
+// counts (Replicas, ReadyReplicas, UpdatedReplicas) speak of the serving
+// workload's POD-TEMPLATE revision, the upstream Deployment/StatefulSet sense
+// of "current". ResolvedRevision (and Spec.Revision) speak of the MODEL-WEIGHTS
+// revision in the model repository. A replica can be on the current pod
+// template while serving stale weights, or the reverse.
 type MLXModelStatus struct {
 	// Conditions are the standard Kubernetes conditions for this model, of which
 	// MLXModelConditionReady is the primary one.
@@ -230,6 +237,20 @@ type MLXModelStatus struct {
 	// Spec.Revision was empty this is what the mutable default branch resolved
 	// to, which is the only record of what is really running.
 	ResolvedRevision string `json:"resolvedRevision,omitempty"`
+
+	// Replicas is the total number of serving pods the operator observed for
+	// this model, regardless of readiness or pod-template revision.
+	Replicas int32 `json:"replicas,omitempty"`
+
+	// ReadyReplicas is the number of serving pods that are Ready AND on the
+	// current pod-template revision AND not terminating. A Ready pod from an
+	// older template, or one being deleted, does not count.
+	ReadyReplicas int32 `json:"readyReplicas,omitempty"`
+
+	// UpdatedReplicas is the number of serving pods on the current pod-template
+	// revision, whether or not they are Ready yet. It is a pod-template count,
+	// not a model-weights one; see the MLXModelStatus doc.
+	UpdatedReplicas int32 `json:"updatedReplicas,omitempty"`
 }
 
 // MLXModelList is a list of MLXModel objects (the watch/list response type).

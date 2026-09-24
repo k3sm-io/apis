@@ -203,3 +203,18 @@ spec:
                 resolvedRevision:
                   type: string
                   description: ResolvedRevision is the exact model revision actually being served — the only record of what is really running when spec.revision was empty.
+                replicas:
+                  type: integer
+                  format: int32
+                  description: Replicas is the total number of serving pods observed, regardless of readiness or pod-template revision.
+                  minimum: 0
+                readyReplicas:
+                  type: integer
+                  format: int32
+                  description: ReadyReplicas is the number of serving pods that are Ready AND on the current pod-template revision AND not terminating.
+                  minimum: 0
+                updatedReplicas:
+                  type: integer
+                  format: int32
+                  description: UpdatedReplicas is the number of serving pods on the current pod-template revision (the workload template, not the model-weights revision), ready or not.
+                  minimum: 0
