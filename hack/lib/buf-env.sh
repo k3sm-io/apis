@@ -11,9 +11,9 @@
 # Sourced, never executed: it only sets variables and prepends to PATH.
 
 # Pinned toolchain versions (keep in lockstep with go.mod + buf.gen.yaml).
-BUF_VERSION=v1.71.0
-PROTOC_GEN_GO_VERSION=v1.36.11
-PROTOC_GEN_GO_GRPC_VERSION=v1.5.1
+BUF_VERSION=v1.73.0
+PROTOC_GEN_GO_VERSION=v1.36.12
+PROTOC_GEN_GO_GRPC_VERSION=v1.6.2
 
 GOBIN="$(go env GOPATH)/bin"
 case ":${PATH}:" in
