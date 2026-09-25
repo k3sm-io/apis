@@ -70,10 +70,12 @@ if ! command -v buf >/dev/null 2>&1; then
 	exit 3
 fi
 
+# The version verdict is buf-env.sh's tool_version_matches — the same detection
+# hack/gen.sh uses to decide a reinstall; here a mismatch only WARNs.
 buf_bin="$(command -v buf)"
-buf_ver="v$(buf --version 2>/dev/null || echo unknown)"
+buf_ver="$(buf --version 2>/dev/null || echo unknown)"
 echo "==> [apis] buf toolchain: ${buf_ver} (${buf_bin})"
-if [ "$buf_ver" != "$BUF_VERSION" ]; then
+if ! tool_version_matches buf "$BUF_VERSION"; then
 	echo "WARN: buf ${buf_ver} is not the pinned ${BUF_VERSION} — run hack/gen.sh if the generate-diff below is noisy" >&2
 fi
 
