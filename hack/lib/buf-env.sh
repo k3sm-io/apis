@@ -29,6 +29,9 @@ export PATH
 # shapes: `protoc-gen-go v1.36.12`, `protoc-gen-go-grpc 1.6.2`, buf's bare `1.73.0`.
 # An absent command, a non-zero exit, or empty output is "no match" — the verdict
 # fails toward reinstall (gen.sh) or a WARN (ci.sh), never toward silent trust.
+# It is a version-STRING check, not a binary-identity or integrity check: a binary
+# that echoes the pinned string is trusted. The supply-chain control is Go's module
+# checksum database, and only on the `go install` path.
 tool_version_matches() {
 	local cmd="$1" pinned="$2" out got
 	out="$("$cmd" --version 2>/dev/null)" || return 1
