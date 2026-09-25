@@ -8,7 +8,8 @@
 # wrong verdict on a machine where buf IS installed, merely unresolved. Both
 # hack/gen.sh and hack/ci.sh source this file so that verdict is made once.
 #
-# Sourced, never executed: it only sets variables and prepends to PATH.
+# Sourced, never executed: it only sets variables, prepends to PATH, and defines
+# tool_version_matches (the one version detection gen.sh and ci.sh both call).
 
 # Pinned toolchain versions (keep in lockstep with go.mod + buf.gen.yaml).
 BUF_VERSION=v1.73.0
@@ -21,3 +22,17 @@ case ":${PATH}:" in
 *) PATH="${GOBIN}:${PATH}" ;;
 esac
 export PATH
+
+# tool_version_matches <cmd> <pinned> — succeeds iff `<cmd> --version` exits 0 and
+# the LAST whitespace-separated field of its stdout equals <pinned>, with a leading
+# `v` stripped from both sides. That one normalization covers the three real
+# shapes: `protoc-gen-go v1.36.12`, `protoc-gen-go-grpc 1.6.2`, buf's bare `1.73.0`.
+# An absent command, a non-zero exit, or empty output is "no match" — the verdict
+# fails toward reinstall (gen.sh) or a WARN (ci.sh), never toward silent trust.
+tool_version_matches() {
+	local cmd="$1" pinned="$2" out got
+	out="$("$cmd" --version 2>/dev/null)" || return 1
+	got="$(printf '%s\n' "$out" | awk 'NF { last = $NF } END { print last }')"
+	[ -n "$got" ] || return 1
+	[ "${got#v}" = "${pinned#v}" ]
+}
