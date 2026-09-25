@@ -1,8 +1,8 @@
 version: v2
 # Plugins run as LOCAL binaries pinned by hack/gen.sh (it `go install`s exact versions
 # onto PATH before invoking buf). Pinned versions — keep in lockstep with go.mod:
-#   protoc-gen-go      v1.36.11  (google.golang.org/protobuf)
-#   protoc-gen-go-grpc v1.5.1    (google.golang.org/grpc/cmd/protoc-gen-go-grpc)
+#   protoc-gen-go      v1.36.12  (google.golang.org/protobuf)
+#   protoc-gen-go-grpc v1.6.2    (google.golang.org/grpc/cmd/protoc-gen-go-grpc)
 managed:
   enabled: true
   # Do NOT rewrite go_package for the well-known / googleapis imports — they must
