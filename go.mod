@@ -1,6 +1,6 @@
 module k3sm.io/apis
 
-go 1.25.8
+go 1.26.0
 
 require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260618152121-87f3d3e198d3
