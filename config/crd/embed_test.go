@@ -403,8 +403,10 @@ func TestNoGlobEmbed(t *testing.T) {
 
 	// The manifests deliberately embedded, each by its own named directive.
 	embedded := map[string]bool{
-		"mlx.k3sm.io_mlxmodels.yaml": false,
-		"net.k3sm.io_meshpeers.yaml": false,
+		"mlx.k3sm.io_mlxmodels.yaml":         false,
+		"net.k3sm.io_meshpeers.yaml":         false,
+		"helm.k3sm.io_helmcharts.yaml":       false,
+		"helm.k3sm.io_helmchartconfigs.yaml": false,
 	}
 
 	var directives []string
@@ -473,5 +475,17 @@ func TestNoGlobEmbed(t *testing.T) {
 	}
 	if strings.Contains(string(MeshPeerCRD()), MLXModelCRDName) {
 		t.Error("MeshPeerCRD returns the MLXModel CRD")
+	}
+	if !strings.Contains(string(HelmChartCRD()), HelmChartCRDName) {
+		t.Error("HelmChartCRD does not return the HelmChart CRD")
+	}
+	if strings.Contains(string(HelmChartCRD()), HelmChartConfigCRDName) {
+		t.Error("HelmChartCRD returns the HelmChartConfig CRD")
+	}
+	if !strings.Contains(string(HelmChartConfigCRD()), HelmChartConfigCRDName) {
+		t.Error("HelmChartConfigCRD does not return the HelmChartConfig CRD")
+	}
+	if strings.Contains(string(HelmChartConfigCRD()), HelmChartCRDName) {
+		t.Error("HelmChartConfigCRD returns the HelmChart CRD")
 	}
 }

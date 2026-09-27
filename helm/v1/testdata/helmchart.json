@@ -1,0 +1,45 @@
+{
+  "kind": "HelmChart",
+  "apiVersion": "helm.k3sm.io/v1",
+  "metadata": {
+    "name": "traefik",
+    "namespace": "kube-system",
+    "resourceVersion": "812",
+    "generation": 2,
+    "labels": {
+      "app": "ingress"
+    }
+  },
+  "spec": {
+    "chart": "traefik",
+    "repo": "https://traefik.github.io/charts",
+    "version": "34.1.0",
+    "targetNamespace": "ingress",
+    "createNamespace": true,
+    "valuesContent": "service:\n  type: LoadBalancer\n",
+    "set": {
+      "deployment.replicas": 3,
+      "logs.general.level": "INFO"
+    },
+    "chartContent": "H4sIAAAAAAAA",
+    "timeout": "5m0s",
+    "bootstrap": true,
+    "backOffLimit": 1000,
+    "failurePolicy": "abort",
+    "forceConflicts": true,
+    "takeOwnership": true
+  },
+  "status": {
+    "jobName": "helm-install-traefik",
+    "conditions": [
+      {
+        "type": "JobCreated",
+        "status": "True",
+        "lastUpdateTime": "2026-09-26T12:00:00Z",
+        "lastTransitionTime": "2026-09-26T12:00:00Z",
+        "reason": "Created",
+        "message": "Job kube-system/helm-install-traefik created"
+      }
+    ]
+  }
+}
