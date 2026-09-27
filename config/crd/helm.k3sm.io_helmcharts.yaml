@@ -1,0 +1,163 @@
+# HelmChart CRD (helm.k3sm.io/v1) — k3sm's analog of k3s's helm.cattle.io/v1
+# HelmChart, mirrored field for field (see k3sm.io/apis/helm/v1).
+#
+# Hand-authored (apis runs no controller-gen) to match the Go type in
+# k3sm.io/apis/helm/v1 (helmchart.go). k3sm applies THIS manifest from the
+# embedded bytes in k3sm.io/apis/config/crd; there is no shadow copy.
+#
+# Served+stored discipline: a SINGLE version v1 is both served and stored, and
+# the schema is ADDITIVE-ONLY. The shape is k3s's, so it is not novel and needs
+# no alpha runway. k3s fields not carried in v1 are reserved (the Go doc lists
+# them) and are pruned by this structural schema until they are added.
+#
+# The one deliberate divergence from k3s: spec.repo and spec.chart refuse an
+# http:// value (CEL rules below). The install Job runs as cluster-admin and
+# must not fetch a chart over cleartext.
+#
+# Scope is Namespaced, as in k3s. The printer columns are k3s's, minus
+# HelmVersion (not carried: only Helm 3 exists).
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: helmcharts.helm.k3sm.io
+spec:
+  group: helm.k3sm.io
+  scope: Namespaced
+  names:
+    kind: HelmChart
+    listKind: HelmChartList
+    plural: helmcharts
+    singular: helmchart
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      additionalPrinterColumns:
+        - name: Job
+          type: string
+          jsonPath: .status.jobName
+        - name: Chart
+          type: string
+          jsonPath: .spec.chart
+        - name: TargetNamespace
+          type: string
+          jsonPath: .spec.targetNamespace
+        - name: Version
+          type: string
+          jsonPath: .spec.version
+        - name: Repo
+          type: string
+          jsonPath: .spec.repo
+        - name: Bootstrap
+          type: boolean
+          jsonPath: .spec.bootstrap
+        - name: Failed
+          type: string
+          jsonPath: .status.conditions[?(@.type=='Failed')].status
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: HelmChart is one Helm release k3sm keeps installed, reconciled into a Job that runs helm.
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              description: HelmChartSpec is the desired release. When both chart and chartContent are set, chartContent wins.
+              properties:
+                chart:
+                  type: string
+                  description: Chart is the chart to install (a name in repo, an oci:// reference, or a chart URL). Ignored when chartContent is set.
+                  x-kubernetes-validations:
+                    - rule: "!self.lowerAscii().startsWith('http://')"
+                      message: spec.chart must not be an http:// URL; the install Job runs as cluster-admin and must not fetch a chart over cleartext (use https:// or oci://)
+                repo:
+                  type: string
+                  description: Repo is the chart repository URL chart is resolved against.
+                  x-kubernetes-validations:
+                    - rule: "!self.lowerAscii().startsWith('http://')"
+                      message: spec.repo must not be an http:// URL; the install Job runs as cluster-admin and must not fetch a chart over cleartext (use https://)
+                version:
+                  type: string
+                  description: Version is the chart version; empty means the repository's latest.
+                targetNamespace:
+                  type: string
+                  description: TargetNamespace is the namespace the release is installed into; empty means the HelmChart's own namespace.
+                createNamespace:
+                  type: boolean
+                  description: CreateNamespace creates targetNamespace if it does not exist.
+                valuesContent:
+                  type: string
+                  description: ValuesContent is a YAML values document passed to helm as a values file.
+                set:
+                  type: object
+                  description: Set are individual --set overrides applied after valuesContent; each value is a string or an integer.
+                  additionalProperties:
+                    x-kubernetes-int-or-string: true
+                chartContent:
+                  type: string
+                  description: ChartContent is a base64-encoded chart archive installed instead of fetching chart.
+                timeout:
+                  type: string
+                  description: Timeout bounds each helm operation, as a Go duration string (e.g. 5m0s); unset means the controller default.
+                  pattern: '^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$'
+                bootstrap:
+                  type: boolean
+                  description: Bootstrap marks a chart needed to bring the cluster up.
+                backOffLimit:
+                  type: integer
+                  format: int32
+                  minimum: 0
+                  description: BackOffLimit is the install Job's backoffLimit; unset means the controller default (1000).
+                failurePolicy:
+                  type: string
+                  description: FailurePolicy is what happens when an install fails; empty means reinstall.
+                  enum:
+                    - abort
+                    - reinstall
+                forceConflicts:
+                  type: boolean
+                  description: ForceConflicts passes helm's --force-conflicts.
+                takeOwnership:
+                  type: boolean
+                  description: TakeOwnership passes helm's --take-ownership.
+            status:
+              type: object
+              description: HelmChartStatus is the observed state, in k3s's own shape.
+              properties:
+                jobName:
+                  type: string
+                  description: JobName is the Job created for the current install or upgrade.
+                conditions:
+                  type: array
+                  description: Conditions are the HelmChart conditions (JobCreated, Failed), k3s's shape rather than metav1.Condition.
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                      lastUpdateTime:
+                        type: string
+                        format: date-time
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string

@@ -34,6 +34,9 @@ limitations under the License.
 // The MeshPeer manifest beside this file (net.k3sm.io_meshpeers.yaml) has such
 // an accessor: k3sm's server applies it fail-closed on the mesh join path, so
 // every worker join depends on this CRD actually being installed.
+//
+// The two helm.k3sm.io manifests (HelmChart and HelmChartConfig) are the k3s
+// helm.cattle.io/v1 contract mirrored; k3sm's helm controller applies both.
 package crd
 
 import (
@@ -76,4 +79,40 @@ var meshPeerCRDYAML string
 // the one that re-applies during a reconcile loop.
 func MeshPeerCRD() []byte {
 	return []byte(meshPeerCRDYAML)
+}
+
+// HelmChartCRDName is the metadata.name of the HelmChart
+// CustomResourceDefinition (the <plural>.<group> form the API server addresses
+// it by). Published so a consumer waiting on or reading back the CRD does not
+// spell the string.
+const HelmChartCRDName = "helmcharts.helm.k3sm.io"
+
+//go:embed helm.k3sm.io_helmcharts.yaml
+var helmChartCRDYAML string
+
+// HelmChartCRD returns the helm.k3sm.io HelmChart CustomResourceDefinition
+// manifest as YAML bytes, ready to apply.
+//
+// It returns a fresh copy on every call, for the same reason as MLXModelCRD:
+// the embedded manifest is process-global, and a caller's in-place edit would
+// corrupt what every later apply sends.
+func HelmChartCRD() []byte {
+	return []byte(helmChartCRDYAML)
+}
+
+// HelmChartConfigCRDName is the metadata.name of the HelmChartConfig
+// CustomResourceDefinition (the <plural>.<group> form the API server addresses
+// it by). Published so a consumer waiting on or reading back the CRD does not
+// spell the string.
+const HelmChartConfigCRDName = "helmchartconfigs.helm.k3sm.io"
+
+//go:embed helm.k3sm.io_helmchartconfigs.yaml
+var helmChartConfigCRDYAML string
+
+// HelmChartConfigCRD returns the helm.k3sm.io HelmChartConfig
+// CustomResourceDefinition manifest as YAML bytes, ready to apply.
+//
+// It returns a fresh copy on every call, for the same reason as MLXModelCRD.
+func HelmChartConfigCRD() []byte {
+	return []byte(helmChartConfigCRDYAML)
 }
