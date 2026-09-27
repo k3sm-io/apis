@@ -24,8 +24,9 @@ option go_package = "k3sm.io/apis/runtime/v1;runtimev1";
 // RPC numbering note: gRPC method names (not numbers) are the wire identity, so
 // there is no numeric range to reserve. The provider/runtimed process split
 // adds resource and metrics RPCs to THIS service — append-only; do not remove
-// or rename the methods below. ListPodStats, RestartContainer, and
-// StartContainer were added later, append-only.
+// or rename the methods below. ListPodStats, RestartContainer,
+// StartContainer, ReopenContainerLog, and StopContainer were added later, in
+// that order, append-only.
 service Runtime {
   // CreatePod materializes and starts a PodBox: it creates the per-pod dir,
   // applies the Seatbelt profile, and posix_spawns each container as a native
@@ -121,6 +122,24 @@ service Runtime {
   // container that can never write to it would read as "no output" rather than
   // "not running". Appended after StartContainer (the service is append-only).
   rpc ReopenContainerLog(ReopenContainerLogRequest) returns (ReopenContainerLogResponse);
+
+  // StopContainer terminates a single container in a running pod and leaves it
+  // terminated. It is the runtime action behind the kubelet's killContainer
+  // (the CRI StopContainer analog): the provider calls it when the pod's own
+  // lifecycle, not the runtime, decides a container must die (for example a
+  // failed postStart hook). It is terminal: the process is signalled within the
+  // grace window and never re-spawned by this call, ContainerStatus.
+  // restart_count and the log file numbering are unchanged, and no
+  // last_termination_state is recorded; the container's terminated state is the
+  // current state. Whether it runs again is the provider's restartPolicy
+  // decision, made through RestartContainer or StartContainer.
+  // grace_period_seconds 0 means the PodBox's termination_grace_period_seconds.
+  // Refusals: a vm pod answers FAILURE_REASON_UNSUPPORTED with an embedded
+  // codes.Unimplemented status; an adopted pod (one the runtime did not spawn
+  // in this process lifetime) answers FAILURE_REASON_NOT_UPDATABLE; a pod that
+  // is being deleted answers FailedPrecondition. Appended after
+  // ReopenContainerLog (the service is append-only).
+  rpc StopContainer(StopContainerRequest) returns (StopContainerResponse);
 }
 
 // ---------------------------------------------------------------------------
@@ -1929,6 +1948,36 @@ message ReopenContainerLogResponse {
   reserved 100 to 149;
 }
 
+// StopContainerRequest identifies the container to stop and leave terminated.
+message StopContainerRequest {
+  // pod_id is the pod whose container to stop.
+  string pod_id = 1;
+  // container is the container name within the pod.
+  string container = 2;
+  // grace_period_seconds is the SIGTERM→SIGKILL window for the process; 0 means
+  // the PodBox's termination_grace_period_seconds.
+  int64 grace_period_seconds = 3;
+  // reason is a human-readable cause (e.g. "FailedPostStartHook") recorded in
+  // the container's terminated state.
+  string reason = 4;
+  reserved 100 to 149;
+}
+
+// StopContainerResponse returns the stopped container's status and a
+// structured failure (empty error on success).
+message StopContainerResponse {
+  // status is the container's status after the stop (terminated;
+  // restart_count unchanged, no last_termination_state recorded).
+  ContainerStatus status = 1;
+  // error carries a structured failure (e.g. NOT_FOUND for an unknown pod or
+  // container, UNIMPLEMENTED for a vm pod, FAILED_PRECONDITION for a pod that
+  // is being deleted).
+  google.rpc.Status error = 2;
+  // failure_reason gives a typed, switchable cause.
+  FailureReason failure_reason = 3;
+  reserved 100 to 149;
+}
+
 // FailureReason is a typed, switchable cause for a failed pod OPERATION and,
 // on ContainerStateWaiting, for a container that could not be started while
 // the pod operation itself succeeded. It complements the google.rpc.Status
@@ -1957,7 +2006,8 @@ enum FailureReason {
   FAILURE_REASON_NOT_UPDATABLE = 9;
   // RESOURCE_EXHAUSTED: the node lacks capacity (uid/IP/fd) to admit the pod.
   FAILURE_REASON_RESOURCE_EXHAUSTED = 10;
-  // INTERNAL: an unexpected runtime error.
+  // INTERNAL: an unexpected runtime error. A verb the backend does not
+  // implement is UNSUPPORTED, not INTERNAL.
   FAILURE_REASON_INTERNAL = 11;
   // INVALID_IMAGE_NAME: the image reference does not parse.
   FAILURE_REASON_INVALID_IMAGE_NAME = 12;
@@ -1973,4 +2023,8 @@ enum FailureReason {
   // CONTAINER_CONFIG: the container's run spec could not be built (command/args
   // merge or argv resolution invalid).
   FAILURE_REASON_CONTAINER_CONFIG = 16;
+  // UNSUPPORTED: the backend does not implement this verb for this pod (a vm
+  // pod's per-container stop or restart); the embedded status carries
+  // codes.Unimplemented.
+  FAILURE_REASON_UNSUPPORTED = 17;
 }

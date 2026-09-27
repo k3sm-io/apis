@@ -574,7 +574,8 @@ const (
 	FailureReason_FAILURE_REASON_NOT_UPDATABLE FailureReason = 9
 	// RESOURCE_EXHAUSTED: the node lacks capacity (uid/IP/fd) to admit the pod.
 	FailureReason_FAILURE_REASON_RESOURCE_EXHAUSTED FailureReason = 10
-	// INTERNAL: an unexpected runtime error.
+	// INTERNAL: an unexpected runtime error. A verb the backend does not
+	// implement is UNSUPPORTED, not INTERNAL.
 	FailureReason_FAILURE_REASON_INTERNAL FailureReason = 11
 	// INVALID_IMAGE_NAME: the image reference does not parse.
 	FailureReason_FAILURE_REASON_INVALID_IMAGE_NAME FailureReason = 12
@@ -590,6 +591,10 @@ const (
 	// CONTAINER_CONFIG: the container's run spec could not be built (command/args
 	// merge or argv resolution invalid).
 	FailureReason_FAILURE_REASON_CONTAINER_CONFIG FailureReason = 16
+	// UNSUPPORTED: the backend does not implement this verb for this pod (a vm
+	// pod's per-container stop or restart); the embedded status carries
+	// codes.Unimplemented.
+	FailureReason_FAILURE_REASON_UNSUPPORTED FailureReason = 17
 )
 
 // Enum value maps for FailureReason.
@@ -612,6 +617,7 @@ var (
 		14: "FAILURE_REASON_IMAGE_NO_PLATFORM_MATCH",
 		15: "FAILURE_REASON_IMAGE_NEVER_PULL",
 		16: "FAILURE_REASON_CONTAINER_CONFIG",
+		17: "FAILURE_REASON_UNSUPPORTED",
 	}
 	FailureReason_value = map[string]int32{
 		"FAILURE_REASON_UNSPECIFIED":             0,
@@ -631,6 +637,7 @@ var (
 		"FAILURE_REASON_IMAGE_NO_PLATFORM_MATCH": 14,
 		"FAILURE_REASON_IMAGE_NEVER_PULL":        15,
 		"FAILURE_REASON_CONTAINER_CONFIG":        16,
+		"FAILURE_REASON_UNSUPPORTED":             17,
 	}
 )
 
@@ -7616,6 +7623,149 @@ func (*ReopenContainerLogResponse) Descriptor() ([]byte, []int) {
 	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{89}
 }
 
+// StopContainerRequest identifies the container to stop and leave terminated.
+type StopContainerRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// pod_id is the pod whose container to stop.
+	PodId string `protobuf:"bytes,1,opt,name=pod_id,json=podId,proto3" json:"pod_id,omitempty"`
+	// container is the container name within the pod.
+	Container string `protobuf:"bytes,2,opt,name=container,proto3" json:"container,omitempty"`
+	// grace_period_seconds is the SIGTERM→SIGKILL window for the process; 0 means
+	// the PodBox's termination_grace_period_seconds.
+	GracePeriodSeconds int64 `protobuf:"varint,3,opt,name=grace_period_seconds,json=gracePeriodSeconds,proto3" json:"grace_period_seconds,omitempty"`
+	// reason is a human-readable cause (e.g. "FailedPostStartHook") recorded in
+	// the container's terminated state.
+	Reason        string `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StopContainerRequest) Reset() {
+	*x = StopContainerRequest{}
+	mi := &file_runtime_v1_runtime_proto_msgTypes[90]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopContainerRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopContainerRequest) ProtoMessage() {}
+
+func (x *StopContainerRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_runtime_proto_msgTypes[90]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopContainerRequest.ProtoReflect.Descriptor instead.
+func (*StopContainerRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{90}
+}
+
+func (x *StopContainerRequest) GetPodId() string {
+	if x != nil {
+		return x.PodId
+	}
+	return ""
+}
+
+func (x *StopContainerRequest) GetContainer() string {
+	if x != nil {
+		return x.Container
+	}
+	return ""
+}
+
+func (x *StopContainerRequest) GetGracePeriodSeconds() int64 {
+	if x != nil {
+		return x.GracePeriodSeconds
+	}
+	return 0
+}
+
+func (x *StopContainerRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+// StopContainerResponse returns the stopped container's status and a
+// structured failure (empty error on success).
+type StopContainerResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// status is the container's status after the stop (terminated;
+	// restart_count unchanged, no last_termination_state recorded).
+	Status *ContainerStatus `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	// error carries a structured failure (e.g. NOT_FOUND for an unknown pod or
+	// container, UNIMPLEMENTED for a vm pod, FAILED_PRECONDITION for a pod that
+	// is being deleted).
+	Error *status.Status `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	// failure_reason gives a typed, switchable cause.
+	FailureReason FailureReason `protobuf:"varint,3,opt,name=failure_reason,json=failureReason,proto3,enum=k3sm.runtime.v1.FailureReason" json:"failure_reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StopContainerResponse) Reset() {
+	*x = StopContainerResponse{}
+	mi := &file_runtime_v1_runtime_proto_msgTypes[91]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopContainerResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopContainerResponse) ProtoMessage() {}
+
+func (x *StopContainerResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_runtime_proto_msgTypes[91]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopContainerResponse.ProtoReflect.Descriptor instead.
+func (*StopContainerResponse) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{91}
+}
+
+func (x *StopContainerResponse) GetStatus() *ContainerStatus {
+	if x != nil {
+		return x.Status
+	}
+	return nil
+}
+
+func (x *StopContainerResponse) GetError() *status.Status {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+func (x *StopContainerResponse) GetFailureReason() FailureReason {
+	if x != nil {
+		return x.FailureReason
+	}
+	return FailureReason_FAILURE_REASON_UNSPECIFIED
+}
+
 var File_runtime_v1_runtime_proto protoreflect.FileDescriptor
 
 const file_runtime_v1_runtime_proto_rawDesc = "" +
@@ -8136,7 +8286,16 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\x19ReopenContainerLogRequest\x12\x15\n" +
 	"\x06pod_id\x18\x01 \x01(\tR\x05podId\x12\x1c\n" +
 	"\tcontainer\x18\x02 \x01(\tR\tcontainerJ\x05\bd\x10\x96\x01\"#\n" +
-	"\x1aReopenContainerLogResponseJ\x05\bd\x10\x96\x01*g\n" +
+	"\x1aReopenContainerLogResponseJ\x05\bd\x10\x96\x01\"\x9c\x01\n" +
+	"\x14StopContainerRequest\x12\x15\n" +
+	"\x06pod_id\x18\x01 \x01(\tR\x05podId\x12\x1c\n" +
+	"\tcontainer\x18\x02 \x01(\tR\tcontainer\x120\n" +
+	"\x14grace_period_seconds\x18\x03 \x01(\x03R\x12gracePeriodSeconds\x12\x16\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reasonJ\x05\bd\x10\x96\x01\"\xc9\x01\n" +
+	"\x15StopContainerResponse\x128\n" +
+	"\x06status\x18\x01 \x01(\v2 .k3sm.runtime.v1.ContainerStatusR\x06status\x12(\n" +
+	"\x05error\x18\x02 \x01(\v2\x12.google.rpc.StatusR\x05error\x12E\n" +
+	"\x0efailure_reason\x18\x03 \x01(\x0e2\x1e.k3sm.runtime.v1.FailureReasonR\rfailureReasonJ\x05\bd\x10\x96\x01*g\n" +
 	"\x16ContainerRestartPolicy\x12(\n" +
 	"$CONTAINER_RESTART_POLICY_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fCONTAINER_RESTART_POLICY_ALWAYS\x10\x01*\x95\x01\n" +
@@ -8181,7 +8340,7 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\tLogStream\x12\x1a\n" +
 	"\x16LOG_STREAM_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11LOG_STREAM_STDOUT\x10\x01\x12\x15\n" +
-	"\x11LOG_STREAM_STDERR\x10\x02*\xe4\x04\n" +
+	"\x11LOG_STREAM_STDERR\x10\x02*\x84\x05\n" +
 	"\rFailureReason\x12\x1e\n" +
 	"\x1aFAILURE_REASON_UNSPECIFIED\x10\x00\x12\"\n" +
 	"\x1eFAILURE_REASON_INVALID_POD_BOX\x10\x01\x12\x1d\n" +
@@ -8200,7 +8359,9 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"$FAILURE_REASON_IMAGE_PULL_CREDENTIAL\x10\r\x12*\n" +
 	"&FAILURE_REASON_IMAGE_NO_PLATFORM_MATCH\x10\x0e\x12#\n" +
 	"\x1fFAILURE_REASON_IMAGE_NEVER_PULL\x10\x0f\x12#\n" +
-	"\x1fFAILURE_REASON_CONTAINER_CONFIG\x10\x102\xf9\t\n" +
+	"\x1fFAILURE_REASON_CONTAINER_CONFIG\x10\x10\x12\x1e\n" +
+	"\x1aFAILURE_REASON_UNSUPPORTED\x10\x112\xd9\n" +
+	"\n" +
 	"\aRuntime\x12R\n" +
 	"\tCreatePod\x12!.k3sm.runtime.v1.CreatePodRequest\x1a\".k3sm.runtime.v1.CreatePodResponse\x12R\n" +
 	"\tDeletePod\x12!.k3sm.runtime.v1.DeletePodRequest\x1a\".k3sm.runtime.v1.DeletePodResponse\x12R\n" +
@@ -8215,7 +8376,8 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\fListPodStats\x12$.k3sm.runtime.v1.ListPodStatsRequest\x1a%.k3sm.runtime.v1.ListPodStatsResponse\x12g\n" +
 	"\x10RestartContainer\x12(.k3sm.runtime.v1.RestartContainerRequest\x1a).k3sm.runtime.v1.RestartContainerResponse\x12a\n" +
 	"\x0eStartContainer\x12&.k3sm.runtime.v1.StartContainerRequest\x1a'.k3sm.runtime.v1.StartContainerResponse\x12m\n" +
-	"\x12ReopenContainerLog\x12*.k3sm.runtime.v1.ReopenContainerLogRequest\x1a+.k3sm.runtime.v1.ReopenContainerLogResponseB\xa4\x01\n" +
+	"\x12ReopenContainerLog\x12*.k3sm.runtime.v1.ReopenContainerLogRequest\x1a+.k3sm.runtime.v1.ReopenContainerLogResponse\x12^\n" +
+	"\rStopContainer\x12%.k3sm.runtime.v1.StopContainerRequest\x1a&.k3sm.runtime.v1.StopContainerResponseB\xa4\x01\n" +
 	"\x13com.k3sm.runtime.v1B\fRuntimeProtoP\x01Z!k3sm.io/apis/runtime/v1;runtimev1\xa2\x02\x03KRX\xaa\x02\x0fK3sm.Runtime.V1\xca\x02\x0fK3sm\\Runtime\\V1\xe2\x02\x1bK3sm\\Runtime\\V1\\GPBMetadata\xea\x02\x11K3sm::Runtime::V1b\x06proto3"
 
 var (
@@ -8231,7 +8393,7 @@ func file_runtime_v1_runtime_proto_rawDescGZIP() []byte {
 }
 
 var file_runtime_v1_runtime_proto_enumTypes = make([]protoimpl.EnumInfo, 10)
-var file_runtime_v1_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 95)
+var file_runtime_v1_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 97)
 var file_runtime_v1_runtime_proto_goTypes = []any{
 	(ContainerRestartPolicy)(0),               // 0: k3sm.runtime.v1.ContainerRestartPolicy
 	(ImagePullPolicy)(0),                      // 1: k3sm.runtime.v1.ImagePullPolicy
@@ -8333,22 +8495,24 @@ var file_runtime_v1_runtime_proto_goTypes = []any{
 	(*StartContainerResponse)(nil),            // 97: k3sm.runtime.v1.StartContainerResponse
 	(*ReopenContainerLogRequest)(nil),         // 98: k3sm.runtime.v1.ReopenContainerLogRequest
 	(*ReopenContainerLogResponse)(nil),        // 99: k3sm.runtime.v1.ReopenContainerLogResponse
-	nil,                                       // 100: k3sm.runtime.v1.PodBox.LabelsEntry
-	nil,                                       // 101: k3sm.runtime.v1.PodBox.AnnotationsEntry
-	nil,                                       // 102: k3sm.runtime.v1.ImageManifest.AnnotationsEntry
-	nil,                                       // 103: k3sm.runtime.v1.Descriptor.AnnotationsEntry
-	nil,                                       // 104: k3sm.runtime.v1.ResourceList.QuantitiesEntry
-	(*timestamppb.Timestamp)(nil),             // 105: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),               // 106: google.protobuf.Duration
-	(*status.Status)(nil),                     // 107: google.rpc.Status
+	(*StopContainerRequest)(nil),              // 100: k3sm.runtime.v1.StopContainerRequest
+	(*StopContainerResponse)(nil),             // 101: k3sm.runtime.v1.StopContainerResponse
+	nil,                                       // 102: k3sm.runtime.v1.PodBox.LabelsEntry
+	nil,                                       // 103: k3sm.runtime.v1.PodBox.AnnotationsEntry
+	nil,                                       // 104: k3sm.runtime.v1.ImageManifest.AnnotationsEntry
+	nil,                                       // 105: k3sm.runtime.v1.Descriptor.AnnotationsEntry
+	nil,                                       // 106: k3sm.runtime.v1.ResourceList.QuantitiesEntry
+	(*timestamppb.Timestamp)(nil),             // 107: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),               // 108: google.protobuf.Duration
+	(*status.Status)(nil),                     // 109: google.rpc.Status
 }
 var file_runtime_v1_runtime_proto_depIdxs = []int32{
 	28,  // 0: k3sm.runtime.v1.PodBox.init_containers:type_name -> k3sm.runtime.v1.Container
 	28,  // 1: k3sm.runtime.v1.PodBox.containers:type_name -> k3sm.runtime.v1.Container
 	46,  // 2: k3sm.runtime.v1.PodBox.sandbox_profile:type_name -> k3sm.runtime.v1.SandboxProfile
 	3,   // 3: k3sm.runtime.v1.PodBox.signature_policy:type_name -> k3sm.runtime.v1.SignaturePolicy
-	100, // 4: k3sm.runtime.v1.PodBox.labels:type_name -> k3sm.runtime.v1.PodBox.LabelsEntry
-	101, // 5: k3sm.runtime.v1.PodBox.annotations:type_name -> k3sm.runtime.v1.PodBox.AnnotationsEntry
+	102, // 4: k3sm.runtime.v1.PodBox.labels:type_name -> k3sm.runtime.v1.PodBox.LabelsEntry
+	103, // 5: k3sm.runtime.v1.PodBox.annotations:type_name -> k3sm.runtime.v1.PodBox.AnnotationsEntry
 	11,  // 6: k3sm.runtime.v1.PodBox.volumes:type_name -> k3sm.runtime.v1.Volume
 	26,  // 7: k3sm.runtime.v1.PodBox.pod_security_context:type_name -> k3sm.runtime.v1.PodSecurityContext
 	27,  // 8: k3sm.runtime.v1.PodBox.image_pull_secrets:type_name -> k3sm.runtime.v1.LocalObjectReference
@@ -8399,19 +8563,19 @@ var file_runtime_v1_runtime_proto_depIdxs = []int32{
 	2,   // 53: k3sm.runtime.v1.SandboxProfile.backend:type_name -> k3sm.runtime.v1.SandboxBackend
 	48,  // 54: k3sm.runtime.v1.ImageManifest.config:type_name -> k3sm.runtime.v1.Descriptor
 	48,  // 55: k3sm.runtime.v1.ImageManifest.layers:type_name -> k3sm.runtime.v1.Descriptor
-	102, // 56: k3sm.runtime.v1.ImageManifest.annotations:type_name -> k3sm.runtime.v1.ImageManifest.AnnotationsEntry
+	104, // 56: k3sm.runtime.v1.ImageManifest.annotations:type_name -> k3sm.runtime.v1.ImageManifest.AnnotationsEntry
 	49,  // 57: k3sm.runtime.v1.ImageManifest.platform:type_name -> k3sm.runtime.v1.Platform
-	103, // 58: k3sm.runtime.v1.Descriptor.annotations:type_name -> k3sm.runtime.v1.Descriptor.AnnotationsEntry
+	105, // 58: k3sm.runtime.v1.Descriptor.annotations:type_name -> k3sm.runtime.v1.Descriptor.AnnotationsEntry
 	49,  // 59: k3sm.runtime.v1.Descriptor.platform:type_name -> k3sm.runtime.v1.Platform
 	4,   // 60: k3sm.runtime.v1.PodStatus.phase:type_name -> k3sm.runtime.v1.PodPhase
 	51,  // 61: k3sm.runtime.v1.PodStatus.conditions:type_name -> k3sm.runtime.v1.PodCondition
-	105, // 62: k3sm.runtime.v1.PodStatus.start_time:type_name -> google.protobuf.Timestamp
+	107, // 62: k3sm.runtime.v1.PodStatus.start_time:type_name -> google.protobuf.Timestamp
 	52,  // 63: k3sm.runtime.v1.PodStatus.init_container_statuses:type_name -> k3sm.runtime.v1.ContainerStatus
 	52,  // 64: k3sm.runtime.v1.PodStatus.container_statuses:type_name -> k3sm.runtime.v1.ContainerStatus
 	52,  // 65: k3sm.runtime.v1.PodStatus.ephemeral_container_statuses:type_name -> k3sm.runtime.v1.ContainerStatus
 	5,   // 66: k3sm.runtime.v1.PodCondition.status:type_name -> k3sm.runtime.v1.ConditionStatus
-	105, // 67: k3sm.runtime.v1.PodCondition.last_probe_time:type_name -> google.protobuf.Timestamp
-	105, // 68: k3sm.runtime.v1.PodCondition.last_transition_time:type_name -> google.protobuf.Timestamp
+	107, // 67: k3sm.runtime.v1.PodCondition.last_probe_time:type_name -> google.protobuf.Timestamp
+	107, // 68: k3sm.runtime.v1.PodCondition.last_transition_time:type_name -> google.protobuf.Timestamp
 	57,  // 69: k3sm.runtime.v1.ContainerStatus.state:type_name -> k3sm.runtime.v1.ContainerState
 	57,  // 70: k3sm.runtime.v1.ContainerStatus.last_termination_state:type_name -> k3sm.runtime.v1.ContainerState
 	54,  // 71: k3sm.runtime.v1.ContainerStatus.volume_mounts:type_name -> k3sm.runtime.v1.VolumeMountStatus
@@ -8419,93 +8583,98 @@ var file_runtime_v1_runtime_proto_depIdxs = []int32{
 	53,  // 73: k3sm.runtime.v1.ContainerStatus.image_pull:type_name -> k3sm.runtime.v1.ImagePullOutcome
 	63,  // 74: k3sm.runtime.v1.ContainerStatus.resources:type_name -> k3sm.runtime.v1.ResourceRequirements
 	62,  // 75: k3sm.runtime.v1.ContainerStatus.allocated_resources:type_name -> k3sm.runtime.v1.ResourceList
-	106, // 76: k3sm.runtime.v1.ImagePullOutcome.duration:type_name -> google.protobuf.Duration
+	108, // 76: k3sm.runtime.v1.ImagePullOutcome.duration:type_name -> google.protobuf.Duration
 	56,  // 77: k3sm.runtime.v1.ContainerUser.linux:type_name -> k3sm.runtime.v1.LinuxContainerUser
 	58,  // 78: k3sm.runtime.v1.ContainerState.waiting:type_name -> k3sm.runtime.v1.ContainerStateWaiting
 	59,  // 79: k3sm.runtime.v1.ContainerState.running:type_name -> k3sm.runtime.v1.ContainerStateRunning
 	60,  // 80: k3sm.runtime.v1.ContainerState.terminated:type_name -> k3sm.runtime.v1.ContainerStateTerminated
 	9,   // 81: k3sm.runtime.v1.ContainerStateWaiting.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
-	105, // 82: k3sm.runtime.v1.ContainerStateRunning.started_at:type_name -> google.protobuf.Timestamp
-	105, // 83: k3sm.runtime.v1.ContainerStateTerminated.started_at:type_name -> google.protobuf.Timestamp
-	105, // 84: k3sm.runtime.v1.ContainerStateTerminated.finished_at:type_name -> google.protobuf.Timestamp
-	104, // 85: k3sm.runtime.v1.ResourceList.quantities:type_name -> k3sm.runtime.v1.ResourceList.QuantitiesEntry
+	107, // 82: k3sm.runtime.v1.ContainerStateRunning.started_at:type_name -> google.protobuf.Timestamp
+	107, // 83: k3sm.runtime.v1.ContainerStateTerminated.started_at:type_name -> google.protobuf.Timestamp
+	107, // 84: k3sm.runtime.v1.ContainerStateTerminated.finished_at:type_name -> google.protobuf.Timestamp
+	106, // 85: k3sm.runtime.v1.ResourceList.quantities:type_name -> k3sm.runtime.v1.ResourceList.QuantitiesEntry
 	62,  // 86: k3sm.runtime.v1.ResourceRequirements.limits:type_name -> k3sm.runtime.v1.ResourceList
 	62,  // 87: k3sm.runtime.v1.ResourceRequirements.requests:type_name -> k3sm.runtime.v1.ResourceList
-	105, // 88: k3sm.runtime.v1.PodStats.timestamp:type_name -> google.protobuf.Timestamp
+	107, // 88: k3sm.runtime.v1.PodStats.timestamp:type_name -> google.protobuf.Timestamp
 	66,  // 89: k3sm.runtime.v1.PodStats.cpu:type_name -> k3sm.runtime.v1.CPUStats
 	67,  // 90: k3sm.runtime.v1.PodStats.memory:type_name -> k3sm.runtime.v1.MemoryStats
 	65,  // 91: k3sm.runtime.v1.PodStats.containers:type_name -> k3sm.runtime.v1.ContainerStats
-	105, // 92: k3sm.runtime.v1.ContainerStats.timestamp:type_name -> google.protobuf.Timestamp
+	107, // 92: k3sm.runtime.v1.ContainerStats.timestamp:type_name -> google.protobuf.Timestamp
 	66,  // 93: k3sm.runtime.v1.ContainerStats.cpu:type_name -> k3sm.runtime.v1.CPUStats
 	67,  // 94: k3sm.runtime.v1.ContainerStats.memory:type_name -> k3sm.runtime.v1.MemoryStats
-	105, // 95: k3sm.runtime.v1.CPUStats.timestamp:type_name -> google.protobuf.Timestamp
-	105, // 96: k3sm.runtime.v1.MemoryStats.timestamp:type_name -> google.protobuf.Timestamp
+	107, // 95: k3sm.runtime.v1.CPUStats.timestamp:type_name -> google.protobuf.Timestamp
+	107, // 96: k3sm.runtime.v1.MemoryStats.timestamp:type_name -> google.protobuf.Timestamp
 	10,  // 97: k3sm.runtime.v1.CreatePodRequest.pod:type_name -> k3sm.runtime.v1.PodBox
 	50,  // 98: k3sm.runtime.v1.CreatePodResponse.status:type_name -> k3sm.runtime.v1.PodStatus
-	107, // 99: k3sm.runtime.v1.CreatePodResponse.error:type_name -> google.rpc.Status
+	109, // 99: k3sm.runtime.v1.CreatePodResponse.error:type_name -> google.rpc.Status
 	9,   // 100: k3sm.runtime.v1.CreatePodResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
-	107, // 101: k3sm.runtime.v1.DeletePodResponse.error:type_name -> google.rpc.Status
+	109, // 101: k3sm.runtime.v1.DeletePodResponse.error:type_name -> google.rpc.Status
 	9,   // 102: k3sm.runtime.v1.DeletePodResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
 	10,  // 103: k3sm.runtime.v1.UpdatePodRequest.pod:type_name -> k3sm.runtime.v1.PodBox
 	50,  // 104: k3sm.runtime.v1.UpdatePodResponse.status:type_name -> k3sm.runtime.v1.PodStatus
-	107, // 105: k3sm.runtime.v1.UpdatePodResponse.error:type_name -> google.rpc.Status
+	109, // 105: k3sm.runtime.v1.UpdatePodResponse.error:type_name -> google.rpc.Status
 	9,   // 106: k3sm.runtime.v1.UpdatePodResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
 	7,   // 107: k3sm.runtime.v1.PodStatusEvent.type:type_name -> k3sm.runtime.v1.PodStatusEventType
 	50,  // 108: k3sm.runtime.v1.PodStatusEvent.status:type_name -> k3sm.runtime.v1.PodStatus
 	50,  // 109: k3sm.runtime.v1.GetPodStatusResponse.status:type_name -> k3sm.runtime.v1.PodStatus
-	107, // 110: k3sm.runtime.v1.GetPodStatusResponse.error:type_name -> google.rpc.Status
-	105, // 111: k3sm.runtime.v1.GetLogsRequest.since_time:type_name -> google.protobuf.Timestamp
-	105, // 112: k3sm.runtime.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
+	109, // 110: k3sm.runtime.v1.GetPodStatusResponse.error:type_name -> google.rpc.Status
+	107, // 111: k3sm.runtime.v1.GetLogsRequest.since_time:type_name -> google.protobuf.Timestamp
+	107, // 112: k3sm.runtime.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
 	8,   // 113: k3sm.runtime.v1.LogEntry.stream:type_name -> k3sm.runtime.v1.LogStream
 	87,  // 114: k3sm.runtime.v1.ExecRequest.resize:type_name -> k3sm.runtime.v1.TerminalSize
 	82,  // 115: k3sm.runtime.v1.ExecResponse.exit:type_name -> k3sm.runtime.v1.ExecResult
-	107, // 116: k3sm.runtime.v1.ExecResult.error:type_name -> google.rpc.Status
+	109, // 116: k3sm.runtime.v1.ExecResult.error:type_name -> google.rpc.Status
 	87,  // 117: k3sm.runtime.v1.AttachRequest.resize:type_name -> k3sm.runtime.v1.TerminalSize
 	82,  // 118: k3sm.runtime.v1.AttachResponse.exit:type_name -> k3sm.runtime.v1.ExecResult
-	107, // 119: k3sm.runtime.v1.PortForwardResponse.error:type_name -> google.rpc.Status
+	109, // 119: k3sm.runtime.v1.PortForwardResponse.error:type_name -> google.rpc.Status
 	91,  // 120: k3sm.runtime.v1.GetRuntimeInfoResponse.conditions:type_name -> k3sm.runtime.v1.RuntimeCondition
 	90,  // 121: k3sm.runtime.v1.GetRuntimeInfoResponse.gpu:type_name -> k3sm.runtime.v1.GPUFacts
 	5,   // 122: k3sm.runtime.v1.RuntimeCondition.status:type_name -> k3sm.runtime.v1.ConditionStatus
 	64,  // 123: k3sm.runtime.v1.ListPodStatsResponse.pod_stats:type_name -> k3sm.runtime.v1.PodStats
 	52,  // 124: k3sm.runtime.v1.RestartContainerResponse.status:type_name -> k3sm.runtime.v1.ContainerStatus
-	107, // 125: k3sm.runtime.v1.RestartContainerResponse.error:type_name -> google.rpc.Status
+	109, // 125: k3sm.runtime.v1.RestartContainerResponse.error:type_name -> google.rpc.Status
 	9,   // 126: k3sm.runtime.v1.RestartContainerResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
 	52,  // 127: k3sm.runtime.v1.StartContainerResponse.status:type_name -> k3sm.runtime.v1.ContainerStatus
-	107, // 128: k3sm.runtime.v1.StartContainerResponse.error:type_name -> google.rpc.Status
+	109, // 128: k3sm.runtime.v1.StartContainerResponse.error:type_name -> google.rpc.Status
 	9,   // 129: k3sm.runtime.v1.StartContainerResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
-	68,  // 130: k3sm.runtime.v1.Runtime.CreatePod:input_type -> k3sm.runtime.v1.CreatePodRequest
-	70,  // 131: k3sm.runtime.v1.Runtime.DeletePod:input_type -> k3sm.runtime.v1.DeletePodRequest
-	72,  // 132: k3sm.runtime.v1.Runtime.UpdatePod:input_type -> k3sm.runtime.v1.UpdatePodRequest
-	74,  // 133: k3sm.runtime.v1.Runtime.WatchPodStatus:input_type -> k3sm.runtime.v1.WatchPodStatusRequest
-	76,  // 134: k3sm.runtime.v1.Runtime.GetPodStatus:input_type -> k3sm.runtime.v1.GetPodStatusRequest
-	78,  // 135: k3sm.runtime.v1.Runtime.GetLogs:input_type -> k3sm.runtime.v1.GetLogsRequest
-	80,  // 136: k3sm.runtime.v1.Runtime.Exec:input_type -> k3sm.runtime.v1.ExecRequest
-	83,  // 137: k3sm.runtime.v1.Runtime.Attach:input_type -> k3sm.runtime.v1.AttachRequest
-	85,  // 138: k3sm.runtime.v1.Runtime.PortForward:input_type -> k3sm.runtime.v1.PortForwardRequest
-	88,  // 139: k3sm.runtime.v1.Runtime.GetRuntimeInfo:input_type -> k3sm.runtime.v1.GetRuntimeInfoRequest
-	92,  // 140: k3sm.runtime.v1.Runtime.ListPodStats:input_type -> k3sm.runtime.v1.ListPodStatsRequest
-	94,  // 141: k3sm.runtime.v1.Runtime.RestartContainer:input_type -> k3sm.runtime.v1.RestartContainerRequest
-	96,  // 142: k3sm.runtime.v1.Runtime.StartContainer:input_type -> k3sm.runtime.v1.StartContainerRequest
-	98,  // 143: k3sm.runtime.v1.Runtime.ReopenContainerLog:input_type -> k3sm.runtime.v1.ReopenContainerLogRequest
-	69,  // 144: k3sm.runtime.v1.Runtime.CreatePod:output_type -> k3sm.runtime.v1.CreatePodResponse
-	71,  // 145: k3sm.runtime.v1.Runtime.DeletePod:output_type -> k3sm.runtime.v1.DeletePodResponse
-	73,  // 146: k3sm.runtime.v1.Runtime.UpdatePod:output_type -> k3sm.runtime.v1.UpdatePodResponse
-	75,  // 147: k3sm.runtime.v1.Runtime.WatchPodStatus:output_type -> k3sm.runtime.v1.PodStatusEvent
-	77,  // 148: k3sm.runtime.v1.Runtime.GetPodStatus:output_type -> k3sm.runtime.v1.GetPodStatusResponse
-	79,  // 149: k3sm.runtime.v1.Runtime.GetLogs:output_type -> k3sm.runtime.v1.LogEntry
-	81,  // 150: k3sm.runtime.v1.Runtime.Exec:output_type -> k3sm.runtime.v1.ExecResponse
-	84,  // 151: k3sm.runtime.v1.Runtime.Attach:output_type -> k3sm.runtime.v1.AttachResponse
-	86,  // 152: k3sm.runtime.v1.Runtime.PortForward:output_type -> k3sm.runtime.v1.PortForwardResponse
-	89,  // 153: k3sm.runtime.v1.Runtime.GetRuntimeInfo:output_type -> k3sm.runtime.v1.GetRuntimeInfoResponse
-	93,  // 154: k3sm.runtime.v1.Runtime.ListPodStats:output_type -> k3sm.runtime.v1.ListPodStatsResponse
-	95,  // 155: k3sm.runtime.v1.Runtime.RestartContainer:output_type -> k3sm.runtime.v1.RestartContainerResponse
-	97,  // 156: k3sm.runtime.v1.Runtime.StartContainer:output_type -> k3sm.runtime.v1.StartContainerResponse
-	99,  // 157: k3sm.runtime.v1.Runtime.ReopenContainerLog:output_type -> k3sm.runtime.v1.ReopenContainerLogResponse
-	144, // [144:158] is the sub-list for method output_type
-	130, // [130:144] is the sub-list for method input_type
-	130, // [130:130] is the sub-list for extension type_name
-	130, // [130:130] is the sub-list for extension extendee
-	0,   // [0:130] is the sub-list for field type_name
+	52,  // 130: k3sm.runtime.v1.StopContainerResponse.status:type_name -> k3sm.runtime.v1.ContainerStatus
+	109, // 131: k3sm.runtime.v1.StopContainerResponse.error:type_name -> google.rpc.Status
+	9,   // 132: k3sm.runtime.v1.StopContainerResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
+	68,  // 133: k3sm.runtime.v1.Runtime.CreatePod:input_type -> k3sm.runtime.v1.CreatePodRequest
+	70,  // 134: k3sm.runtime.v1.Runtime.DeletePod:input_type -> k3sm.runtime.v1.DeletePodRequest
+	72,  // 135: k3sm.runtime.v1.Runtime.UpdatePod:input_type -> k3sm.runtime.v1.UpdatePodRequest
+	74,  // 136: k3sm.runtime.v1.Runtime.WatchPodStatus:input_type -> k3sm.runtime.v1.WatchPodStatusRequest
+	76,  // 137: k3sm.runtime.v1.Runtime.GetPodStatus:input_type -> k3sm.runtime.v1.GetPodStatusRequest
+	78,  // 138: k3sm.runtime.v1.Runtime.GetLogs:input_type -> k3sm.runtime.v1.GetLogsRequest
+	80,  // 139: k3sm.runtime.v1.Runtime.Exec:input_type -> k3sm.runtime.v1.ExecRequest
+	83,  // 140: k3sm.runtime.v1.Runtime.Attach:input_type -> k3sm.runtime.v1.AttachRequest
+	85,  // 141: k3sm.runtime.v1.Runtime.PortForward:input_type -> k3sm.runtime.v1.PortForwardRequest
+	88,  // 142: k3sm.runtime.v1.Runtime.GetRuntimeInfo:input_type -> k3sm.runtime.v1.GetRuntimeInfoRequest
+	92,  // 143: k3sm.runtime.v1.Runtime.ListPodStats:input_type -> k3sm.runtime.v1.ListPodStatsRequest
+	94,  // 144: k3sm.runtime.v1.Runtime.RestartContainer:input_type -> k3sm.runtime.v1.RestartContainerRequest
+	96,  // 145: k3sm.runtime.v1.Runtime.StartContainer:input_type -> k3sm.runtime.v1.StartContainerRequest
+	98,  // 146: k3sm.runtime.v1.Runtime.ReopenContainerLog:input_type -> k3sm.runtime.v1.ReopenContainerLogRequest
+	100, // 147: k3sm.runtime.v1.Runtime.StopContainer:input_type -> k3sm.runtime.v1.StopContainerRequest
+	69,  // 148: k3sm.runtime.v1.Runtime.CreatePod:output_type -> k3sm.runtime.v1.CreatePodResponse
+	71,  // 149: k3sm.runtime.v1.Runtime.DeletePod:output_type -> k3sm.runtime.v1.DeletePodResponse
+	73,  // 150: k3sm.runtime.v1.Runtime.UpdatePod:output_type -> k3sm.runtime.v1.UpdatePodResponse
+	75,  // 151: k3sm.runtime.v1.Runtime.WatchPodStatus:output_type -> k3sm.runtime.v1.PodStatusEvent
+	77,  // 152: k3sm.runtime.v1.Runtime.GetPodStatus:output_type -> k3sm.runtime.v1.GetPodStatusResponse
+	79,  // 153: k3sm.runtime.v1.Runtime.GetLogs:output_type -> k3sm.runtime.v1.LogEntry
+	81,  // 154: k3sm.runtime.v1.Runtime.Exec:output_type -> k3sm.runtime.v1.ExecResponse
+	84,  // 155: k3sm.runtime.v1.Runtime.Attach:output_type -> k3sm.runtime.v1.AttachResponse
+	86,  // 156: k3sm.runtime.v1.Runtime.PortForward:output_type -> k3sm.runtime.v1.PortForwardResponse
+	89,  // 157: k3sm.runtime.v1.Runtime.GetRuntimeInfo:output_type -> k3sm.runtime.v1.GetRuntimeInfoResponse
+	93,  // 158: k3sm.runtime.v1.Runtime.ListPodStats:output_type -> k3sm.runtime.v1.ListPodStatsResponse
+	95,  // 159: k3sm.runtime.v1.Runtime.RestartContainer:output_type -> k3sm.runtime.v1.RestartContainerResponse
+	97,  // 160: k3sm.runtime.v1.Runtime.StartContainer:output_type -> k3sm.runtime.v1.StartContainerResponse
+	99,  // 161: k3sm.runtime.v1.Runtime.ReopenContainerLog:output_type -> k3sm.runtime.v1.ReopenContainerLogResponse
+	101, // 162: k3sm.runtime.v1.Runtime.StopContainer:output_type -> k3sm.runtime.v1.StopContainerResponse
+	148, // [148:163] is the sub-list for method output_type
+	133, // [133:148] is the sub-list for method input_type
+	133, // [133:133] is the sub-list for extension type_name
+	133, // [133:133] is the sub-list for extension extendee
+	0,   // [0:133] is the sub-list for field type_name
 }
 
 func init() { file_runtime_v1_runtime_proto_init() }
@@ -8519,7 +8688,7 @@ func file_runtime_v1_runtime_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_runtime_v1_runtime_proto_rawDesc), len(file_runtime_v1_runtime_proto_rawDesc)),
 			NumEnums:      10,
-			NumMessages:   95,
+			NumMessages:   97,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

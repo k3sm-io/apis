@@ -43,6 +43,7 @@ const (
 	Runtime_RestartContainer_FullMethodName   = "/k3sm.runtime.v1.Runtime/RestartContainer"
 	Runtime_StartContainer_FullMethodName     = "/k3sm.runtime.v1.Runtime/StartContainer"
 	Runtime_ReopenContainerLog_FullMethodName = "/k3sm.runtime.v1.Runtime/ReopenContainerLog"
+	Runtime_StopContainer_FullMethodName      = "/k3sm.runtime.v1.Runtime/StopContainer"
 )
 
 // RuntimeClient is the client API for Runtime service.
@@ -56,8 +57,9 @@ const (
 // RPC numbering note: gRPC method names (not numbers) are the wire identity, so
 // there is no numeric range to reserve. The provider/runtimed process split
 // adds resource and metrics RPCs to THIS service — append-only; do not remove
-// or rename the methods below. ListPodStats, RestartContainer, and
-// StartContainer were added later, append-only.
+// or rename the methods below. ListPodStats, RestartContainer,
+// StartContainer, ReopenContainerLog, and StopContainer were added later, in
+// that order, append-only.
 type RuntimeClient interface {
 	// CreatePod materializes and starts a PodBox: it creates the per-pod dir,
 	// applies the Seatbelt profile, and posix_spawns each container as a native
@@ -140,6 +142,23 @@ type RuntimeClient interface {
 	// container that can never write to it would read as "no output" rather than
 	// "not running". Appended after StartContainer (the service is append-only).
 	ReopenContainerLog(ctx context.Context, in *ReopenContainerLogRequest, opts ...grpc.CallOption) (*ReopenContainerLogResponse, error)
+	// StopContainer terminates a single container in a running pod and leaves it
+	// terminated. It is the runtime action behind the kubelet's killContainer
+	// (the CRI StopContainer analog): the provider calls it when the pod's own
+	// lifecycle, not the runtime, decides a container must die (for example a
+	// failed postStart hook). It is terminal: the process is signalled within the
+	// grace window and never re-spawned by this call, ContainerStatus.
+	// restart_count and the log file numbering are unchanged, and no
+	// last_termination_state is recorded; the container's terminated state is the
+	// current state. Whether it runs again is the provider's restartPolicy
+	// decision, made through RestartContainer or StartContainer.
+	// grace_period_seconds 0 means the PodBox's termination_grace_period_seconds.
+	// Refusals: a vm pod answers FAILURE_REASON_UNSUPPORTED with an embedded
+	// codes.Unimplemented status; an adopted pod (one the runtime did not spawn
+	// in this process lifetime) answers FAILURE_REASON_NOT_UPDATABLE; a pod that
+	// is being deleted answers FailedPrecondition. Appended after
+	// ReopenContainerLog (the service is append-only).
+	StopContainer(ctx context.Context, in *StopContainerRequest, opts ...grpc.CallOption) (*StopContainerResponse, error)
 }
 
 type runtimeClient struct {
@@ -317,6 +336,16 @@ func (c *runtimeClient) ReopenContainerLog(ctx context.Context, in *ReopenContai
 	return out, nil
 }
 
+func (c *runtimeClient) StopContainer(ctx context.Context, in *StopContainerRequest, opts ...grpc.CallOption) (*StopContainerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StopContainerResponse)
+	err := c.cc.Invoke(ctx, Runtime_StopContainer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RuntimeServer is the server API for Runtime service.
 // All implementations must embed UnimplementedRuntimeServer
 // for forward compatibility.
@@ -328,8 +357,9 @@ func (c *runtimeClient) ReopenContainerLog(ctx context.Context, in *ReopenContai
 // RPC numbering note: gRPC method names (not numbers) are the wire identity, so
 // there is no numeric range to reserve. The provider/runtimed process split
 // adds resource and metrics RPCs to THIS service — append-only; do not remove
-// or rename the methods below. ListPodStats, RestartContainer, and
-// StartContainer were added later, append-only.
+// or rename the methods below. ListPodStats, RestartContainer,
+// StartContainer, ReopenContainerLog, and StopContainer were added later, in
+// that order, append-only.
 type RuntimeServer interface {
 	// CreatePod materializes and starts a PodBox: it creates the per-pod dir,
 	// applies the Seatbelt profile, and posix_spawns each container as a native
@@ -412,6 +442,23 @@ type RuntimeServer interface {
 	// container that can never write to it would read as "no output" rather than
 	// "not running". Appended after StartContainer (the service is append-only).
 	ReopenContainerLog(context.Context, *ReopenContainerLogRequest) (*ReopenContainerLogResponse, error)
+	// StopContainer terminates a single container in a running pod and leaves it
+	// terminated. It is the runtime action behind the kubelet's killContainer
+	// (the CRI StopContainer analog): the provider calls it when the pod's own
+	// lifecycle, not the runtime, decides a container must die (for example a
+	// failed postStart hook). It is terminal: the process is signalled within the
+	// grace window and never re-spawned by this call, ContainerStatus.
+	// restart_count and the log file numbering are unchanged, and no
+	// last_termination_state is recorded; the container's terminated state is the
+	// current state. Whether it runs again is the provider's restartPolicy
+	// decision, made through RestartContainer or StartContainer.
+	// grace_period_seconds 0 means the PodBox's termination_grace_period_seconds.
+	// Refusals: a vm pod answers FAILURE_REASON_UNSUPPORTED with an embedded
+	// codes.Unimplemented status; an adopted pod (one the runtime did not spawn
+	// in this process lifetime) answers FAILURE_REASON_NOT_UPDATABLE; a pod that
+	// is being deleted answers FailedPrecondition. Appended after
+	// ReopenContainerLog (the service is append-only).
+	StopContainer(context.Context, *StopContainerRequest) (*StopContainerResponse, error)
 	mustEmbedUnimplementedRuntimeServer()
 }
 
@@ -463,6 +510,9 @@ func (UnimplementedRuntimeServer) StartContainer(context.Context, *StartContaine
 }
 func (UnimplementedRuntimeServer) ReopenContainerLog(context.Context, *ReopenContainerLogRequest) (*ReopenContainerLogResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReopenContainerLog not implemented")
+}
+func (UnimplementedRuntimeServer) StopContainer(context.Context, *StopContainerRequest) (*StopContainerResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StopContainer not implemented")
 }
 func (UnimplementedRuntimeServer) mustEmbedUnimplementedRuntimeServer() {}
 func (UnimplementedRuntimeServer) testEmbeddedByValue()                 {}
@@ -690,6 +740,24 @@ func _Runtime_ReopenContainerLog_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Runtime_StopContainer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StopContainerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeServer).StopContainer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Runtime_StopContainer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeServer).StopContainer(ctx, req.(*StopContainerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Runtime_ServiceDesc is the grpc.ServiceDesc for Runtime service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -732,6 +800,10 @@ var Runtime_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReopenContainerLog",
 			Handler:    _Runtime_ReopenContainerLog_Handler,
+		},
+		{
+			MethodName: "StopContainer",
+			Handler:    _Runtime_StopContainer_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
