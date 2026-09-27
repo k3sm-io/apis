@@ -1,0 +1,13 @@
+{
+  "kind": "HelmChartConfig",
+  "apiVersion": "helm.k3sm.io/v1",
+  "metadata": {
+    "name": "traefik",
+    "namespace": "kube-system"
+  },
+  "spec": {
+    "valuesContent": "ports:\n  web:\n    port: 8080\n",
+    "failurePolicy": "reinstall",
+    "forceConflicts": true
+  }
+}
