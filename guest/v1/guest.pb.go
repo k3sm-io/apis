@@ -186,6 +186,19 @@ type HealthResponse struct {
 	// capabilities are optional feature tokens the agent advertises. It exists so
 	// a capability can be negotiated WITHOUT an api_version bump for changes that
 	// are genuinely additive; an unknown token is ignored by the host.
+	//
+	// Tokens tied to GuestSpec fields, one per line with the field it owns:
+	//   guest-private-mounts  GuestMount.guest_private. A host MUST NOT emit
+	//                         guest_private to an agent that does not advertise it.
+	//   sidecar-init          GuestContainer.sidecar (diagnostic).
+	//   image-user            GuestContainer.image_user (diagnostic).
+	//
+	// These tokens are diagnosis: they let a host name the fix ("this guest
+	// predates the field") before booting a spec the guest cannot honor. They are
+	// not what makes an older guest fail closed. That comes from the guest
+	// refusing a spec that sets a field it does not know (it decodes the
+	// proto-JSON spec with unknown fields rejected, and a field left unset is
+	// omitted from proto-JSON), and a guest implementation MUST keep that refusal.
 	Capabilities  []string `protobuf:"bytes,5,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1169,7 +1182,21 @@ type GuestMount struct {
 	// idmap requests an idmapped mount (Linux MOUNT_ATTR_IDMAP) so files owned by
 	// the host-side owner appear as the container's effective uid/fsGroup. This
 	// is how fsGroup is honored with ZERO recursive chown on either side.
-	Idmap         bool `protobuf:"varint,6,opt,name=idmap,proto3" json:"idmap,omitempty"`
+	Idmap bool `protobuf:"varint,6,opt,name=idmap,proto3" json:"idmap,omitempty"`
+	// guest_private marks a mount the guest init uses only for its own
+	// composition of container roots. The guest init performs it in the guest
+	// root only and never re-exposes it inside any container rootfs. It detaches
+	// the mount after every container root is composed and before any container
+	// process starts, so no container (including a later restart of one) can
+	// reach it. A container restart reuses its already-composed root, so it never
+	// needs the mount again. It is orthogonal to kind.
+	//
+	// A host MUST NOT emit guest_private to an agent that does not advertise the
+	// guest-private-mounts capability (HealthResponse.capabilities). Absent from
+	// the proto-JSON spec when false, so a guest that predates the field boots a
+	// spec that does not set it. A core field, so it takes the next sequential
+	// number, not the headroom band.
+	GuestPrivate  bool `protobuf:"varint,7,opt,name=guest_private,json=guestPrivate,proto3" json:"guest_private,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1242,6 +1269,13 @@ func (x *GuestMount) GetSizeLimitBytes() int64 {
 func (x *GuestMount) GetIdmap() bool {
 	if x != nil {
 		return x.Idmap
+	}
+	return false
+}
+
+func (x *GuestMount) GetGuestPrivate() bool {
+	if x != nil {
+		return x.GuestPrivate
 	}
 	return false
 }
@@ -1530,7 +1564,7 @@ const file_guest_v1_guest_proto_rawDesc = "" +
 	"\x04init\x18\f \x01(\bR\x04init\x12\x18\n" +
 	"\asidecar\x18\r \x01(\bR\asidecar\x12\x1d\n" +
 	"\n" +
-	"image_user\x18\x0e \x01(\tR\timageUserJ\x05\bd\x10\x96\x01\"\xdf\x01\n" +
+	"image_user\x18\x0e \x01(\tR\timageUserJ\x05\bd\x10\x96\x01\"\x84\x02\n" +
 	"\n" +
 	"GuestMount\x12\"\n" +
 	"\rtag_or_source\x18\x01 \x01(\tR\vtagOrSource\x12\x16\n" +
@@ -1538,7 +1572,8 @@ const file_guest_v1_guest_proto_rawDesc = "" +
 	"\x04kind\x18\x03 \x01(\x0e2\x1d.k3sm.guest.v1.GuestMountKindR\x04kind\x12\x1b\n" +
 	"\tread_only\x18\x04 \x01(\bR\breadOnly\x12(\n" +
 	"\x10size_limit_bytes\x18\x05 \x01(\x03R\x0esizeLimitBytes\x12\x14\n" +
-	"\x05idmap\x18\x06 \x01(\bR\x05idmapJ\x05\bd\x10\x96\x01\"\xda\x02\n" +
+	"\x05idmap\x18\x06 \x01(\bR\x05idmap\x12#\n" +
+	"\rguest_private\x18\a \x01(\bR\fguestPrivateJ\x05\bd\x10\x96\x01\"\xda\x02\n" +
 	"\n" +
 	"VMHostSpec\x12\x15\n" +
 	"\x06pod_id\x18\x01 \x01(\tR\x05podId\x12\x14\n" +

@@ -191,6 +191,19 @@ message HealthResponse {
   // capabilities are optional feature tokens the agent advertises. It exists so
   // a capability can be negotiated WITHOUT an api_version bump for changes that
   // are genuinely additive; an unknown token is ignored by the host.
+  //
+  // Tokens tied to GuestSpec fields, one per line with the field it owns:
+  //   guest-private-mounts  GuestMount.guest_private. A host MUST NOT emit
+  //                         guest_private to an agent that does not advertise it.
+  //   sidecar-init          GuestContainer.sidecar (diagnostic).
+  //   image-user            GuestContainer.image_user (diagnostic).
+  //
+  // These tokens are diagnosis: they let a host name the fix ("this guest
+  // predates the field") before booting a spec the guest cannot honor. They are
+  // not what makes an older guest fail closed. That comes from the guest
+  // refusing a spec that sets a field it does not know (it decodes the
+  // proto-JSON spec with unknown fields rejected, and a field left unset is
+  // omitted from proto-JSON), and a guest implementation MUST keep that refusal.
   repeated string capabilities = 5;
 
   reserved 100 to 149;
@@ -504,6 +517,21 @@ message GuestMount {
   // the host-side owner appear as the container's effective uid/fsGroup. This
   // is how fsGroup is honored with ZERO recursive chown on either side.
   bool idmap = 6;
+
+  // guest_private marks a mount the guest init uses only for its own
+  // composition of container roots. The guest init performs it in the guest
+  // root only and never re-exposes it inside any container rootfs. It detaches
+  // the mount after every container root is composed and before any container
+  // process starts, so no container (including a later restart of one) can
+  // reach it. A container restart reuses its already-composed root, so it never
+  // needs the mount again. It is orthogonal to kind.
+  //
+  // A host MUST NOT emit guest_private to an agent that does not advertise the
+  // guest-private-mounts capability (HealthResponse.capabilities). Absent from
+  // the proto-JSON spec when false, so a guest that predates the field boots a
+  // spec that does not set it. A core field, so it takes the next sequential
+  // number, not the headroom band.
+  bool guest_private = 7;
 
   reserved 100 to 149;
 }
