@@ -263,9 +263,33 @@ message PodBox {
   // additive without new fields.
   repeated ResourceLimit rlimits = 102;
 
-  // 100..102 are now allocated above; 103..199 stay reserved for future
-  // resource/metrics inputs. The band's 199 ceiling is preserved (additive).
-  reserved 103 to 199;
+  // ephemeral_containers are the pod's ephemeral (debug) containers. Mirrors
+  // corev1.PodSpec.EphemeralContainers.
+  //
+  // The list is append-only through UpdatePod: adding an entry starts it, and
+  // mutating or removing an existing entry is rejected as NOT_UPDATABLE. On
+  // CreatePod (which re-creates a pod after a daemon restart) listed entries
+  // are recorded and NOT started, because ephemeral containers are never
+  // restarted; they report as terminated with reason ContainerStatusUnknown. A
+  // backend that cannot start an ephemeral container answers
+  // FAILURE_REASON_UNSUPPORTED.
+  //
+  // The Container fields upstream forbids on an ephemeral container (ports,
+  // probes, resources, lifecycle, restart_policy) are never set by a producer
+  // and are ignored by a consumer. security_context and the pod-level
+  // run_as_non_root apply as to any container, resolved against the pod-level
+  // value. There is no wire field for targetContainerName: a producer rejects
+  // an entry that sets it rather than sending it without that field.
+  //
+  // It is a deliberate carve from the 100..199 band for the pod's ephemeral
+  // (debug) container list, the one non-resource field in that band.
+  repeated Container ephemeral_containers = 103;
+
+  // 100..103 are now allocated above; 104..199 stay reserved for future
+  // resource/metrics inputs (103 is the one non-resource carve, made
+  // deliberately for the pod's ephemeral (debug) container list). The band's
+  // 199 ceiling is preserved (additive).
+  reserved 104 to 199;
 }
 
 // Volume is a named pod-level volume with exactly one source set. Mirrors a
