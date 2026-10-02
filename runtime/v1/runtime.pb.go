@@ -1974,6 +1974,11 @@ func (x *HostPathVolumeSource) GetType() string {
 // PodSecurityContext is the pod-scoped privilege configuration. fs_group lives
 // HERE (pod-level only). Mirrors a subset of corev1.PodSecurityContext.
 // int64 mirrors corev1's *int64; 0 is a valid value (root).
+//
+// run_as_user and run_as_group are defaults for containers lacking their own.
+// run_as_non_root is the one exception to that reading: it is a pod-wide
+// assertion composed with each container's own value by logical OR, never a
+// default (see the field).
 type PodSecurityContext struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// fs_group is the supplemental group applied to volume ownership (chown
@@ -1982,7 +1987,28 @@ type PodSecurityContext struct {
 	// run_as_user is the default uid for containers lacking their own.
 	RunAsUser int64 `protobuf:"varint,2,opt,name=run_as_user,json=runAsUser,proto3" json:"run_as_user,omitempty"`
 	// run_as_group is the default gid for containers lacking their own.
-	RunAsGroup    int64 `protobuf:"varint,3,opt,name=run_as_group,json=runAsGroup,proto3" json:"run_as_group,omitempty"`
+	RunAsGroup int64 `protobuf:"varint,3,opt,name=run_as_group,json=runAsGroup,proto3" json:"run_as_group,omitempty"`
+	// run_as_non_root, when true, asserts pod-wide that every container's
+	// resolved uid is non-zero. It is the EXCEPTION to its siblings' reading: it
+	// is NOT a default for containers lacking their own. A consumer composes it
+	// with each container's SecurityContext.run_as_non_root by logical OR, so a
+	// container's effective requirement is (pod value OR container value).
+	//
+	// Because a proto3 bool has no presence, a container-level opt-out
+	// (container false while the pod is true) cannot override this field on the
+	// wire. The producer rule closes that gap: whenever the pod value is set, a
+	// producer stamps every container's effective value (the container's own
+	// value if it set one, else the pod value) into that container's
+	// SecurityContext.run_as_non_root, and sends this field as false when any
+	// container explicitly opts out. "Every container" means the init containers
+	// (sidecars included), the regular containers and the ephemeral containers;
+	// an ephemeral container resolves against the pod-level value like any
+	// other. A consumer that predates this field therefore still enforces the
+	// requirement through the per-container stamps.
+	//
+	// Allocated the next sequential number (4) beside run_as_user and
+	// run_as_group, which are core sub-100 fields, not headroom.
+	RunAsNonRoot  bool `protobuf:"varint,4,opt,name=run_as_non_root,json=runAsNonRoot,proto3" json:"run_as_non_root,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2036,6 +2062,13 @@ func (x *PodSecurityContext) GetRunAsGroup() int64 {
 		return x.RunAsGroup
 	}
 	return 0
+}
+
+func (x *PodSecurityContext) GetRunAsNonRoot() bool {
+	if x != nil {
+		return x.RunAsNonRoot
+	}
+	return false
 }
 
 // LocalObjectReference references a namespace-local object by name (e.g. an
@@ -7869,12 +7902,13 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\tread_only\x18\x02 \x01(\bR\breadOnly\">\n" +
 	"\x14HostPathVolumeSource\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
-	"\x04type\x18\x02 \x01(\tR\x04type\"q\n" +
+	"\x04type\x18\x02 \x01(\tR\x04type\"\x9f\x01\n" +
 	"\x12PodSecurityContext\x12\x19\n" +
 	"\bfs_group\x18\x01 \x01(\x03R\afsGroup\x12\x1e\n" +
 	"\vrun_as_user\x18\x02 \x01(\x03R\trunAsUser\x12 \n" +
 	"\frun_as_group\x18\x03 \x01(\x03R\n" +
-	"runAsGroup\"*\n" +
+	"runAsGroup\x12%\n" +
+	"\x0frun_as_non_root\x18\x04 \x01(\bR\frunAsNonRootJ\x05\bd\x10\x96\x01\"*\n" +
 	"\x14LocalObjectReference\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\xfc\x06\n" +
 	"\tContainer\x12\x12\n" +
