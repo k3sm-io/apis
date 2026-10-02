@@ -25,7 +25,8 @@ import (
 // TestPodBoxEphemeralContainersCarve pins PodBox.ephemeral_containers: field
 // 103, a repeated k3sm.runtime.v1.Container with JSON name ephemeralContainers,
 // carved from the PodBox headroom so the band is exactly 104..199 and no other
-// reserved range exists. The test is descriptor-driven so it fails at runtime,
+// headroom range exists (a retired field's single-number reservation, listed in
+// retiredFields, is not headroom). The test is descriptor-driven so it fails at runtime,
 // not compile time, on a tree without the field.
 func TestPodBoxEphemeralContainersCarve(t *testing.T) {
 	t.Parallel()
@@ -63,12 +64,27 @@ func TestPodBoxEphemeralContainersCarve(t *testing.T) {
 
 	t.Run("reserved band is exactly 104..199", func(t *testing.T) {
 		t.Parallel()
-		rr := md.ReservedRanges()
-		if rr.Len() != 1 {
-			t.Fatalf("PodBox has %d reserved ranges, want exactly 1", rr.Len())
+		// Single-number reservations of retired fields (retiredFields) are not
+		// headroom; every other reserved range must be the one 104..199 band.
+		retired := map[protoreflect.FieldNumber]bool{}
+		for _, rf := range retiredFields {
+			if rf.message == "PodBox" {
+				retired[rf.number] = true
+			}
 		}
-		r := rr.Get(0) // [start, end) — end is exclusive
-		if r[0] != 104 || r[1]-1 != 199 {
+		var bands [][2]protoreflect.FieldNumber
+		rr := md.ReservedRanges()
+		for i := 0; i < rr.Len(); i++ {
+			r := rr.Get(i) // [start, end) — end is exclusive
+			if r[1]-r[0] == 1 && retired[r[0]] {
+				continue
+			}
+			bands = append(bands, r)
+		}
+		if len(bands) != 1 {
+			t.Fatalf("PodBox has %d headroom reserved ranges (excluding retired fields), want exactly 1", len(bands))
+		}
+		if r := bands[0]; r[0] != 104 || r[1]-1 != 199 {
 			t.Errorf("PodBox reserved range = %d..%d, want 104..199", r[0], r[1]-1)
 		}
 	})
