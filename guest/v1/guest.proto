@@ -407,6 +407,7 @@ message GuestContainer {
   // a non-numeric image USER against the rootfs's /etc/passwd happens IN THE
   // GUEST at execution time (the host does not read a pod-controlled passwd
   // file); when the host already knows the numeric answer it stamps it here.
+  // Both are ignored when image_user is non-empty.
   int64 uid = 9;
   int64 gid = 10;
 
@@ -416,6 +417,48 @@ message GuestContainer {
   // init marks an init container: it runs to completion, in list order, before
   // any main container starts.
   bool init = 12;
+
+  // sidecar marks an init container that keeps running (the Kubernetes native
+  // sidecar: an init container with restartPolicy Always). It refines init and
+  // is valid only with init = true; a guest that receives sidecar without init
+  // refuses the spec.
+  //
+  // Start rule: a sidecar starts in its init-list position, and the next
+  // container starts once the sidecar's process is spawned rather than when it
+  // exits. A sidecar's exit does not end the pod and does not fail
+  // initialization. At shutdown it is stopped after every main container has
+  // stopped, sidecars in reverse start order. The guest does not restart a
+  // sidecar that exits. uid, gid and image_user apply to a sidecar exactly as
+  // to any other container.
+  //
+  // Absent from the proto-JSON spec when false, so a guest that predates the
+  // field boots a spec that does not set it. A core field (it refines init =
+  // 12, an ordering bit), so it takes the next sequential number, not the
+  // headroom band.
+  bool sidecar = 13;
+
+  // image_user is the image config's raw USER string ("app", "app:staff",
+  // "1000"). Its grammar is <user>[:<group>]: at most two colon-separated
+  // segments, and a guest refuses a value with more than two. When the pod set
+  // a run-as group, the host writes <user>:<gid>, replacing any group segment
+  // the image named.
+  //
+  // When non-empty it takes precedence: uid and gid are ignored and replaced by
+  // the guest's own resolution of this string against the container's own
+  // rootfs (/etc/passwd, /etc/group). supplemental_gids still apply. A name
+  // that cannot be resolved fails that container's start and never falls back
+  // to a default uid, so it never silently becomes uid 0. A literal root user
+  // ("root", "0") does resolve to 0; whether that is allowed is decided
+  // host-side by run-as-non-root before this field is set.
+  //
+  // A host sets it only when it could not determine a numeric uid itself, and
+  // never when run-as-non-root applies to the container: a host holding only a
+  // non-numeric USER where run-as-non-root applies refuses that container's
+  // start (a container-config error) instead of setting image_user or
+  // defaulting a uid. Absent from the proto-JSON spec when empty, so a guest
+  // that predates the field boots a spec that does not set it. A core field,
+  // so it takes the next sequential number, not the headroom band.
+  string image_user = 14;
 
   reserved 100 to 149;
 }

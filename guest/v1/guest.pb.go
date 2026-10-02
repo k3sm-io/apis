@@ -966,13 +966,54 @@ type GuestContainer struct {
 	// a non-numeric image USER against the rootfs's /etc/passwd happens IN THE
 	// GUEST at execution time (the host does not read a pod-controlled passwd
 	// file); when the host already knows the numeric answer it stamps it here.
+	// Both are ignored when image_user is non-empty.
 	Uid int64 `protobuf:"varint,9,opt,name=uid,proto3" json:"uid,omitempty"`
 	Gid int64 `protobuf:"varint,10,opt,name=gid,proto3" json:"gid,omitempty"`
 	// supplemental_gids are the additional groups, including the pod fsGroup.
 	SupplementalGids []int64 `protobuf:"varint,11,rep,packed,name=supplemental_gids,json=supplementalGids,proto3" json:"supplemental_gids,omitempty"`
 	// init marks an init container: it runs to completion, in list order, before
 	// any main container starts.
-	Init          bool `protobuf:"varint,12,opt,name=init,proto3" json:"init,omitempty"`
+	Init bool `protobuf:"varint,12,opt,name=init,proto3" json:"init,omitempty"`
+	// sidecar marks an init container that keeps running (the Kubernetes native
+	// sidecar: an init container with restartPolicy Always). It refines init and
+	// is valid only with init = true; a guest that receives sidecar without init
+	// refuses the spec.
+	//
+	// Start rule: a sidecar starts in its init-list position, and the next
+	// container starts once the sidecar's process is spawned rather than when it
+	// exits. A sidecar's exit does not end the pod and does not fail
+	// initialization. At shutdown it is stopped after every main container has
+	// stopped, sidecars in reverse start order. The guest does not restart a
+	// sidecar that exits. uid, gid and image_user apply to a sidecar exactly as
+	// to any other container.
+	//
+	// Absent from the proto-JSON spec when false, so a guest that predates the
+	// field boots a spec that does not set it. A core field (it refines init =
+	// 12, an ordering bit), so it takes the next sequential number, not the
+	// headroom band.
+	Sidecar bool `protobuf:"varint,13,opt,name=sidecar,proto3" json:"sidecar,omitempty"`
+	// image_user is the image config's raw USER string ("app", "app:staff",
+	// "1000"). Its grammar is <user>[:<group>]: at most two colon-separated
+	// segments, and a guest refuses a value with more than two. When the pod set
+	// a run-as group, the host writes <user>:<gid>, replacing any group segment
+	// the image named.
+	//
+	// When non-empty it takes precedence: uid and gid are ignored and replaced by
+	// the guest's own resolution of this string against the container's own
+	// rootfs (/etc/passwd, /etc/group). supplemental_gids still apply. A name
+	// that cannot be resolved fails that container's start and never falls back
+	// to a default uid, so it never silently becomes uid 0. A literal root user
+	// ("root", "0") does resolve to 0; whether that is allowed is decided
+	// host-side by run-as-non-root before this field is set.
+	//
+	// A host sets it only when it could not determine a numeric uid itself, and
+	// never when run-as-non-root applies to the container: a host holding only a
+	// non-numeric USER where run-as-non-root applies refuses that container's
+	// start (a container-config error) instead of setting image_user or
+	// defaulting a uid. Absent from the proto-JSON spec when empty, so a guest
+	// that predates the field boots a spec that does not set it. A core field,
+	// so it takes the next sequential number, not the headroom band.
+	ImageUser     string `protobuf:"bytes,14,opt,name=image_user,json=imageUser,proto3" json:"image_user,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1089,6 +1130,20 @@ func (x *GuestContainer) GetInit() bool {
 		return x.Init
 	}
 	return false
+}
+
+func (x *GuestContainer) GetSidecar() bool {
+	if x != nil {
+		return x.Sidecar
+	}
+	return false
+}
+
+func (x *GuestContainer) GetImageUser() string {
+	if x != nil {
+		return x.ImageUser
+	}
+	return ""
 }
 
 // GuestMount is one mount the guest init performs.
@@ -1456,7 +1511,7 @@ const file_guest_v1_guest_proto_rawDesc = "" +
 	"ResolvConf\x12 \n" +
 	"\vnameservers\x18\x01 \x03(\tR\vnameservers\x12\x1a\n" +
 	"\bsearches\x18\x02 \x03(\tR\bsearches\x12\x18\n" +
-	"\aoptions\x18\x03 \x03(\tR\aoptionsJ\x05\bd\x10\x96\x01\"\xb8\x02\n" +
+	"\aoptions\x18\x03 \x03(\tR\aoptionsJ\x05\bd\x10\x96\x01\"\xf1\x02\n" +
 	"\x0eGuestContainer\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
@@ -1472,7 +1527,10 @@ const file_guest_v1_guest_proto_rawDesc = "" +
 	"\x03gid\x18\n" +
 	" \x01(\x03R\x03gid\x12+\n" +
 	"\x11supplemental_gids\x18\v \x03(\x03R\x10supplementalGids\x12\x12\n" +
-	"\x04init\x18\f \x01(\bR\x04initJ\x05\bd\x10\x96\x01\"\xdf\x01\n" +
+	"\x04init\x18\f \x01(\bR\x04init\x12\x18\n" +
+	"\asidecar\x18\r \x01(\bR\asidecar\x12\x1d\n" +
+	"\n" +
+	"image_user\x18\x0e \x01(\tR\timageUserJ\x05\bd\x10\x96\x01\"\xdf\x01\n" +
 	"\n" +
 	"GuestMount\x12\"\n" +
 	"\rtag_or_source\x18\x01 \x01(\tR\vtagOrSource\x12\x16\n" +
