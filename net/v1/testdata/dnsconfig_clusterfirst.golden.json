@@ -1,0 +1,16 @@
+[
+  {
+    "clusterDNSIP": "10.43.0.10",
+    "clusterDomain": "cluster.local",
+    "searchDomains": [
+      "default.svc.cluster.local",
+      "svc.cluster.local",
+      "cluster.local"
+    ],
+    "ndots": 5
+  },
+  {
+    "clusterDNSIP": "",
+    "clusterDomain": ""
+  }
+]
