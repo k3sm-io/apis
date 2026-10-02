@@ -1,0 +1,22 @@
+{
+  "clusterDNSIP": "",
+  "clusterDomain": "",
+  "searchDomains": [
+    "a.example"
+  ],
+  "ndots": 2,
+  "policy": "None",
+  "nameservers": [
+    "1.1.1.1",
+    "9.9.9.9"
+  ],
+  "options": [
+    {
+      "name": "edns0"
+    },
+    {
+      "name": "timeout",
+      "value": "2"
+    }
+  ]
+}
