@@ -186,6 +186,19 @@ type HealthResponse struct {
 	// capabilities are optional feature tokens the agent advertises. It exists so
 	// a capability can be negotiated WITHOUT an api_version bump for changes that
 	// are genuinely additive; an unknown token is ignored by the host.
+	//
+	// Tokens tied to GuestSpec fields, one per line with the field it owns:
+	//   guest-private-mounts  GuestMount.guest_private. A host MUST NOT emit
+	//                         guest_private to an agent that does not advertise it.
+	//   sidecar-init          GuestContainer.sidecar (diagnostic).
+	//   image-user            GuestContainer.image_user (diagnostic).
+	//
+	// These tokens are diagnosis: they let a host name the fix ("this guest
+	// predates the field") before booting a spec the guest cannot honor. They are
+	// not what makes an older guest fail closed. That comes from the guest
+	// refusing a spec that sets a field it does not know (it decodes the
+	// proto-JSON spec with unknown fields rejected, and a field left unset is
+	// omitted from proto-JSON), and a guest implementation MUST keep that refusal.
 	Capabilities  []string `protobuf:"bytes,5,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -966,13 +979,54 @@ type GuestContainer struct {
 	// a non-numeric image USER against the rootfs's /etc/passwd happens IN THE
 	// GUEST at execution time (the host does not read a pod-controlled passwd
 	// file); when the host already knows the numeric answer it stamps it here.
+	// Both are ignored when image_user is non-empty.
 	Uid int64 `protobuf:"varint,9,opt,name=uid,proto3" json:"uid,omitempty"`
 	Gid int64 `protobuf:"varint,10,opt,name=gid,proto3" json:"gid,omitempty"`
 	// supplemental_gids are the additional groups, including the pod fsGroup.
 	SupplementalGids []int64 `protobuf:"varint,11,rep,packed,name=supplemental_gids,json=supplementalGids,proto3" json:"supplemental_gids,omitempty"`
 	// init marks an init container: it runs to completion, in list order, before
 	// any main container starts.
-	Init          bool `protobuf:"varint,12,opt,name=init,proto3" json:"init,omitempty"`
+	Init bool `protobuf:"varint,12,opt,name=init,proto3" json:"init,omitempty"`
+	// sidecar marks an init container that keeps running (the Kubernetes native
+	// sidecar: an init container with restartPolicy Always). It refines init and
+	// is valid only with init = true; a guest that receives sidecar without init
+	// refuses the spec.
+	//
+	// Start rule: a sidecar starts in its init-list position, and the next
+	// container starts once the sidecar's process is spawned rather than when it
+	// exits. A sidecar's exit does not end the pod and does not fail
+	// initialization. At shutdown it is stopped after every main container has
+	// stopped, sidecars in reverse start order. The guest does not restart a
+	// sidecar that exits. uid, gid and image_user apply to a sidecar exactly as
+	// to any other container.
+	//
+	// Absent from the proto-JSON spec when false, so a guest that predates the
+	// field boots a spec that does not set it. A core field (it refines init =
+	// 12, an ordering bit), so it takes the next sequential number, not the
+	// headroom band.
+	Sidecar bool `protobuf:"varint,13,opt,name=sidecar,proto3" json:"sidecar,omitempty"`
+	// image_user is the image config's raw USER string ("app", "app:staff",
+	// "1000"). Its grammar is <user>[:<group>]: at most two colon-separated
+	// segments, and a guest refuses a value with more than two. When the pod set
+	// a run-as group, the host writes <user>:<gid>, replacing any group segment
+	// the image named.
+	//
+	// When non-empty it takes precedence: uid and gid are ignored and replaced by
+	// the guest's own resolution of this string against the container's own
+	// rootfs (/etc/passwd, /etc/group). supplemental_gids still apply. A name
+	// that cannot be resolved fails that container's start and never falls back
+	// to a default uid, so it never silently becomes uid 0. A literal root user
+	// ("root", "0") does resolve to 0; whether that is allowed is decided
+	// host-side by run-as-non-root before this field is set.
+	//
+	// A host sets it only when it could not determine a numeric uid itself, and
+	// never when run-as-non-root applies to the container: a host holding only a
+	// non-numeric USER where run-as-non-root applies refuses that container's
+	// start (a container-config error) instead of setting image_user or
+	// defaulting a uid. Absent from the proto-JSON spec when empty, so a guest
+	// that predates the field boots a spec that does not set it. A core field,
+	// so it takes the next sequential number, not the headroom band.
+	ImageUser     string `protobuf:"bytes,14,opt,name=image_user,json=imageUser,proto3" json:"image_user,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1091,6 +1145,20 @@ func (x *GuestContainer) GetInit() bool {
 	return false
 }
 
+func (x *GuestContainer) GetSidecar() bool {
+	if x != nil {
+		return x.Sidecar
+	}
+	return false
+}
+
+func (x *GuestContainer) GetImageUser() string {
+	if x != nil {
+		return x.ImageUser
+	}
+	return ""
+}
+
 // GuestMount is one mount the guest init performs.
 type GuestMount struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1114,7 +1182,21 @@ type GuestMount struct {
 	// idmap requests an idmapped mount (Linux MOUNT_ATTR_IDMAP) so files owned by
 	// the host-side owner appear as the container's effective uid/fsGroup. This
 	// is how fsGroup is honored with ZERO recursive chown on either side.
-	Idmap         bool `protobuf:"varint,6,opt,name=idmap,proto3" json:"idmap,omitempty"`
+	Idmap bool `protobuf:"varint,6,opt,name=idmap,proto3" json:"idmap,omitempty"`
+	// guest_private marks a mount the guest init uses only for its own
+	// composition of container roots. The guest init performs it in the guest
+	// root only and never re-exposes it inside any container rootfs. It detaches
+	// the mount after every container root is composed and before any container
+	// process starts, so no container (including a later restart of one) can
+	// reach it. A container restart reuses its already-composed root, so it never
+	// needs the mount again. It is orthogonal to kind.
+	//
+	// A host MUST NOT emit guest_private to an agent that does not advertise the
+	// guest-private-mounts capability (HealthResponse.capabilities). Absent from
+	// the proto-JSON spec when false, so a guest that predates the field boots a
+	// spec that does not set it. A core field, so it takes the next sequential
+	// number, not the headroom band.
+	GuestPrivate  bool `protobuf:"varint,7,opt,name=guest_private,json=guestPrivate,proto3" json:"guest_private,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1187,6 +1269,13 @@ func (x *GuestMount) GetSizeLimitBytes() int64 {
 func (x *GuestMount) GetIdmap() bool {
 	if x != nil {
 		return x.Idmap
+	}
+	return false
+}
+
+func (x *GuestMount) GetGuestPrivate() bool {
+	if x != nil {
+		return x.GuestPrivate
 	}
 	return false
 }
@@ -1456,7 +1545,7 @@ const file_guest_v1_guest_proto_rawDesc = "" +
 	"ResolvConf\x12 \n" +
 	"\vnameservers\x18\x01 \x03(\tR\vnameservers\x12\x1a\n" +
 	"\bsearches\x18\x02 \x03(\tR\bsearches\x12\x18\n" +
-	"\aoptions\x18\x03 \x03(\tR\aoptionsJ\x05\bd\x10\x96\x01\"\xb8\x02\n" +
+	"\aoptions\x18\x03 \x03(\tR\aoptionsJ\x05\bd\x10\x96\x01\"\xf1\x02\n" +
 	"\x0eGuestContainer\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
@@ -1472,7 +1561,10 @@ const file_guest_v1_guest_proto_rawDesc = "" +
 	"\x03gid\x18\n" +
 	" \x01(\x03R\x03gid\x12+\n" +
 	"\x11supplemental_gids\x18\v \x03(\x03R\x10supplementalGids\x12\x12\n" +
-	"\x04init\x18\f \x01(\bR\x04initJ\x05\bd\x10\x96\x01\"\xdf\x01\n" +
+	"\x04init\x18\f \x01(\bR\x04init\x12\x18\n" +
+	"\asidecar\x18\r \x01(\bR\asidecar\x12\x1d\n" +
+	"\n" +
+	"image_user\x18\x0e \x01(\tR\timageUserJ\x05\bd\x10\x96\x01\"\x84\x02\n" +
 	"\n" +
 	"GuestMount\x12\"\n" +
 	"\rtag_or_source\x18\x01 \x01(\tR\vtagOrSource\x12\x16\n" +
@@ -1480,7 +1572,8 @@ const file_guest_v1_guest_proto_rawDesc = "" +
 	"\x04kind\x18\x03 \x01(\x0e2\x1d.k3sm.guest.v1.GuestMountKindR\x04kind\x12\x1b\n" +
 	"\tread_only\x18\x04 \x01(\bR\breadOnly\x12(\n" +
 	"\x10size_limit_bytes\x18\x05 \x01(\x03R\x0esizeLimitBytes\x12\x14\n" +
-	"\x05idmap\x18\x06 \x01(\bR\x05idmapJ\x05\bd\x10\x96\x01\"\xda\x02\n" +
+	"\x05idmap\x18\x06 \x01(\bR\x05idmap\x12#\n" +
+	"\rguest_private\x18\a \x01(\bR\fguestPrivateJ\x05\bd\x10\x96\x01\"\xda\x02\n" +
 	"\n" +
 	"VMHostSpec\x12\x15\n" +
 	"\x06pod_id\x18\x01 \x01(\tR\x05podId\x12\x14\n" +

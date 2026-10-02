@@ -263,9 +263,33 @@ message PodBox {
   // additive without new fields.
   repeated ResourceLimit rlimits = 102;
 
-  // 100..102 are now allocated above; 103..199 stay reserved for future
-  // resource/metrics inputs. The band's 199 ceiling is preserved (additive).
-  reserved 103 to 199;
+  // ephemeral_containers are the pod's ephemeral (debug) containers. Mirrors
+  // corev1.PodSpec.EphemeralContainers.
+  //
+  // The list is append-only through UpdatePod: adding an entry starts it, and
+  // mutating or removing an existing entry is rejected as NOT_UPDATABLE. On
+  // CreatePod (which re-creates a pod after a daemon restart) listed entries
+  // are recorded and NOT started, because ephemeral containers are never
+  // restarted; they report as terminated with reason ContainerStatusUnknown. A
+  // backend that cannot start an ephemeral container answers
+  // FAILURE_REASON_UNSUPPORTED.
+  //
+  // The Container fields upstream forbids on an ephemeral container (ports,
+  // probes, resources, lifecycle, restart_policy) are never set by a producer
+  // and are ignored by a consumer. security_context and the pod-level
+  // run_as_non_root apply as to any container, resolved against the pod-level
+  // value. There is no wire field for targetContainerName: a producer rejects
+  // an entry that sets it rather than sending it without that field.
+  //
+  // It is a deliberate carve from the 100..199 band for the pod's ephemeral
+  // (debug) container list, the one non-resource field in that band.
+  repeated Container ephemeral_containers = 103;
+
+  // 100..103 are now allocated above; 104..199 stay reserved for future
+  // resource/metrics inputs (103 is the one non-resource carve, made
+  // deliberately for the pod's ephemeral (debug) container list). The band's
+  // 199 ceiling is preserved (additive).
+  reserved 104 to 199;
 }
 
 // Volume is a named pod-level volume with exactly one source set. Mirrors a
@@ -474,6 +498,11 @@ message HostPathVolumeSource {
 // PodSecurityContext is the pod-scoped privilege configuration. fs_group lives
 // HERE (pod-level only). Mirrors a subset of corev1.PodSecurityContext.
 // int64 mirrors corev1's *int64; 0 is a valid value (root).
+//
+// run_as_user and run_as_group are defaults for containers lacking their own.
+// run_as_non_root is the one exception to that reading: it is a pod-wide
+// assertion composed with each container's own value by logical OR, never a
+// default (see the field).
 message PodSecurityContext {
   // fs_group is the supplemental group applied to volume ownership (chown
   // root-side before the privilege drop).
@@ -482,6 +511,32 @@ message PodSecurityContext {
   int64 run_as_user = 2;
   // run_as_group is the default gid for containers lacking their own.
   int64 run_as_group = 3;
+
+  // run_as_non_root, when true, asserts pod-wide that every container's
+  // resolved uid is non-zero. It is the EXCEPTION to its siblings' reading: it
+  // is NOT a default for containers lacking their own. A consumer composes it
+  // with each container's SecurityContext.run_as_non_root by logical OR, so a
+  // container's effective requirement is (pod value OR container value).
+  //
+  // Because a proto3 bool has no presence, a container-level opt-out
+  // (container false while the pod is true) cannot override this field on the
+  // wire. The producer rule closes that gap: whenever the pod value is set, a
+  // producer stamps every container's effective value (the container's own
+  // value if it set one, else the pod value) into that container's
+  // SecurityContext.run_as_non_root, and sends this field as false when any
+  // container explicitly opts out. "Every container" means the init containers
+  // (sidecars included), the regular containers and the ephemeral containers;
+  // an ephemeral container resolves against the pod-level value like any
+  // other. A consumer that predates this field therefore still enforces the
+  // requirement through the per-container stamps.
+  //
+  // Allocated the next sequential number (4) beside run_as_user and
+  // run_as_group, which are core sub-100 fields, not headroom.
+  bool run_as_non_root = 4;
+
+  // 100..149 is reserved headroom for future additive fields, the convention
+  // every sibling message in this file keeps.
+  reserved 100 to 149;
 }
 
 // LocalObjectReference references a namespace-local object by name (e.g. an
