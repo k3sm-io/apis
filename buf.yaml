@@ -31,9 +31,14 @@ lint:
     # messages serve two RPCs each, which trips the uniqueness rule on BOTH the
     # reusing file and the file that declared them. Scoped to those two paths,
     # so any other service still gets the rule.
+    #
+    # shim/v1's ContainerShim Exec/Follow reuse the same runtime/v1 messages
+    # (ExecRequest/ExecResponse, AttachResponse) for the same reason: the shim
+    # serves the same exec and output verbs one hop closer to the container.
     RPC_REQUEST_RESPONSE_UNIQUE:
       - guest/v1/guest.proto
       - runtime/v1/runtime.proto
+      - shim/v1/shim.proto
     # Same reuse, second consequence: GuestAgent.Logs takes the reused
     # GetLogsRequest, whose name follows runtime/v1's GetLogs verb rather than
     # this service's Logs verb. Renaming the RPC to satisfy the linter would
