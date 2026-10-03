@@ -54,9 +54,11 @@ const (
 // whose Value is a *string: here an empty Value always means a bare flag, so a
 // present-but-empty value cannot be expressed.
 type DNSOption struct {
-	// Name is the option name. It must be non-empty, must not be "ndots"
-	// (DNSConfig.NDots is the one home of ndots), and must not contain
-	// whitespace or control characters.
+	// Name is the option name. It must be non-empty, must not be "ndots" in any
+	// case (DNSConfig.NDots is the one home of ndots), and must be a single
+	// token: no whitespace, control characters, ':' or '='. A renderer joins
+	// Name and Value as name[:value], so a separator inside Name would smuggle
+	// in a second option (Name "ndots:1" would set ndots).
 	Name string `json:"name"`
 	// Value is the option value; empty means the option is a bare flag. It must
 	// not contain whitespace or control characters.
@@ -164,9 +166,10 @@ func (c DNSConfig) WithDefaults() DNSConfig {
 // ClusterDomain is optional.
 //
 // For both policies, every Options entry must have a non-empty name other than
-// "ndots", and neither its name nor its value may contain whitespace or control
-// characters, since each is written verbatim into a resolv.conf line. Any other
-// Policy is invalid.
+// "ndots" (compared case-insensitively), the name must not contain ':' or '='
+// (the name/value separators), and neither the name nor the value may contain
+// whitespace or control characters, since each is written verbatim into a
+// resolv.conf line. Any other Policy is invalid.
 func (c DNSConfig) Validate() error {
 	switch c.Policy {
 	case DNSPolicyClusterFirst:
@@ -230,17 +233,21 @@ func validateNameservers(ns []string) error {
 	return nil
 }
 
-// validateDNSOption checks one resolv.conf option for a usable name and for
-// characters that could break out of its resolv.conf line.
+// validateDNSOption checks one resolv.conf option for a usable single-token name
+// and for characters that could break out of its resolv.conf line or smuggle in
+// a second option.
 func validateDNSOption(o DNSOption) error {
 	if o.Name == "" {
 		return fmt.Errorf("%w: dns option name is empty", ErrInvalid)
 	}
-	if o.Name == "ndots" {
-		return fmt.Errorf("%w: dns option ndots is not allowed; set ndots instead", ErrInvalid)
+	if strings.EqualFold(o.Name, "ndots") {
+		return fmt.Errorf("%w: dns option %q is not allowed; set ndots instead", ErrInvalid, o.Name)
 	}
 	if hasSpaceOrControl(o.Name) {
 		return fmt.Errorf("%w: dns option name %q contains whitespace or a control character", ErrInvalid, o.Name)
+	}
+	if strings.ContainsAny(o.Name, ":=") {
+		return fmt.Errorf("%w: dns option name %q contains a ':' or '=' separator", ErrInvalid, o.Name)
 	}
 	if hasSpaceOrControl(o.Value) {
 		return fmt.Errorf("%w: dns option %q value %q contains whitespace or a control character", ErrInvalid, o.Name, o.Value)

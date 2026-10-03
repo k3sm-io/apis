@@ -171,6 +171,10 @@ func TestDNSConfigPolicyValidate(t *testing.T) {
 
 		// Options, checked for either policy.
 		{"option ndots", withOpts(none("1.1.1.1"), DNSOption{Name: "ndots", Value: "2"}), true, nil},
+		{"option ndots uppercase", withOpts(none("1.1.1.1"), DNSOption{Name: "NDOTS", Value: "2"}), true, nil},
+		{"option name smuggles ndots via colon", withOpts(none("1.1.1.1"), DNSOption{Name: "ndots:1"}), true, nil},
+		{"option name with colon", withOpts(none("1.1.1.1"), DNSOption{Name: "timeout:2"}), true, nil},
+		{"option name with equals", withOpts(none("1.1.1.1"), DNSOption{Name: "a=b"}), true, nil},
 		{"option empty name", withOpts(none("1.1.1.1"), DNSOption{Value: "2"}), true, nil},
 		{"option newline in name", withOpts(none("1.1.1.1"), DNSOption{Name: "edns0\nnameserver"}), true, nil},
 		{"option newline in value", withOpts(none("1.1.1.1"), DNSOption{Name: "timeout", Value: "2\nnameserver 6.6.6.6"}), true, nil},
