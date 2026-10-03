@@ -1,0 +1,184 @@
+// Package shim.v1 is the k3sm per-container shim contract: the gRPC service a
+// resident shim process serves for exactly one container, dialed by the node
+// runtime daemon over a daemon-private unix socket. The shim owns the
+// container's stdio, its log file, and its exit status, so the container's
+// output, exit code, and exec surface outlive a restart of the daemon.
+//
+// WHY THIS IS AN INTERNAL CONTRACT, NOT A PUBLIC ONE: both ends — the runtime
+// daemon and the shim — are built from the same runtimed build and versioned by
+// that build. A daemon and a shim from different builds are never paired: a
+// daemon upgrade recreates every pod, and with it every shim. This file lives in
+// k3sm.io/apis only so it shares the module's buf toolchain and codegen.
+//
+// COMPAT POSTURE: LOCKSTEP. This package is EXPLICITLY NOT covered by
+// runtime/v1's "additive-only forever" promise. A change here is a lockstep
+// change to both ends in one build. StatusResponse.api_version makes skew
+// LEGIBLE: the daemon refuses a shim reporting a different api_version with a
+// stated reason. There is no capability negotiation.
+//
+// SIDE CHANNELS BEYOND THE MESSAGES: the contract relies on three lockstep
+// details owned by the runtime build, listed so a reader knows they exist; they
+// are not part of the messages. A second unix socket in the same shim directory
+// carries file descriptors by SCM_RIGHTS: a tty Exec's pty slave and a rotated
+// log file for ReopenLog. Each descriptor is matched to its call by a token in
+// gRPC metadata (k3sm-pty-token on Exec, k3sm-log-token on ReopenLog). An Exec
+// stream reports its session's pid and start time in response-header metadata
+// (k3sm-session-pid, k3sm-session-start), so the caller can end that session
+// when the stream ends.
+//
+// Conventions (kept for consistency with the sibling packages, not as a compat
+// promise): field numbers are never renumbered or repurposed within a build
+// line, and every message keeps the file convention's `reserved 100 to 149;`
+// headroom band.
+syntax = "proto3";
+
+package k3sm.shim.v1;
+
+import "google/protobuf/timestamp.proto";
+// runtime/v1 is imported so Exec and Follow can NAME the existing
+// k3sm.runtime.v1 stream messages rather than declare parallel copies of them —
+// the guest/v1 precedent. A proto file import is not a Go module dependency:
+// both packages are in k3sm.io/apis.
+import "runtime/v1/runtime.proto";
+
+option go_package = "k3sm.io/apis/shim/v1;shimv1";
+
+// ContainerShim is served by the resident per-container shim. One shim hosts
+// exactly one container, so every RPC is scoped to that container implicitly.
+// Requests still carry `container`, and the shim MUST reject a name that is not
+// its container: the name is an assertion that the caller reached the shim it
+// meant to reach, not a selector over several.
+//
+// RPC numbering note: gRPC method names (not numbers) are the wire identity.
+service ContainerShim {
+  // Status reports the shim's identity (api_version, its own pid and start
+  // time), the child's identity (pid and start time, so a pid reuse is
+  // detectable), whether the child is running, its persisted exit status once
+  // it has exited, and the ring-buffer drop counter.
+  rpc Status(StatusRequest) returns (StatusResponse);
+
+  // Exec runs `kubectl exec` in the container's context, reusing the runtime/v1
+  // exec stream messages verbatim. In ExecRequest, container MUST equal the
+  // shim's container (the shim rejects any other); the remaining fields keep
+  // their runtime/v1 meaning exactly.
+  rpc Exec(stream k3sm.runtime.v1.ExecRequest) returns (stream k3sm.runtime.v1.ExecResponse);
+
+  // Follow streams the container's live stdout/stderr from the moment of the
+  // call, reusing the runtime/v1 AttachResponse message. There is no replay of
+  // earlier output (the log file is the history). The stream ends after the
+  // container exits. AttachResponse.exit (ExecResult, a signal death mirrored as
+  // 128+signal) is a LIVENESS HINT only — it is never the exit authority;
+  // Status.exit is.
+  rpc Follow(FollowRequest) returns (stream k3sm.runtime.v1.AttachResponse);
+
+  // Signal delivers a signal to the container's process group or to the child
+  // alone.
+  rpc Signal(SignalRequest) returns (SignalResponse);
+
+  // ReopenLog closes and reopens the container's log file at its configured
+  // path, so a rotation by the daemon takes effect without losing output.
+  rpc ReopenLog(ReopenLogRequest) returns (ReopenLogResponse);
+}
+
+// ExitStatus is the child's persisted exit status.
+message ExitStatus {
+  // exit_code is the child's exit code when it exited normally (signal == 0).
+  int32 exit_code = 1;
+
+  // signal is the signal number that terminated the child; 0 means the child
+  // exited normally and exit_code is authoritative.
+  int32 signal = 2;
+
+  // finished_at is when the shim observed the child's exit.
+  google.protobuf.Timestamp finished_at = 3;
+
+  reserved 100 to 149;
+}
+
+// StatusRequest asks the shim for its status.
+message StatusRequest {
+  // container is an assertion: the shim rejects a name that is not its
+  // container.
+  string container = 1;
+
+  reserved 100 to 149;
+}
+
+// StatusResponse is the shim's identity + child status report.
+message StatusResponse {
+  // api_version is the shim/v1 contract version this shim speaks (the Go
+  // constant shimv1.APIVersion of its build). Legible, never negotiated: the
+  // daemon refuses a shim reporting a different value with a stated reason.
+  string api_version = 1;
+
+  // shim_pid is the shim process's own pid.
+  int32 shim_pid = 2;
+
+  // shim_start_unix_nano is the shim process's start time, in Unix
+  // nanoseconds; with shim_pid it identifies the shim across pid reuse.
+  int64 shim_start_unix_nano = 3;
+
+  // child_pid is the container's child process pid.
+  int32 child_pid = 4;
+
+  // child_start_unix_nano is the child process's start time, in Unix
+  // nanoseconds; with child_pid it identifies the child across pid reuse.
+  int64 child_start_unix_nano = 5;
+
+  // running is true while the child has not exited.
+  bool running = 6;
+
+  // exit is set iff the child has exited AND its status has been persisted by
+  // the shim. It is the exit authority for the container.
+  ExitStatus exit = 7;
+
+  // dropped_bytes counts output bytes dropped by the shim's ring buffer since
+  // the shim started (a slow log writer or follower never blocks the child).
+  uint64 dropped_bytes = 8;
+
+  reserved 100 to 149;
+}
+
+// FollowRequest subscribes to the container's live output.
+message FollowRequest {
+  // container is an assertion: the shim rejects a name that is not its
+  // container.
+  string container = 1;
+
+  reserved 100 to 149;
+}
+
+// SignalRequest delivers a signal.
+message SignalRequest {
+  // container is an assertion: the shim rejects a name that is not its
+  // container.
+  string container = 1;
+
+  // signal is the signal number to deliver.
+  int32 signal = 2;
+
+  // group selects the target: true signals the container's process group,
+  // false signals only the child.
+  bool group = 3;
+
+  reserved 100 to 149;
+}
+
+// SignalResponse is empty: success is the absence of an error.
+message SignalResponse {
+  reserved 100 to 149;
+}
+
+// ReopenLogRequest asks the shim to reopen the container's log file.
+message ReopenLogRequest {
+  // container is an assertion: the shim rejects a name that is not its
+  // container.
+  string container = 1;
+
+  reserved 100 to 149;
+}
+
+// ReopenLogResponse is empty: success is the absence of an error.
+message ReopenLogResponse {
+  reserved 100 to 149;
+}
