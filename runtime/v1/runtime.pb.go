@@ -680,23 +680,6 @@ type PodBox struct {
 	// namespace and name are the kube coordinates, for logs/diagnostics.
 	Namespace string `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	Name      string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	// rootfs_path is SERVER-DERIVED, never caller-chosen: the daemon computes the
-	// per-pod rootfs directory (<root>/pods/<pod_id>/rootfs) from its own
-	// configured root, which a producer cannot reproduce because that root is set
-	// per node; a non-empty value is therefore accepted only when it is
-	// byte-equal to that single derivation, and any other spelling — including a
-	// firmlink alias of the very same directory — rejects the pod as an invalid
-	// PodBox (FAILURE_REASON_INVALID_POD_BOX), never coerced to the derived path
-	// and never retried. No producer sets this field today, empty is the only
-	// value a producer can safely send, and the field is planned for
-	// consumer-first removal. Its sibling
-	// SandboxProfile.data_volume_path is validated by a DIFFERENT rule — it
-	// accepts a two-spelling derived set, not this single derivation — so do not
-	// generalize this field's accept set to it. This validation is path
-	// CONTAINMENT only — it does not provide same-node pod mutual isolation
-	// (pods commonly share the daemon's uid; untrusted multi-tenancy requires
-	// the vm RuntimeClass).
-	RootfsPath string `protobuf:"bytes,4,opt,name=rootfs_path,json=rootfsPath,proto3" json:"rootfs_path,omitempty"`
 	// uid and gid are the dedicated user/group the pod's processes run as.
 	Uid uint32 `protobuf:"varint,5,opt,name=uid,proto3" json:"uid,omitempty"`
 	Gid uint32 `protobuf:"varint,6,opt,name=gid,proto3" json:"gid,omitempty"`
@@ -838,13 +821,6 @@ func (x *PodBox) GetNamespace() string {
 func (x *PodBox) GetName() string {
 	if x != nil {
 		return x.Name
-	}
-	return ""
-}
-
-func (x *PodBox) GetRootfsPath() string {
-	if x != nil {
-		return x.RootfsPath
 	}
 	return ""
 }
@@ -3573,9 +3549,7 @@ type SandboxProfile struct {
 	// EFFECTIVE (narrowed) data volume value are always permitted, even where the
 	// profile otherwise denies access to the daemon's own trees outside it.
 	//
-	// The sibling PodBox.rootfs_path is validated by a DIFFERENT rule (one derived
-	// spelling, byte-equal); do not generalize either field's accept set to the
-	// other. This validation is path CONTAINMENT only — it does not provide
+	// This validation is path CONTAINMENT only — it does not provide
 	// same-node pod mutual isolation (pods commonly share the daemon's uid;
 	// untrusted multi-tenancy requires the vm RuntimeClass).
 	DataVolumePath string `protobuf:"bytes,2,opt,name=data_volume_path,json=dataVolumePath,proto3" json:"data_volume_path,omitempty"`
@@ -7831,14 +7805,12 @@ var File_runtime_v1_runtime_proto protoreflect.FileDescriptor
 
 const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\n" +
-	"\x18runtime/v1/runtime.proto\x12\x0fk3sm.runtime.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17google/rpc/status.proto\"\xa5\n" +
+	"\x18runtime/v1/runtime.proto\x12\x0fk3sm.runtime.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17google/rpc/status.proto\"\x97\n" +
 	"\n" +
 	"\x06PodBox\x12\x15\n" +
 	"\x06pod_id\x18\x01 \x01(\tR\x05podId\x12\x1c\n" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x12\n" +
-	"\x04name\x18\x03 \x01(\tR\x04name\x12\x1f\n" +
-	"\vrootfs_path\x18\x04 \x01(\tR\n" +
-	"rootfsPath\x12\x10\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12\x10\n" +
 	"\x03uid\x18\x05 \x01(\rR\x03uid\x12\x10\n" +
 	"\x03gid\x18\x06 \x01(\rR\x03gid\x12\x15\n" +
 	"\x06pod_ip\x18\a \x01(\tR\x05podIp\x12\x17\n" +
@@ -7866,7 +7838,7 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a>\n" +
 	"\x10AnnotationsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x05\bh\x10\xc8\x01\"\xa7\x04\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x04\x10\x05J\x05\bh\x10\xc8\x01R\vrootfs_path\"\xa7\x04\n" +
 	"\x06Volume\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12E\n" +
 	"\n" +

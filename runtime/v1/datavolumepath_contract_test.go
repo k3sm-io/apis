@@ -48,9 +48,9 @@ func TestDataVolumePathContractDocumented(t *testing.T) {
 	// merely "typically" the rootfs path, i.e. caller's choice, unvalidated.
 	//
 	// It is deliberately this WHOLE phrase and never a bare "rootfs_path": that
-	// identifier legitimately survives in the sibling PodBox.rootfs_path field and
-	// in this field's own cross-reference to it, so a bare-identifier absence check
-	// would be permanently red.
+	// identifier legitimately survives after the field's removal, in PodBox's
+	// `reserved "rootfs_path";` statement and in the generated descriptor bytes,
+	// so a bare-identifier absence check would be permanently red.
 	const supersededFragment = "typically the rootfs_path"
 
 	// Substrings tied to the invariant, matched case-insensitively except for the

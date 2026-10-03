@@ -104,7 +104,6 @@ func TestRoundTrip(t *testing.T) {
 		PodId:           "11111111-2222-3333-4444-555555555555",
 		Namespace:       "default",
 		Name:            "hello",
-		RootfsPath:      "/var/lib/k3sm/pods/p1/rootfs",
 		Uid:             501,
 		Gid:             20,
 		PodIp:           "100.64.0.7",
@@ -392,7 +391,6 @@ func TestRoundTrip(t *testing.T) {
 		PodId:      "11111111-2222-3333-4444-555555555555",
 		Namespace:  "default",
 		Name:       "stockkitty",
-		RootfsPath: "/var/lib/k3sm/pods/p1/rootfs",
 		Uid:        501,
 		Gid:        20,
 		Containers: []*Container{{Name: "app", Image: "/app"}},
@@ -464,7 +462,6 @@ func TestRoundTrip(t *testing.T) {
 	roundTrip(t, "PodBox_resources_M2_2", &PodBox{
 		PodId:            "11111111-2222-3333-4444-555555555555",
 		Name:             "stockkitty",
-		RootfsPath:       "/var/lib/k3sm/pods/p1/rootfs",
 		MemoryLimitBytes: 512 << 20,
 		QosClass:         QOSClass_QOS_CLASS_BURSTABLE,
 		Rlimits: []*ResourceLimit{
@@ -518,12 +515,11 @@ func TestRoundTrip(t *testing.T) {
 	// (the StatefulSet-storage shape stockkitty's Postgres needs), mounted by a
 	// container — the cross-message M3.1 wire surface.
 	roundTrip(t, "PodBox_persistentVolume_M3_1", &PodBox{
-		PodId:      "11111111-2222-3333-4444-555555555555",
-		Namespace:  "stockkitty",
-		Name:       "postgres-0",
-		RootfsPath: "/var/lib/k3sm/pods/p1/rootfs",
-		Uid:        501,
-		Gid:        20,
+		PodId:     "11111111-2222-3333-4444-555555555555",
+		Namespace: "stockkitty",
+		Name:      "postgres-0",
+		Uid:       501,
+		Gid:       20,
 		Containers: []*Container{{
 			Name:  "postgres",
 			Image: "/postgres",

@@ -53,7 +53,10 @@ breaking:
     # field-level guard stays ON (FIELD_NO_DELETE, FIELD_SAME_TYPE / _NAME /
     # _JSON_NAME, FIELD_NO_DELETE_UNLESS_NUMBER_RESERVED) plus
     # RESERVED_ENUM_NO_DELETE, so no existing field can be renumbered, retyped,
-    # or deleted vs buf/baseline.binpb. No reserved range in this proto stems
-    # from a DELETED field (all are headroom), so this except removes no real
-    # wire protection.
+    # or deleted vs buf/baseline.binpb. One reservation DOES stem from a
+    # deleted field: PodBox `reserved 4;` / `reserved "rootfs_path";`. Once the
+    # baseline is refreshed past that removal, `buf breaking` no longer guards
+    # it (this except lets the reservation be dropped and field 4 reused
+    # unflagged), so the lasting guard is runtime/v1::TestRootfsPathRemoved and
+    # its append-only retiredFields table.
     - RESERVED_MESSAGE_NO_DELETE
