@@ -125,14 +125,15 @@ type MLXModelSpec struct {
 	// LabelChip / LabelChipFamily / LabelMemoryGB node labels.
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 
-	// Distributed is RESERVED for multi-node sharded serving and MUST NOT be set.
+	// Distributed shards the model across ranks, one per node. Nil means
+	// single-node serving.
 	//
-	// The field exists so the seam has a declared shape and so a spec that sets it
-	// is REPRESENTABLE and can therefore be rejected with a legible reason rather
-	// than silently ignored — a silently-ignored sharding request would serve the
-	// model single-node and look like success. Setting it is rejected at
-	// admission by a CEL rule on the CRD (see k3sm.io/apis/config/crd); nothing
-	// in this module enforces that, and no controller honours the field.
+	// The k3sm MLX operator honours it from M17.4 on, serving the shards with
+	// mlx-lm's server. Ranks must be at least 2 (a CEL rule on the CRD in
+	// k3sm.io/apis/config/crd; nothing in this module enforces it). A placement
+	// that cannot be satisfied is reported through the object's conditions and
+	// is never served single-node: a sharding request that quietly degraded
+	// would look like success. Sharded serving is for trusted tenancy only.
 	Distributed *MLXDistributed `json:"distributed,omitempty"`
 }
 
@@ -156,21 +157,25 @@ type MLXCache struct {
 	StorageClassName string `json:"storageClassName,omitempty"`
 }
 
-// MLXDistributed is the RESERVED multi-node sharding seam (see
+// MLXDistributed is the multi-node sharding request of an MLXModel (see
 // MLXModelSpec.Distributed): how many ranks a model shards across, over which
 // collective backend, and with which parallelism.
 //
-// It is still declared, not implemented: no controller reads it yet, and the
-// CRD's CEL rule rejects a spec that sets it until the k3sm MLX operator that
-// honours it ships in the same binary, so a cluster can never accept a sharded
-// spec and serve it single-node. There is deliberately no second node selector
-// here; MLXModelSpec.NodeSelector applies to every rank.
+// The k3sm MLX operator honours it from M17.4 on and serves the ranks with
+// mlx-lm's server. The CRD admits a block whose Ranks is at least 2 and whose
+// Backend and Parallelism are empty or one of the declared values. A placement
+// the cluster cannot satisfy is reported through conditions, never served
+// single-node. Sharded serving is for trusted tenancy only: the ranks share
+// one model's weights and collective traffic across nodes. There is
+// deliberately no second node selector here; MLXModelSpec.NodeSelector applies
+// to every rank.
 //
 // ALPHA BREAK: this shape replaces the earlier reserved Nodes field. Nodes was
-// never honoured and the CEL rule refused any object that set it, so no stored
+// never honoured and the CRD refused any object that set it, so no stored
 // object carries it and nothing needs migrating.
 type MLXDistributed struct {
-	// Ranks is the number of ranks (one per node) the model shards across.
+	// Ranks is the number of ranks (one per node) the model shards across; at
+	// least 2.
 	Ranks int32 `json:"ranks,omitempty"`
 	// Backend is the collective-communication backend the ranks use.
 	Backend MLXDistributedBackend `json:"backend,omitempty"`
@@ -346,7 +351,7 @@ func (in *MLXDistributed) DeepCopyInto(out *MLXDistributed) {
 	*out = *in
 }
 
-// DeepCopy returns a deep copy of the reserved sharding seam.
+// DeepCopy returns a deep copy of the sharding request.
 func (in *MLXDistributed) DeepCopy() *MLXDistributed {
 	if in == nil {
 		return nil
