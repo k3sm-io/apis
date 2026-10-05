@@ -168,17 +168,17 @@ func TestMLXModelCRDVersionDiscipline(t *testing.T) {
 	}
 }
 
-// TestMLXModelCRDReservesDistributed asserts the CEL rule that rejects a set
-// spec.distributed is present in the manifest.
+// TestMLXModelCRDValidatesDistributed asserts the shape validation a set
+// spec.distributed meets is present in the manifest.
 //
-// The field is representable ON PURPOSE so a sharding request can be refused
-// with a legible reason rather than ignored — and "ignored" is exactly what the
-// object degrades to if this rule goes missing: the model would serve
-// single-node and report success. The rule's own behaviour is proven by a
-// contract test in k3sm against a live apiserver (this module deliberately
-// carries no apiextensions machinery); what is provable here, and what this
-// asserts, is that the rule is actually shipped in the bytes k3sm applies.
-func TestMLXModelCRDReservesDistributed(t *testing.T) {
+// The field is honoured by the k3sm MLX operator, so the manifest admits it
+// with shape validation instead of rejecting it: ranks at least 2 (a CEL rule,
+// so an unset ranks is refused too), backend and parallelism constrained by
+// their enums. The rule's own behaviour is proven by a contract test in k3sm
+// against a live apiserver (this module deliberately carries no apiextensions
+// machinery); what is provable here is that the rule is actually shipped in
+// the bytes k3sm applies, with exactly the text that test pins.
+func TestMLXModelCRDValidatesDistributed(t *testing.T) {
 	t.Parallel()
 	m := decodeManifest(t, MLXModelCRD())
 	versions, ok := mapAt(t, m, "spec")["versions"].([]any)
@@ -206,21 +206,21 @@ func TestMLXModelCRDReservesDistributed(t *testing.T) {
 		t.Fatal("openAPIV3Schema.properties.spec is missing")
 	}
 
-	// The reserved field must still be declared — an undeclared field under a
-	// structural schema is pruned, and a pruned field cannot be rejected.
+	// The field must be declared: an undeclared field under a structural schema
+	// is pruned, and a pruned sharding request would serve single-node.
 	specProps, ok := specProp["properties"].(map[string]any)
 	if !ok {
 		t.Fatal("spec.properties is missing")
 	}
 	dist, ok := specProps["distributed"].(map[string]any)
 	if !ok {
-		t.Fatal("spec.distributed is not declared; structural-schema pruning would drop it and the rejection could never fire")
+		t.Fatal("spec.distributed is not declared; structural-schema pruning would drop it")
 	}
-	// The reserved shape is ranks/backend/parallelism; the earlier nodes field
-	// is gone (an alpha break: it was never storable, so nothing carries it).
+	// The shape is ranks/backend/parallelism; the earlier nodes field is gone
+	// (an alpha break: it was never storable, so nothing carries it).
 	distProps := mapAt(t, dist, "properties")
 	if _, ok := distProps["nodes"]; ok {
-		t.Error("spec.distributed still declares nodes; the reserved shape is ranks/backend/parallelism")
+		t.Error("spec.distributed still declares nodes; the shape is ranks/backend/parallelism")
 	}
 	for _, tc := range []struct {
 		field string
@@ -251,31 +251,31 @@ func TestMLXModelCRDReservesDistributed(t *testing.T) {
 		}
 	}
 
-	rules, ok := specProp["x-kubernetes-validations"].([]any)
+	// No rule on spec may refuse a set distributed block any more.
+	if specRules, ok := specProp["x-kubernetes-validations"].([]any); ok {
+		for _, r := range specRules {
+			if rule, ok := r.(map[string]any); ok {
+				if s, _ := rule["rule"].(string); strings.Contains(s, "distributed") {
+					t.Errorf("spec carries the distributed rule %q; the shape rule belongs on spec.distributed", s)
+				}
+			}
+		}
+	}
+	rules, ok := dist["x-kubernetes-validations"].([]any)
+	if !ok || len(rules) != 1 {
+		t.Fatalf("spec.distributed.x-kubernetes-validations = %v, want exactly the ranks rule", dist["x-kubernetes-validations"])
+	}
+	rule, ok := rules[0].(map[string]any)
 	if !ok {
-		t.Fatalf("spec has no x-kubernetes-validations; nothing rejects a set spec.distributed")
+		t.Fatalf("spec.distributed rule is %T, want a mapping", rules[0])
 	}
-	found := false
-	for _, r := range rules {
-		rule, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
-		if s, _ := rule["rule"].(string); strings.Contains(s, "distributed") {
-			found = true
-			if !strings.Contains(s, "!has(self.distributed)") {
-				t.Errorf("the distributed rule is %q, want the !has(self.distributed) rejection", s)
-			}
-			// A rejection a user cannot act on is a rejection they will file a bug
-			// about; the message must name the field and say it is reserved.
-			msg, _ := rule["message"].(string)
-			if !strings.Contains(msg, "distributed") || !strings.Contains(msg, "reserved") {
-				t.Errorf("the distributed rule's message is %q; it must name the field and say it is reserved", msg)
-			}
-		}
+	if got, _ := rule["rule"].(string); got != distributedRanksRule {
+		t.Errorf("spec.distributed rule = %q, want %q", got, distributedRanksRule)
 	}
-	if !found {
-		t.Error("no CEL rule mentions distributed")
+	// A refusal a user cannot act on is a refusal they will file a bug about;
+	// the message must name the field and the bound.
+	if got, _ := rule["message"].(string); got != distributedRanksMessage {
+		t.Errorf("spec.distributed message = %q, want %q", got, distributedRanksMessage)
 	}
 
 	// Required spec fields: model and memory. Memory carries no default on
@@ -295,6 +295,115 @@ func TestMLXModelCRDReservesDistributed(t *testing.T) {
 		if !got[want] {
 			t.Errorf("spec.required does not include %q", want)
 		}
+	}
+}
+
+// distributedRanksRule and distributedRanksMessage are the exact CEL rule and
+// message on spec.distributed. The k3sm contract test pins the same text.
+const (
+	distributedRanksRule    = "has(self.ranks) && self.ranks >= 2"
+	distributedRanksMessage = "spec.distributed.ranks must be set and at least 2 (one rank per node)"
+)
+
+// collectRules returns the text of every x-kubernetes-validations rule found
+// anywhere under n.
+func collectRules(n any) []string {
+	var out []string
+	switch v := n.(type) {
+	case map[string]any:
+		if rs, ok := v["x-kubernetes-validations"].([]any); ok {
+			for _, r := range rs {
+				if rule, ok := r.(map[string]any); ok {
+					if s, ok := rule["rule"].(string); ok {
+						out = append(out, s)
+					}
+				}
+			}
+		}
+		for _, c := range v {
+			out = append(out, collectRules(c)...)
+		}
+	case []any:
+		for _, c := range v {
+			out = append(out, collectRules(c)...)
+		}
+	}
+	return out
+}
+
+// TestMLXModelCRDAdmitsValidDistributed asserts a valid spec.distributed block
+// is no longer refused by any rule in the manifest, and that an invalid one
+// still is.
+//
+// This module evaluates no CEL, so the check is two-sided on the text: no rule
+// anywhere still carries the old !has(self.distributed) refusal, and the one
+// rule on spec.distributed is the pinned ranks rule, whose meaning the table
+// below applies alongside the schema's own enums. A rule text that drifts from
+// the pinned one fails TestMLXModelCRDValidatesDistributed, so the hand
+// evaluation here cannot silently describe a different rule.
+func TestMLXModelCRDAdmitsValidDistributed(t *testing.T) {
+	t.Parallel()
+	m := decodeManifest(t, MLXModelCRD())
+	for _, r := range collectRules(m) {
+		if strings.Contains(strings.ReplaceAll(r, " ", ""), "!has(self.distributed") {
+			t.Errorf("the manifest still refuses a set spec.distributed: rule %q", r)
+		}
+	}
+
+	versions, _ := mapAt(t, m, "spec")["versions"].([]any)
+	if len(versions) == 0 {
+		t.Fatal("spec.versions is empty")
+	}
+	v, ok := versions[0].(map[string]any)
+	if !ok {
+		t.Fatalf("spec.versions[0] is %T, want a mapping", versions[0])
+	}
+	dist := mapAt(t, v, "schema", "openAPIV3Schema", "properties", "spec", "properties", "distributed")
+	rules := collectRules(dist)
+	if len(rules) != 1 || rules[0] != distributedRanksRule {
+		t.Fatalf("spec.distributed rules = %q, want exactly [%q]", rules, distributedRanksRule)
+	}
+	props := mapAt(t, dist, "properties")
+	inEnum := func(field, val string) bool {
+		if val == "" {
+			return true // absent: the enum does not apply
+		}
+		f, _ := props[field].(map[string]any)
+		enum, _ := f["enum"].([]any)
+		for _, e := range enum {
+			if e == val {
+				return true
+			}
+		}
+		return false
+	}
+	admits := func(ranks *int64, backend, parallelism string) bool {
+		return ranks != nil && *ranks >= 2 && inEnum("backend", backend) && inEnum("parallelism", parallelism)
+	}
+	n := func(i int64) *int64 { return &i }
+
+	for _, tc := range []struct {
+		name        string
+		ranks       *int64
+		backend     string
+		parallelism string
+		want        bool
+	}{
+		{"two ranks, defaults", n(2), "", "", true},
+		{"ring pipeline", n(2), "ring", "pipeline", true},
+		{"jaccl tensor", n(4), "jaccl", "tensor", true},
+		{"auto backend", n(3), "auto", "", true},
+		{"ranks unset", nil, "ring", "tensor", false},
+		{"one rank", n(1), "", "", false},
+		{"zero ranks", n(0), "", "", false},
+		{"unknown backend", n(2), "nccl", "", false},
+		{"unknown parallelism", n(2), "", "expert", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := admits(tc.ranks, tc.backend, tc.parallelism); got != tc.want {
+				t.Errorf("admits = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 

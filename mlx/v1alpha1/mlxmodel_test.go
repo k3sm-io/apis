@@ -41,9 +41,8 @@ func int32Ptr(v int32) *int32 { return &v }
 // sampleMLXModel is a fully-populated MLXModel — every reference-typed field set
 // (pointer, slice, map, resource.Quantity, conditions) so the DeepCopy and
 // round-trip cases exercise each aliasing hazard rather than the easy scalars.
-// spec.distributed is deliberately set even though admission rejects it: the
-// field must be REPRESENTABLE, and a copy/round-trip that dropped it would hide
-// the very spec a rejection needs to describe.
+// spec.distributed is set because a copy/round-trip that dropped it would turn a
+// sharding request into single-node serving.
 func sampleMLXModel() *MLXModel {
 	return &MLXModel{
 		TypeMeta: metav1.TypeMeta{APIVersion: SchemeGroupVersion.String(), Kind: "MLXModel"},
@@ -185,7 +184,7 @@ func TestMLXModelJSONRoundTrip(t *testing.T) {
 		{"spec.replicas", *got.Spec.Replicas, int32(2)},
 		{"spec.runtime.args", got.Spec.Runtime.Args, []string{"--max-tokens", "4096"}},
 		{"spec.nodeSelector", got.Spec.NodeSelector, map[string]string{LabelChipFamily: "m4"}},
-		// The reserved seam must survive so a rejection can name it.
+		// The sharding request must survive, or it degrades to single-node.
 		{"spec.distributed.ranks", got.Spec.Distributed.Ranks, int32(2)},
 		{"spec.distributed.backend", got.Spec.Distributed.Backend, MLXDistributedBackendRing},
 		{"spec.distributed.parallelism", got.Spec.Distributed.Parallelism, MLXParallelismPipeline},

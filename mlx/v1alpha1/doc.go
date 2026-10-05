@@ -42,9 +42,9 @@ limitations under the License.
 //
 // # What is NOT here
 //
-// The CEL validation that rejects a set spec.distributed lives in the CRD
-// manifest (k3sm.io/apis/config/crd); its contract test lives in
-// k3sm.io/k3sm beside the CRD-ensure code, which already carries the
+// The CEL validation that requires spec.distributed.ranks to be at least 2
+// lives in the CRD manifest (k3sm.io/apis/config/crd); its contract test lives
+// in k3sm.io/k3sm beside the CRD-ensure code, which already carries the
 // apiextensions structural-schema dependencies this module avoids.
 //
 // The internet-egress opt-in annotation is also not here: it parameterizes

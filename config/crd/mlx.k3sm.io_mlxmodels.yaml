@@ -64,15 +64,6 @@ spec:
               required:
                 - model
                 - memory
-              # spec.distributed is RESERVED for multi-node sharded serving. It is
-              # representable so a spec that sets it can be REJECTED with a legible
-              # reason — a silently-ignored sharding request would serve the model
-              # single-node and look like success. The contract test for this rule
-              # lives in k3sm beside the CRD-ensure code, which already carries the
-              # apiextensions structural-schema dependencies.
-              x-kubernetes-validations:
-                - rule: '!has(self.distributed)'
-                  message: spec.distributed is reserved for a future multi-node (JACCL) release and must not be set
               properties:
                 model:
                   type: string
@@ -137,22 +128,28 @@ spec:
                     type: string
                 distributed:
                   type: object
-                  description: Distributed is RESERVED for multi-node sharded serving and must not be set (rejected by the CEL rule on spec until the operator that honours it ships).
+                  description: Distributed shards the model across ranks, one per node, served by mlx-lm's server. Honoured by the k3sm MLX operator; a placement that cannot be satisfied is reported through conditions and never served single-node. Sharded serving is for trusted tenancy only.
+                  # ranks >= 2 is a CEL rule rather than minimum so that an unset
+                  # ranks is refused too: a distributed block without a rank count
+                  # is not a sharding request the operator can place.
+                  x-kubernetes-validations:
+                    - rule: 'has(self.ranks) && self.ranks >= 2'
+                      message: spec.distributed.ranks must be set and at least 2 (one rank per node)
                   properties:
                     ranks:
                       type: integer
                       format: int32
-                      description: Ranks is the number of ranks (one per node) the model shards across. Reserved; not honoured.
+                      description: Ranks is the number of ranks (one per node) the model shards across; at least 2.
                     backend:
                       type: string
-                      description: Backend is the collective-communication backend the ranks use. Reserved; not honoured.
+                      description: Backend is the collective-communication backend the ranks use; empty means the operator default.
                       enum:
                         - auto
                         - ring
                         - jaccl
                     parallelism:
                       type: string
-                      description: Parallelism is how the model is split across the ranks. Reserved; not honoured.
+                      description: Parallelism is how the model is split across the ranks; empty means the operator default.
                       enum:
                         - tensor
                         - pipeline
