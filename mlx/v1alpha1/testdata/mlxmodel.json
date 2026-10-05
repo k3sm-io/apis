@@ -32,7 +32,9 @@
       "mlx.k3sm.io/chip-family": "m4"
     },
     "distributed": {
-      "nodes": 2
+      "ranks": 2,
+      "backend": "ring",
+      "parallelism": "pipeline"
     }
   },
   "status": {

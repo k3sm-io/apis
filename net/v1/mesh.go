@@ -19,6 +19,7 @@ package netv1
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"strconv"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -46,6 +47,12 @@ const GroupName = "net.k3sm.io"
 // evolution seam INSIDE the served net.k3sm.io/v1 GVK: a future protocol change
 // bumps this, and readers gate on it, giving a future node-by-node roll a
 // compatibility window without a CRD version bump. This is version 1.
+//
+// An ADDITIVE field never bumps it. A reader skips any peer whose stamp differs
+// from the one it knows, so a bump for an additive change (Endpoints, for
+// example) would make every new node invisible to every not-yet-upgraded node.
+// A change that genuinely needs reader gating first ships reader tolerance for
+// the new value one release before any writer stamps it.
 const MeshPeerSchemaVersion int32 = 1
 
 // DefaultPersistentKeepaliveSeconds is the wireguard PersistentKeepalive a peer
@@ -114,8 +121,20 @@ type MeshPeerSpec struct {
 	// key NEVER leaves the node and is never carried here.
 	PublicKey string `json:"publicKey"`
 	// Endpoint is the host:port the node's wireguard is reachable at (a
-	// mutually-routable / same-L2 address — there is no relay).
+	// mutually-routable / same-L2 address — there is no relay). It is ALWAYS
+	// written, including when Endpoints is set: it carries the node's underlay
+	// address, or, when the node has no underlay at all, its direct-link address
+	// (an IPv4 address in one of the two reserved link-local /24s). A reader that
+	// predates Endpoints uses this field alone and must keep working.
 	Endpoint string `json:"endpoint"`
+	// Endpoints are the candidate addresses the node's wireguard is reachable at,
+	// each tagged with the kind of link it rides. Optional and additive: an empty
+	// list means Endpoint is the only candidate. A reader chooses among them
+	// locally (a direct candidate only while its own direct route to this peer is
+	// up, else an underlay candidate, else Endpoint) and IGNORES a candidate whose
+	// Link it does not recognise, so a future link kind never breaks an older
+	// reader. Adding this field did not change MeshPeerSchemaVersion.
+	Endpoints []EndpointCandidate `json:"endpoints,omitempty"`
 	// PodCIDR is the node's pod /24 (from node.spec.podCIDR). It is the single
 	// source of truth for this node's pod address range.
 	PodCIDR string `json:"podCIDR"`
@@ -130,6 +149,36 @@ type MeshPeerSpec struct {
 	// PersistentKeepaliveSeconds is the wireguard PersistentKeepalive interval;
 	// zero means DefaultPersistentKeepaliveSeconds (set by WithDefaults).
 	PersistentKeepaliveSeconds int32 `json:"persistentKeepaliveSeconds,omitempty"`
+}
+
+// EndpointLink names the kind of link a MeshPeer endpoint candidate rides.
+//
+// Writers emit only the values declared below (Validate rejects anything else).
+// Readers IGNORE a candidate whose value they do not recognise rather than
+// failing the peer, so a new link kind can be introduced without gating every
+// reader on it first.
+type EndpointLink string
+
+const (
+	// EndpointLinkUnderlay is a candidate on the node's ordinary network (the
+	// LAN or any routed path): the address wireguard has always used.
+	EndpointLinkUnderlay EndpointLink = "underlay"
+	// EndpointLinkDirect is a candidate on a point-to-point cable between two
+	// nodes. Its address is the node's direct-link address, an IPv4 address in
+	// 169.254.0.0/24 or 169.254.255.0/24 (the RFC 3927 §2.1 reserved halves of
+	// the link-local range, which a conforming host never self-assigns), and it
+	// is reachable only from the node at the other end of that cable.
+	EndpointLinkDirect EndpointLink = "direct"
+)
+
+// EndpointCandidate is one address a node's wireguard is reachable at, with the
+// kind of link it rides.
+type EndpointCandidate struct {
+	// Address is the host:port of this candidate.
+	Address string `json:"address"`
+	// Link is the kind of link Address rides (EndpointLinkUnderlay or
+	// EndpointLinkDirect). Readers ignore a candidate with an unknown value.
+	Link EndpointLink `json:"link"`
 }
 
 // MeshPeerStatus is the observed mesh state for a node, set by the mesh
@@ -157,7 +206,9 @@ type MeshPeerList struct {
 
 // WithDefaults returns a copy of the spec with SchemaVersion stamped to
 // MeshPeerSchemaVersion and PersistentKeepaliveSeconds to its default when
-// either is zero. It does not mutate the receiver.
+// either is zero. It does not mutate the receiver, and it never stamps a
+// version other than MeshPeerSchemaVersion (setting Endpoints does not change
+// the stamp).
 func (s MeshPeerSpec) WithDefaults() MeshPeerSpec {
 	out := s
 	if out.SchemaVersion == 0 {
@@ -171,6 +222,11 @@ func (s MeshPeerSpec) WithDefaults() MeshPeerSpec {
 		copy(allowedIPs, out.AllowedIPs)
 		out.AllowedIPs = allowedIPs
 	}
+	if out.Endpoints != nil {
+		endpoints := make([]EndpointCandidate, len(out.Endpoints))
+		copy(endpoints, out.Endpoints)
+		out.Endpoints = endpoints
+	}
 	return out
 }
 
@@ -179,6 +235,14 @@ func (s MeshPeerSpec) WithDefaults() MeshPeerSpec {
 // endpoint, a podCIDR, and at least one AllowedIPs entry. It does NOT cross-check
 // AllowedIPs == PodCIDR (the mesh asserts that against live IPAM, not from the
 // object alone). Errors wrap ErrInvalid.
+//
+// Link-local IPv4 is admitted only where a direct-link address may appear: in
+// Endpoint (the node may have no underlay) and in an Endpoints candidate whose
+// Link is EndpointLinkDirect, and in both places only inside the two reserved
+// /24s (169.254.0.0/24, 169.254.255.0/24). Any other 169.254/16 address is a
+// self-assigned address with no cluster-wide meaning and is rejected, as is an
+// underlay candidate in the reserved halves. Every candidate must carry a known
+// Link: a writer never emits a value a reader would have to ignore.
 func (s MeshPeerSpec) Validate() error {
 	if s.SchemaVersion == 0 {
 		return fmt.Errorf("%w: mesh peer %q missing schemaVersion (call WithDefaults)", ErrInvalid, s.NodeName)
@@ -195,6 +259,14 @@ func (s MeshPeerSpec) Validate() error {
 	if err := validateHostPort(s.Endpoint); err != nil {
 		return fmt.Errorf("%w: mesh peer %q %w", ErrInvalid, s.NodeName, err)
 	}
+	if err := validateLinkLocal(s.Endpoint, true); err != nil {
+		return fmt.Errorf("%w: mesh peer %q %w", ErrInvalid, s.NodeName, err)
+	}
+	for i, c := range s.Endpoints {
+		if err := c.validate(); err != nil {
+			return fmt.Errorf("%w: mesh peer %q endpoints[%d]: %w", ErrInvalid, s.NodeName, i, err)
+		}
+	}
 	if s.PodCIDR == "" {
 		return fmt.Errorf("%w: mesh peer %q missing podCIDR", ErrInvalid, s.NodeName)
 	}
@@ -204,10 +276,68 @@ func (s MeshPeerSpec) Validate() error {
 	return nil
 }
 
+// validate reports whether the candidate is well-formed: a known Link and a
+// host:port Address whose link-local IPv4 use matches its Link. The returned
+// error carries no ErrInvalid; MeshPeerSpec.Validate attaches it once.
+func (c EndpointCandidate) validate() error {
+	switch c.Link {
+	case EndpointLinkUnderlay, EndpointLinkDirect:
+	default:
+		return fmt.Errorf("unknown link %q (want %q or %q)", c.Link, EndpointLinkUnderlay, EndpointLinkDirect)
+	}
+	if c.Address == "" {
+		return fmt.Errorf("missing address")
+	}
+	if err := validateHostPort(c.Address); err != nil {
+		return err
+	}
+	return validateLinkLocal(c.Address, c.Link == EndpointLinkDirect)
+}
+
+// validateLinkLocal applies the link-local IPv4 rule to an already
+// syntax-checked host:port. A host that is not an IPv4 link-local address
+// passes. A link-local IPv4 host passes only when allowReserved is set and it
+// lies in one of the two reserved /24s; and when allowReserved is NOT set, a
+// reserved-half address is refused too (it can only be a direct-link address).
+// DNS names and IPv6 hosts are not this rule's concern.
+func validateLinkLocal(endpoint string, allowReserved bool) error {
+	host, _, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		return fmt.Errorf("endpoint %q is not host:port", endpoint)
+	}
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return nil
+	}
+	addr = addr.Unmap()
+	if !addr.Is4() || !addr.IsLinkLocalUnicast() {
+		return nil
+	}
+	if !inReservedLinkHalf(addr) {
+		return fmt.Errorf("endpoint %q is a self-assigned link-local address outside 169.254.0.0/24 and 169.254.255.0/24", endpoint)
+	}
+	if !allowReserved {
+		return fmt.Errorf("endpoint %q is a direct-link address on a non-direct candidate", endpoint)
+	}
+	return nil
+}
+
+// inReservedLinkHalf reports whether a (an IPv4 address) lies in 169.254.0.0/24
+// or 169.254.255.0/24, the RFC 3927 §2.1 reserved halves direct-link addresses
+// are derived into. The derivation itself lives in k3sm.io/apis/net/v1alpha1
+// (LinkIP); this package keeps only the address-class check so the stable v1
+// surface never depends on the alpha one. A test in net/v1alpha1 proves every
+// derived address passes this check through MeshPeerSpec.Validate.
+func inReservedLinkHalf(a netip.Addr) bool {
+	b := a.As4()
+	return b[0] == 169 && b[1] == 254 && (b[2] == 0 || b[2] == 255)
+}
+
 // validateHostPort reports whether endpoint is a syntactically well-formed
 // wireguard endpoint: a "host:port" pair whose host is a non-empty IP literal
-// (an IPv6 literal MUST be bracketed, e.g. "[fd00::1]:51820") or a DNS name,
-// and whose port is a decimal number in 1–65535. It is shared by
+// (an IPv6 literal MUST be bracketed, e.g. "[fd00::1]:51820", and may carry a
+// zone, e.g. "[fe80::1%en2]:51820") or a DNS name, and whose port is a decimal
+// number in 1–65535. It is shared by
 // MeshPeerSpec.Validate and MeshEnrollRequest.Validate so both sides of the
 // mesh contract reject the same strings.
 //
@@ -227,7 +357,9 @@ func validateHostPort(endpoint string) error {
 	if host == "" {
 		return fmt.Errorf("endpoint %q has an empty host", endpoint)
 	}
-	if net.ParseIP(host) == nil && !validDNSName(host) {
+	// netip.ParseAddr, unlike net.ParseIP, accepts a zoned IPv6 literal
+	// ("fe80::1%en2"); an IPv4 literal with a zone is still refused.
+	if _, err := netip.ParseAddr(host); err != nil && !validDNSName(host) {
 		return fmt.Errorf("endpoint %q has an invalid host %q", endpoint, host)
 	}
 	// ParseUint rejects a sign, a non-decimal digit, and (at bitSize 16)
@@ -280,6 +412,10 @@ func (in *MeshPeerSpec) DeepCopyInto(out *MeshPeerSpec) {
 	if in.AllowedIPs != nil {
 		out.AllowedIPs = make([]string, len(in.AllowedIPs))
 		copy(out.AllowedIPs, in.AllowedIPs)
+	}
+	if in.Endpoints != nil {
+		out.Endpoints = make([]EndpointCandidate, len(in.Endpoints))
+		copy(out.Endpoints, in.Endpoints)
 	}
 }
 

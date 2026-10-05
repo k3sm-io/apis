@@ -20,6 +20,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -40,10 +42,14 @@ func sampleMeshPeer() *MeshPeer {
 		TypeMeta:   metav1.TypeMeta{APIVersion: SchemeGroupVersion.String(), Kind: "MeshPeer"},
 		ObjectMeta: metav1.ObjectMeta{Name: "studio-1", ResourceVersion: "42", Labels: map[string]string{"k3sm.io/role": "worker"}},
 		Spec: MeshPeerSpec{
-			SchemaVersion:              MeshPeerSchemaVersion,
-			NodeName:                   "studio-1",
-			PublicKey:                  "fakeBase64PublicKey0000000000000000000000000=",
-			Endpoint:                   "192.168.1.20:51820",
+			SchemaVersion: MeshPeerSchemaVersion,
+			NodeName:      "studio-1",
+			PublicKey:     "fakeBase64PublicKey0000000000000000000000000=",
+			Endpoint:      "192.168.1.20:51820",
+			Endpoints: []EndpointCandidate{
+				{Address: "192.168.1.20:51820", Link: EndpointLinkUnderlay},
+				{Address: "169.254.0.9:51820", Link: EndpointLinkDirect},
+			},
 			PodCIDR:                    "100.64.1.0/24",
 			AllowedIPs:                 []string{"100.64.1.0/24"},
 			MeshIP:                     "100.64.1.1",
@@ -109,7 +115,7 @@ func TestMeshPeerSpecJSONRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(b, &m); err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range []string{"schemaVersion", "nodeName", "publicKey", "endpoint", "podCIDR", "allowedIPs", "meshIP"} {
+	for _, k := range []string{"schemaVersion", "nodeName", "publicKey", "endpoint", "endpoints", "podCIDR", "allowedIPs", "meshIP"} {
 		if _, ok := m[k]; !ok {
 			t.Fatalf("missing JSON key %q in %s", k, b)
 		}
@@ -127,10 +133,14 @@ func TestMeshPeerDeepCopy(t *testing.T) {
 		t.Fatal("DeepCopy returned the same pointer")
 	}
 	cp.Spec.AllowedIPs[0] = "10.0.0.0/8"
+	cp.Spec.Endpoints[0].Address = "10.0.0.1:51820"
 	cp.Spec.NodeName = "mutated"
 	cp.Status.Reachable = false
 	if orig.Spec.AllowedIPs[0] != "100.64.1.0/24" {
 		t.Fatalf("DeepCopy shared AllowedIPs backing array: %v", orig.Spec.AllowedIPs)
+	}
+	if orig.Spec.Endpoints[0].Address != "192.168.1.20:51820" {
+		t.Fatalf("DeepCopy shared Endpoints backing array: %v", orig.Spec.Endpoints)
 	}
 	if orig.Spec.NodeName != "studio-1" || !orig.Status.Reachable {
 		t.Fatalf("DeepCopy shared scalar state: %#v", orig.Spec)
@@ -266,6 +276,8 @@ func TestMeshPeerEndpointMustBeHostPort(t *testing.T) {
 		{"ipv4 host:port", "192.0.2.111:51820", false},
 		{"dns host:port", "host.local:51820", false},
 		{"bracketed ipv6", "[fd00::1]:51820", false},
+		{"zoned link-local ipv6", "[fe80::1%en2]:51820", false},
+		{"zoned ipv4", "192.0.2.111%en0:51820", true},
 		{"empty", "", true},
 		{"no port", "192.0.2.111", true},
 		{"port zero", "192.0.2.111:0", true},
@@ -333,6 +345,18 @@ func TestMeshPeerSpecWithDefaults(t *testing.T) {
 		_ = in.WithDefaults()
 		if in.SchemaVersion != 0 {
 			t.Fatalf("receiver mutated: SchemaVersion = %d", in.SchemaVersion)
+		}
+	})
+
+	t.Run("does not alias Endpoints", func(t *testing.T) {
+		t.Parallel()
+		in := MeshPeerSpec{NodeName: "n", Endpoints: []EndpointCandidate{{Address: "192.168.1.21:51820", Link: EndpointLinkUnderlay}}}
+		out := in.WithDefaults()
+
+		out.Endpoints[0].Address = "mutated"
+
+		if in.Endpoints[0].Address != "192.168.1.21:51820" {
+			t.Fatalf("receiver Endpoints aliased: got %v", in.Endpoints)
 		}
 	})
 
@@ -477,5 +501,213 @@ func TestNodePortUnchangedM3(t *testing.T) {
 	}
 	if got.NodePort != 30080 {
 		t.Fatalf("NodePort round-trip = %d, want 30080", got.NodePort)
+	}
+}
+
+// TestMeshPeerDefaultsStampSchemaOne pins that WithDefaults stamps schema
+// version 1, with and without Endpoints set.
+//
+// A reader skips every peer whose stamp differs from the one it knows, so a
+// bump for an additive field would make every new node invisible to every
+// not-yet-upgraded node in a mixed-version cluster. Endpoints is additive and
+// must ride the existing stamp; this test is the tripwire for a reflexive bump.
+func TestMeshPeerDefaultsStampSchemaOne(t *testing.T) {
+	t.Parallel()
+	if MeshPeerSchemaVersion != 1 {
+		t.Fatalf("MeshPeerSchemaVersion = %d, want 1 (an additive field never bumps it)", MeshPeerSchemaVersion)
+	}
+	cases := []struct {
+		name string
+		spec MeshPeerSpec
+	}{
+		{"without endpoints", MeshPeerSpec{NodeName: "n", PublicKey: "k", Endpoint: "192.168.1.21:51820", PodCIDR: "100.64.2.0/24", AllowedIPs: []string{"100.64.2.0/24"}}},
+		{"with endpoints", MeshPeerSpec{NodeName: "n", PublicKey: "k", Endpoint: "192.168.1.21:51820", PodCIDR: "100.64.2.0/24", AllowedIPs: []string{"100.64.2.0/24"},
+			Endpoints: []EndpointCandidate{{Address: "192.168.1.21:51820", Link: EndpointLinkUnderlay}, {Address: "169.254.0.17:51820", Link: EndpointLinkDirect}}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			out := tc.spec.WithDefaults()
+			if out.SchemaVersion != 1 {
+				t.Fatalf("WithDefaults stamped %d, want 1", out.SchemaVersion)
+			}
+			if err := out.Validate(); err != nil {
+				t.Fatalf("defaulted spec must validate: %v", err)
+			}
+		})
+	}
+}
+
+// meshPeerGolden is the golden fixture of a MeshPeer carrying Endpoints.
+const meshPeerGolden = "meshpeer_endpoints.golden.json"
+
+// TestMeshPeerJSONGolden pins the serialized MeshPeer shape, Endpoints
+// included, against testdata. The JSON names are the CRD's schema property
+// names; a tag change is a break for every stored object. Regenerate
+// deliberately with UPDATE_GOLDEN=1, never reflexively.
+func TestMeshPeerJSONGolden(t *testing.T) {
+	t.Parallel()
+	got, err := json.MarshalIndent(sampleMeshPeer(), "", "  ")
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got = append(got, '\n')
+	path := filepath.Join("testdata", meshPeerGolden)
+	if os.Getenv("UPDATE_GOLDEN") != "" {
+		if err := os.WriteFile(path, got, 0o644); err != nil {
+			t.Fatalf("update golden: %v", err)
+		}
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Errorf("MeshPeer JSON differs from testdata/%s\n got = %s\nwant = %s", meshPeerGolden, got, want)
+	}
+}
+
+// preM17MeshPeerSpec is MeshPeerSpec as it was before Endpoints existed: the
+// shape every not-yet-upgraded reader in a mixed-version cluster decodes into.
+type preM17MeshPeerSpec struct {
+	SchemaVersion              int32    `json:"schemaVersion"`
+	NodeName                   string   `json:"nodeName"`
+	PublicKey                  string   `json:"publicKey"`
+	Endpoint                   string   `json:"endpoint"`
+	PodCIDR                    string   `json:"podCIDR"`
+	AllowedIPs                 []string `json:"allowedIPs"`
+	MeshIP                     string   `json:"meshIP,omitempty"`
+	PersistentKeepaliveSeconds int32    `json:"persistentKeepaliveSeconds,omitempty"`
+}
+
+// TestMeshPeerEndpointsDecodeAndValidate pins the mixed-version fact behind
+// the additive Endpoints field: a MeshPeer carrying endpoints decodes and
+// validates on the current reader, a pre-Endpoints reader decodes the same
+// bytes without error and loses nothing it knew about (stamp 1, Endpoint), and
+// a candidate with a link value this reader does not know still DECODES (the
+// reader ignores it) even though a writer may not emit it.
+func TestMeshPeerEndpointsDecodeAndValidate(t *testing.T) {
+	t.Parallel()
+	raw, err := os.ReadFile(filepath.Join("testdata", meshPeerGolden))
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+
+	t.Run("current reader", func(t *testing.T) {
+		t.Parallel()
+		var mp MeshPeer
+		if err := json.Unmarshal(raw, &mp); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if len(mp.Spec.Endpoints) != 2 {
+			t.Fatalf("decoded %d endpoints, want 2", len(mp.Spec.Endpoints))
+		}
+		if err := mp.Spec.Validate(); err != nil {
+			t.Fatalf("Validate() = %v, want nil", err)
+		}
+	})
+
+	t.Run("pre-endpoints reader", func(t *testing.T) {
+		t.Parallel()
+		var obj struct {
+			Spec preM17MeshPeerSpec `json:"spec"`
+		}
+		if err := json.Unmarshal(raw, &obj); err != nil {
+			t.Fatalf("an old reader fails to decode a MeshPeer with endpoints: %v", err)
+		}
+		if obj.Spec.SchemaVersion != 1 {
+			t.Fatalf("old reader sees schemaVersion %d, want 1 (it skips any other stamp)", obj.Spec.SchemaVersion)
+		}
+		if obj.Spec.Endpoint != "192.168.1.20:51820" || obj.Spec.NodeName != "studio-1" || len(obj.Spec.AllowedIPs) != 1 {
+			t.Fatalf("old reader lost a field it knows: %+v", obj.Spec)
+		}
+	})
+
+	t.Run("reserved-half endpoint for an old reader", func(t *testing.T) {
+		t.Parallel()
+		// A node with no underlay writes its direct-link address into Endpoint;
+		// an old reader's only syntax check is validateHostPort, which accepts it.
+		if err := validateHostPort("169.254.0.9:51820"); err != nil {
+			t.Fatalf("validateHostPort rejected a reserved-half endpoint: %v", err)
+		}
+	})
+
+	t.Run("unknown link decodes", func(t *testing.T) {
+		t.Parallel()
+		b := []byte(`{"schemaVersion":1,"nodeName":"n","publicKey":"k","endpoint":"192.168.1.21:51820","podCIDR":"100.64.2.0/24","allowedIPs":["100.64.2.0/24"],"endpoints":[{"address":"192.168.1.21:51820","link":"future-medium"}]}`)
+		var spec MeshPeerSpec
+		if err := json.Unmarshal(b, &spec); err != nil {
+			t.Fatalf("an unknown link value must decode: %v", err)
+		}
+		if spec.Endpoints[0].Link != "future-medium" {
+			t.Fatalf("link = %q, want the unknown value preserved", spec.Endpoints[0].Link)
+		}
+		if err := spec.Validate(); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("Validate() = %v, want ErrInvalid (a writer never emits an unknown link)", err)
+		}
+	})
+}
+
+// TestMeshPeerValidateReservedHalves is the link-local table: a link-local IPv4
+// address is admitted only inside 169.254.0.0/24 and 169.254.255.0/24, and in
+// an Endpoints candidate only when its Link is direct; Endpoint itself may
+// carry a reserved-half address (a node with no underlay); a zoned IPv6 literal
+// passes the syntax check; an unknown or empty Link is refused on write.
+func TestMeshPeerValidateReservedHalves(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		endpoint string
+		cand     *EndpointCandidate
+		wantErr  bool
+	}{
+		// Endpoint (no candidates).
+		{name: "endpoint underlay", endpoint: "192.168.1.20:51820"},
+		{name: "endpoint low reserved half first", endpoint: "169.254.0.1:51820"},
+		{name: "endpoint low reserved half last", endpoint: "169.254.0.248:51820"},
+		{name: "endpoint high reserved half", endpoint: "169.254.255.248:51820"},
+		{name: "endpoint self-assigned link-local", endpoint: "169.254.1.1:51820", wantErr: true},
+		{name: "endpoint self-assigned link-local high", endpoint: "169.254.254.10:51820", wantErr: true},
+		{name: "endpoint mapped self-assigned link-local", endpoint: "[::ffff:169.254.7.7]:51820", wantErr: true},
+		{name: "endpoint zoned ipv6", endpoint: "[fe80::1%en2]:51820"},
+		// Candidates.
+		{name: "direct low half", cand: &EndpointCandidate{"169.254.0.9:51820", EndpointLinkDirect}},
+		{name: "direct high half", cand: &EndpointCandidate{"169.254.255.1:51820", EndpointLinkDirect}},
+		{name: "direct mapped low half", cand: &EndpointCandidate{"[::ffff:169.254.0.9]:51820", EndpointLinkDirect}},
+		{name: "direct self-assigned", cand: &EndpointCandidate{"169.254.1.1:51820", EndpointLinkDirect}, wantErr: true},
+		{name: "direct 169.254.128.x", cand: &EndpointCandidate{"169.254.128.1:51820", EndpointLinkDirect}, wantErr: true},
+		{name: "underlay in reserved half", cand: &EndpointCandidate{"169.254.0.9:51820", EndpointLinkUnderlay}, wantErr: true},
+		{name: "underlay self-assigned", cand: &EndpointCandidate{"169.254.1.1:51820", EndpointLinkUnderlay}, wantErr: true},
+		{name: "underlay lan", cand: &EndpointCandidate{"192.168.1.20:51820", EndpointLinkUnderlay}},
+		{name: "underlay dns", cand: &EndpointCandidate{"node-a.lan:51820", EndpointLinkUnderlay}},
+		{name: "underlay zoned ipv6", cand: &EndpointCandidate{"[fe80::1%en2]:51820", EndpointLinkUnderlay}},
+		{name: "direct zoned ipv6", cand: &EndpointCandidate{"[fe80::1%en2]:51820", EndpointLinkDirect}},
+		{name: "unknown link", cand: &EndpointCandidate{"192.168.1.20:51820", "future-medium"}, wantErr: true},
+		{name: "empty link", cand: &EndpointCandidate{"192.168.1.20:51820", ""}, wantErr: true},
+		{name: "empty address", cand: &EndpointCandidate{"", EndpointLinkDirect}, wantErr: true},
+		{name: "address not host:port", cand: &EndpointCandidate{"169.254.0.9", EndpointLinkDirect}, wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			spec := sampleMeshPeer().Spec
+			spec.Endpoints = nil
+			if tc.endpoint != "" {
+				spec.Endpoint = tc.endpoint
+			}
+			if tc.cand != nil {
+				spec.Endpoints = []EndpointCandidate{*tc.cand}
+			}
+			err := spec.Validate()
+			if tc.wantErr {
+				if !errors.Is(err, ErrInvalid) {
+					t.Fatalf("Validate() = %v, want an ErrInvalid error", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Validate() = %v, want nil", err)
+			}
+		})
 	}
 }

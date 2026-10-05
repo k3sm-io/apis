@@ -2,8 +2,8 @@
 repo: apis
 schema: phases/v1
 current_phase: M7
-updated: 2026-09-09
-updated_by: roadmap-validation-sweep
+updated: 2026-10-05
+updated_by: m17-1-apis-writeback
 
 phases:
   - id: M0
@@ -512,6 +512,48 @@ phases:
             met: false
             check: "`go vet ./...` and `go test ./...` green; the doc.go sentence present; `TestMLXKeys` unchanged"
             method: unit
+
+  - id: M17
+    title: "Direct links — the apis slice: MeshPeer endpoint candidates, the LinkIP derivation, the DirectLink alpha CRD, the pairing wire types, the MLXDistributed shape"
+    status: done
+    completed: 2026-10-05
+    strategy: "phased (named exception: wireguard MeshPeer protocol / AllowedIPs change)"
+    depends_on: []
+    note: "Authoritative input: docs/m17-plan.md (workspace) — Phase C encodes ONLY from that doc. apis is Wave 1 of M17 and ships first (consumer-first: darwin-net and k3sm build against these types). The named exception covers the cross-node endpoint protocol and route change plus the additive k3sm-netd helper IPC minor bump — NOT AllowedIPs (unchanged) and NOT the schema stamp: MeshPeerSchemaVersion STAYS 1, because BuildPlan skips any peer whose stamp differs, so a bump would blackhole every new node from every old reader (m17-plan R12); Endpoints is an additive list that needs no reader gating. The MLXModel CRD CEL rule that rejects spec.distributed is NOT flipped here: it flips in the same change as the k3sm operator that honours it (m17-plan §5), so a cluster can never accept ranks: 2 and serve single-node. No Validate check in apis needs the node index; the server-side check does."
+    subphases:
+      - id: M17.1
+        title: EndpointCandidate + Endpoints, LinkIP, DirectLink v1alpha1 CRD, beacon/pair wire types, MLXDistributed, direct-link label constants
+        status: done
+        completed: 2026-10-05
+        strategy: "phased (named exception: wireguard MeshPeer protocol / AllowedIPs change)"
+        depends_on: []
+        deliverables:
+          - id: M17.1-d1
+            done: true  # 2026-10-05 — net/v1/mesh.go:137 Endpoints + :176 EndpointCandidate; MeshPeerSchemaVersion stays 1; TestMeshPeerDefaultsStampSchemaOne, TestMeshPeerEndpointsDecodeAndValidate (pre-M17 reader shape decodes the golden), TestMeshPeerJSONGolden (testdata/meshpeer_endpoints.golden.json); CRD spec.endpoints declared (config/crd/net.k3sm.io_meshpeers.yaml:87, TestMeshPeerCRDDeclaresEndpoints)
+            desc: "net/v1: EndpointCandidate{Address, Link: underlay|direct} + an additive MeshPeerSpec.Endpoints []EndpointCandidate; Endpoint stays and is always written (the underlay value, or the direct address when the node has no underlay); the schema stamp stays 1. A golden test pins that WithDefaults() still stamps 1 and that a pre-M17 reader accepts the field (an old reader skips nothing; unknown Link values are ignored by a reader)."
+          - id: M17.1-d2
+            done: true  # 2026-10-05 — net/v1/mesh.go:303 validateLinkLocal (reserved halves for Endpoint and direct candidates only) + :352 validateHostPort on netip (zoned IPv6); TestMeshPeerValidateReservedHalves, TestMeshPeerEndpointMustBeHostPort zoned cases
+            desc: "net/v1: Validate admits the two RFC 3927 §2.1 reserved /24s (169.254.0.0/24, 169.254.255.0/24) for direct candidates ONLY (every other link-local stays rejected), and a zoned IPv6 literal (fe80::…%enX) for the join address; table-tested both ways."
+          - id: M17.1-d3
+            done: true  # 2026-10-05 — net/v1alpha1/linkip.go:62 LinkIP, :80 IsLinkAddress, :29 ErrNoLinkAddress; TestLinkIPBoundaries (idx 0/30/31/61/62, p 0/7/8, all 62x8 distinct), TestLinkIPAddressesPassMeshPeerValidate
+            desc: "net/v1alpha1: the pure, dependency-free LinkIP(idx, port) derivation and its bounds — p = receptacle − 1 ∈ 0..7; idx ≤ 30 → 169.254.0.(8i+p+1); 31 ≤ idx ≤ 61 → 169.254.255.(8(i−31)+p+1); out of range → a named error, never an improvised address. The one function DirectLink.Validate, netd and the node writer all call (m17-plan R4). Boundary table test at idx 30/31 and 61/62 and port 7/8."
+          - id: M17.1-d4
+            done: true  # 2026-10-05 — net/v1alpha1/directlink.go:54 DirectLink, :172 Validate, :195 ValidateWithIndex; config/crd/net.k3sm.io_directlinks.yaml (status subresource :38) + DirectLinkCRD accessor; TestDirectLinkSpecValidate, TestDirectLinkSpecValidateWithIndex, TestDirectLinkJSONGolden (testdata/directlink.golden.json), TestDirectLinkGoldenDeclaredInCRD, TestDirectLinkCRDMatchesTheGoTypes
+            desc: "net/v1alpha1: the net.k3sm.io/v1alpha1 DirectLink type (cluster-scoped, one per node, named for the node) — spec{schemaVersion, nodeName, medium=thunderbolt, ports[]{iface, portOrdinal, domainUUID, peerDomainUUID (empty = unplugged), speedGbps, rdmaDevice (\"rdma_enX\" or empty), linkIP, linkUp, routeReady, tunnelOnly}}; status{ports[]{iface, peerNodeName, peerIface, peerLinkIP, peerRDMADevice, state up|peer-unknown|down, lastTransition}, observedSchemaVersion}. Its CRD YAML under config/crd WITH a status subresource; Validate() pins medium, iface ^en[0-9]+$, domainUUID != peerDomainUUID, and linkIP inside the reserved halves (the exact LinkIP(idx, portOrdinal) match and cluster-wide domainUUID uniqueness are server-side checks); golden fixtures."
+          - id: M17.1-d5
+            done: true  # 2026-10-05 — net/v1alpha1/pairing.go:40 Beacon, :56 PairRequest, :65 PairResponse, BeaconVersion/PairVersion = 1; TestPairingWireTypes
+            desc: "net/v1alpha1: the beacon wire type ({version, cluster pin, node, joinPort, pairing open|closed}) and the pair request/response wire types (request {nodeName}; response carrying the one-shot token and the server URL on that link), each with a version field. The beacon is data, never an instruction: the cluster pin it carries is information, not authentication (m17-plan R2)."
+          - id: M17.1-d6
+            done: true  # 2026-10-05 — mlx/v1alpha1/mlxmodel.go:172 MLXDistributed{Ranks, Backend, Parallelism}; CRD distributed schema reshaped (config/crd/mlx.k3sm.io_mlxmodels.yaml:142), reserve rule unchanged (:74); TestMLXDistributedValues, TestMLXModelCRDReservesDistributed
+            desc: "mlx/v1alpha1: MLXDistributed{Ranks int32, Backend auto|ring|jaccl, Parallelism tensor|pipeline} replacing the never-honoured Nodes field — an alpha break declared in the doc comment (the field was CEL-rejected and could never be stored, so no object exists to prune); no second NodeSelector, the top-level one applies. The CRD CEL reserve rule (!has(self.distributed)) is UNCHANGED here; it flips with the k3sm operator."
+          - id: M17.1-d7
+            done: true  # 2026-10-05 — net/v1alpha1/labels.go:34 (the mlx package admits only mlx.k3sm.io/* keys, so the k3sm.io/* keys sit beside DirectLink); TestDirectLinkLabelKeys
+            desc: "Label constants beside the MLX labels: k3sm.io/direct-link-ports, k3sm.io/direct-link-medium, k3sm.io/direct-link-speed-gbps, k3sm.io/direct-links, k3sm.io/rdma. Medium-agnostic keys (m17-plan R1); thunderbolt appears only as a value. Documented as advisory: placement reads DirectLink.status, never labels. No string literals in consumers."
+        acceptance:
+          - id: M17.1-a1
+            met: true  # 2026-10-05 — gofmt clean, go vet, CGO_ENABLED=0 build+test (and GOWORK=off build), -race on net/mlx/config, verify-boilerplate, go mod tidy no diff, staticcheck 2026.2.1 clean; named tests listed per deliverable above
+            check: "CGO_ENABLED=0 go vet ./... && go test ./... green; the named tests present and green (the WithDefaults stamp-1 golden, the pre-M17-reader acceptance test, the LinkIP boundary table, the DirectLink Validate table + golden fixtures, the reserved-half/zoned-IPv6 Validate table); go mod tidy no diff; the DirectLink CRD YAML (status subresource) regenerated and committed under config/crd"
+            method: unit
 ---
 
 # apis — Phase roadmap
@@ -792,3 +834,52 @@ cumulative wired-memory fit) rather than an `apis` contract change.
 **Acceptance (exit gate)**
 - ⬜ `M16.1-a1` `go vet ./...` and `go test ./...` green; the doc.go sentence present;
   `TestMLXKeys` unchanged — *method: unit*
+
+## M17 — Direct links: MeshPeer endpoint candidates, LinkIP, DirectLink, pairing wire types, MLXDistributed (apis slice) ✅
+`apis` is **Wave 1** of M17 and ships first (`docs/m17-plan.md`, workspace, is authoritative):
+consumer-first, so `darwin-net` and `k3sm` build against these types. **Phased** (named exception:
+wireguard MeshPeer protocol / AllowedIPs change) — the exception covers the cross-node endpoint
+protocol and route change plus the additive `k3sm-netd` helper IPC minor bump, not AllowedIPs
+(unchanged) and not the schema stamp. **`MeshPeerSchemaVersion` stays 1**: `BuildPlan` skips any
+peer whose stamp differs, so a bump would blackhole every new node from every old reader
+(m17-plan R12); `Endpoints` is an additive list that needs no reader gating. The `MLXModel` CRD CEL
+rule that rejects `spec.distributed` is **not** flipped here; it flips in the same change as the
+`k3sm` operator that honours it (m17-plan §5), so a cluster can never accept `ranks: 2` and serve
+single-node. No `Validate` check in `apis` needs the node index; the server-side check does.
+
+### M17.1 — EndpointCandidate, LinkIP, DirectLink v1alpha1, beacon/pair wire types, MLXDistributed, labels ✅
+**Deliverables**
+- ✅ `M17.1-d1` **`net/v1`**: `EndpointCandidate{Address, Link: underlay|direct}` + an additive
+  `MeshPeerSpec.Endpoints`; `Endpoint` stays and is always written (the underlay value, or the
+  direct address when the node has no underlay); schema stamp 1. A golden test pins that
+  `WithDefaults()` still stamps 1 and that a pre-M17 reader accepts the field.
+- ✅ `M17.1-d2` **`net/v1`** `Validate` admits the two RFC 3927 §2.1 reserved /24s
+  (`169.254.0.0/24`, `169.254.255.0/24`) for `direct` candidates only (every other link-local stays
+  rejected), and a zoned IPv6 literal (`fe80::…%enX`) for the join address.
+- ✅ `M17.1-d3` **`net/v1alpha1`**: the pure, dependency-free `LinkIP(idx, port)` derivation and its
+  bounds — `p` = receptacle − 1 ∈ 0..7; `idx ≤ 30` → `169.254.0.(8i+p+1)`; `31 ≤ idx ≤ 61` →
+  `169.254.255.(8(i−31)+p+1)`; out of range is a named error, never an improvised address. The one
+  function `DirectLink.Validate`, netd and the node writer all call (m17-plan R4). Boundary table
+  test at 30/31 and 61/62.
+- ✅ `M17.1-d4` **`net.k3sm.io/v1alpha1 DirectLink`** (cluster-scoped, one per node, named for the
+  node): `spec{schemaVersion, nodeName, medium=thunderbolt, ports[]{iface, portOrdinal, domainUUID,
+  peerDomainUUID, speedGbps, rdmaDevice, linkIP, linkUp, routeReady, tunnelOnly}}`;
+  `status{ports[]{iface, peerNodeName, peerIface, peerLinkIP, peerRDMADevice, state
+  up|peer-unknown|down, lastTransition}, observedSchemaVersion}`. Its CRD YAML under `config/crd`
+  **with a status subresource**; `Validate()` pins the medium, `^en[0-9]+$`, `domainUUID !=
+  peerDomainUUID`, and `linkIP` inside the reserved halves; golden fixtures.
+- ✅ `M17.1-d5` **`net/v1alpha1`**: the beacon and the pair request/response wire types, each with a
+  `version` field. The beacon is data, never an instruction; the cluster pin it carries is
+  information, not authentication (m17-plan R2).
+- ✅ `M17.1-d6` **`mlx/v1alpha1`**: `MLXDistributed{Ranks, Backend auto|ring|jaccl, Parallelism
+  tensor|pipeline}` replacing the never-honoured `Nodes` — an alpha break declared in the doc
+  comment (the field was CEL-rejected and could never be stored). The CRD CEL reserve rule is
+  unchanged here.
+- ✅ `M17.1-d7` **Label constants** beside the MLX labels: `k3sm.io/direct-link-ports`,
+  `k3sm.io/direct-link-medium`, `k3sm.io/direct-link-speed-gbps`, `k3sm.io/direct-links`,
+  `k3sm.io/rdma`. Medium-agnostic keys (m17-plan R1); advisory — placement reads
+  `DirectLink.status`, never labels.
+
+**Acceptance (exit gate)**
+- ✅ `M17.1-a1` `CGO_ENABLED=0 go vet ./... && go test ./...` green; the named tests present and
+  green; `go mod tidy` no diff; the `DirectLink` CRD YAML regenerated and committed — *method: unit*

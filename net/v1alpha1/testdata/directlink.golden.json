@@ -1,0 +1,51 @@
+{
+  "kind": "DirectLink",
+  "apiVersion": "net.k3sm.io/v1alpha1",
+  "metadata": {
+    "name": "studio-1",
+    "resourceVersion": "7"
+  },
+  "spec": {
+    "schemaVersion": 1,
+    "nodeName": "studio-1",
+    "medium": "thunderbolt",
+    "ports": [
+      {
+        "iface": "en2",
+        "portOrdinal": 0,
+        "domainUUID": "8b1c0e2a-0000-4000-8000-000000000001",
+        "peerDomainUUID": "8b1c0e2a-0000-4000-8000-000000000002",
+        "speedGbps": 80,
+        "rdmaDevice": "rdma_en2",
+        "linkIP": "169.254.0.9",
+        "linkUp": true,
+        "routeReady": true
+      },
+      {
+        "iface": "en3",
+        "portOrdinal": 1,
+        "domainUUID": "8b1c0e2a-0000-4000-8000-000000000003",
+        "linkUp": false,
+        "routeReady": false
+      }
+    ]
+  },
+  "status": {
+    "ports": [
+      {
+        "iface": "en2",
+        "peerNodeName": "studio-2",
+        "peerIface": "en5",
+        "peerLinkIP": "169.254.0.18",
+        "peerRDMADevice": "rdma_en5",
+        "state": "up",
+        "lastTransition": "2026-10-05T12:00:00Z"
+      },
+      {
+        "iface": "en3",
+        "state": "down"
+      }
+    ],
+    "observedSchemaVersion": 1
+  }
+}

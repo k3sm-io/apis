@@ -1,0 +1,158 @@
+# DirectLink CRD (net.k3sm.io/v1alpha1) — a node's point-to-point cable ports.
+#
+# Hand-authored (apis runs no controller-gen) to match the Go type in
+# k3sm.io/apis/net/v1alpha1 (directlink.go). ALPHA: a SINGLE version v1alpha1 is
+# both served and stored, and its shape may change incompatibly until it
+# graduates; net.k3sm.io/v1 keeps only the stable MeshPeer.
+#
+# Scope is Cluster: a DirectLink is node-level topology, ONE PER NODE and named
+# for the node (a node observes only its own side of a cable). The node writes
+# spec; the server's resolver writes status through the status subresource.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: directlinks.net.k3sm.io
+spec:
+  group: net.k3sm.io
+  scope: Cluster
+  names:
+    kind: DirectLink
+    listKind: DirectLinkList
+    plural: directlinks
+    singular: directlink
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      additionalPrinterColumns:
+        - name: Node
+          type: string
+          jsonPath: .spec.nodeName
+        - name: Medium
+          type: string
+          jsonPath: .spec.medium
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: DirectLink is one node's view of its point-to-point cable ports (spec, written by the node) and their resolved state (status, written by the server).
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required:
+                - schemaVersion
+                - nodeName
+                - medium
+              properties:
+                schemaVersion:
+                  type: integer
+                  format: int32
+                  description: SchemaVersion stamps the DirectLink payload version.
+                  minimum: 1
+                nodeName:
+                  type: string
+                  description: NodeName is the node these ports belong to (equals metadata.name).
+                medium:
+                  type: string
+                  description: Medium is the kind of cable.
+                  enum:
+                    - thunderbolt
+                ports:
+                  type: array
+                  description: Ports are the node's direct-link ports, plugged or not.
+                  items:
+                    type: object
+                    required:
+                      - iface
+                      - portOrdinal
+                      - domainUUID
+                    properties:
+                      iface:
+                        type: string
+                        description: Iface is the network interface the port presents as.
+                        pattern: '^en[0-9]+$'
+                      portOrdinal:
+                        type: integer
+                        format: int32
+                        description: PortOrdinal is the receptacle number minus one.
+                        minimum: 0
+                        maximum: 7
+                      domainUUID:
+                        type: string
+                        description: DomainUUID identifies this port's end of the cable.
+                        minLength: 1
+                      peerDomainUUID:
+                        type: string
+                        description: PeerDomainUUID identifies the far end of the cable; empty means nothing is plugged in.
+                      speedGbps:
+                        type: integer
+                        format: int32
+                        description: SpeedGbps is the negotiated link speed in Gb/s (0 = unknown).
+                        minimum: 0
+                      rdmaDevice:
+                        type: string
+                        description: RDMADevice is the RDMA device on this port (rdma_ + iface), or empty.
+                      linkIP:
+                        type: string
+                        description: LinkIP is the port's direct-link address (169.254.0.0/24 or 169.254.255.0/24); empty until configured.
+                      linkUp:
+                        type: boolean
+                        description: LinkUp reports whether the interface has link.
+                      routeReady:
+                        type: boolean
+                        description: RouteReady reports that the address and routes were configured and read back from the kernel.
+                      tunnelOnly:
+                        type: boolean
+                        description: TunnelOnly opts this port out of carrying plaintext pod traffic.
+            status:
+              type: object
+              properties:
+                ports:
+                  type: array
+                  description: Ports is the resolved state per port.
+                  items:
+                    type: object
+                    required:
+                      - iface
+                      - state
+                    properties:
+                      iface:
+                        type: string
+                        description: Iface is the local interface this entry describes.
+                      peerNodeName:
+                        type: string
+                        description: PeerNodeName is the node at the far end, when known.
+                      peerIface:
+                        type: string
+                        description: PeerIface is the far end's interface, when known.
+                      peerLinkIP:
+                        type: string
+                        description: PeerLinkIP is the far end's direct-link address, when known.
+                      peerRDMADevice:
+                        type: string
+                        description: PeerRDMADevice is the far end's RDMA device, when it has one.
+                      state:
+                        type: string
+                        description: State is the resolved state of the cable.
+                        enum:
+                          - up
+                          - peer-unknown
+                          - down
+                      lastTransition:
+                        type: string
+                        format: date-time
+                        description: LastTransition is when state last changed.
+                observedSchemaVersion:
+                  type: integer
+                  format: int32
+                  description: ObservedSchemaVersion is the spec.schemaVersion the resolver last processed.

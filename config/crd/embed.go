@@ -35,6 +35,10 @@ limitations under the License.
 // an accessor: k3sm's server applies it fail-closed on the mesh join path, so
 // every worker join depends on this CRD actually being installed.
 //
+// The DirectLink manifest (net.k3sm.io_directlinks.yaml) is the alpha
+// net.k3sm.io/v1alpha1 direct-link topology record; whether and when k3sm
+// applies it is k3sm's decision, made by calling its accessor.
+//
 // The two helm.k3sm.io manifests (HelmChart and HelmChartConfig) are the k3s
 // helm.cattle.io/v1 contract mirrored; k3sm's helm controller applies both.
 package crd
@@ -79,6 +83,25 @@ var meshPeerCRDYAML string
 // the one that re-applies during a reconcile loop.
 func MeshPeerCRD() []byte {
 	return []byte(meshPeerCRDYAML)
+}
+
+// DirectLinkCRDName is the metadata.name of the DirectLink
+// CustomResourceDefinition (the <plural>.<group> form the API server addresses
+// it by). Published so a consumer waiting on or reading back the CRD does not
+// spell the string.
+const DirectLinkCRDName = "directlinks.net.k3sm.io"
+
+//go:embed net.k3sm.io_directlinks.yaml
+var directLinkCRDYAML string
+
+// DirectLinkCRD returns the net.k3sm.io/v1alpha1 DirectLink
+// CustomResourceDefinition manifest as YAML bytes, ready to apply.
+//
+// It returns a fresh copy on every call, for the same reason as MLXModelCRD:
+// the embedded manifest is process-global, and a caller's in-place edit would
+// corrupt what every later apply sends.
+func DirectLinkCRD() []byte {
+	return []byte(directLinkCRDYAML)
 }
 
 // HelmChartCRDName is the metadata.name of the HelmChart

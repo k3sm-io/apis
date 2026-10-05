@@ -212,8 +212,43 @@ func TestMLXModelCRDReservesDistributed(t *testing.T) {
 	if !ok {
 		t.Fatal("spec.properties is missing")
 	}
-	if _, ok := specProps["distributed"]; !ok {
-		t.Error("spec.distributed is not declared; structural-schema pruning would drop it and the rejection could never fire")
+	dist, ok := specProps["distributed"].(map[string]any)
+	if !ok {
+		t.Fatal("spec.distributed is not declared; structural-schema pruning would drop it and the rejection could never fire")
+	}
+	// The reserved shape is ranks/backend/parallelism; the earlier nodes field
+	// is gone (an alpha break: it was never storable, so nothing carries it).
+	distProps := mapAt(t, dist, "properties")
+	if _, ok := distProps["nodes"]; ok {
+		t.Error("spec.distributed still declares nodes; the reserved shape is ranks/backend/parallelism")
+	}
+	for _, tc := range []struct {
+		field string
+		enum  []string
+	}{
+		{"ranks", nil},
+		{"backend", []string{"auto", "ring", "jaccl"}},
+		{"parallelism", []string{"tensor", "pipeline"}},
+	} {
+		f, ok := distProps[tc.field].(map[string]any)
+		if !ok {
+			t.Errorf("spec.distributed.%s is not declared", tc.field)
+			continue
+		}
+		if tc.enum == nil {
+			continue
+		}
+		got, _ := f["enum"].([]any)
+		if len(got) != len(tc.enum) {
+			t.Errorf("spec.distributed.%s enum = %v, want %v", tc.field, got, tc.enum)
+			continue
+		}
+		for i, want := range tc.enum {
+			if got[i] != want {
+				t.Errorf("spec.distributed.%s enum = %v, want %v", tc.field, got, tc.enum)
+				break
+			}
+		}
 	}
 
 	rules, ok := specProp["x-kubernetes-validations"].([]any)
@@ -366,6 +401,44 @@ func TestMeshPeerCRDVersionDiscipline(t *testing.T) {
 	}
 }
 
+// TestMeshPeerCRDDeclaresEndpoints asserts spec.endpoints is declared in the
+// MeshPeer structural schema with its address/link items, and that link is an
+// open string.
+//
+// An undeclared field is pruned by the apiserver on write, so a node's endpoint
+// candidates would vanish between writer and reader with no error anywhere.
+// The link stays enum-free because readers ignore unknown link values; an enum
+// would turn a future value into an apiserver rejection instead.
+func TestMeshPeerCRDDeclaresEndpoints(t *testing.T) {
+	t.Parallel()
+	v := onlyVersion(t, decodeManifest(t, MeshPeerCRD()), "v1")
+	props := specProps(t, v)
+	ep, ok := props["endpoints"].(map[string]any)
+	if !ok {
+		t.Fatal("spec.endpoints is not declared; the structural schema would prune it")
+	}
+	if got := ep["type"]; got != "array" {
+		t.Errorf("spec.endpoints.type = %v, want array", got)
+	}
+	items := mapAt(t, ep, "items")
+	itemProps := mapAt(t, items, "properties")
+	for _, f := range []string{"address", "link"} {
+		if _, ok := itemProps[f]; !ok {
+			t.Errorf("spec.endpoints[].%s is not declared", f)
+		}
+	}
+	if _, ok := mapAt(t, itemProps, "link")["enum"]; ok {
+		t.Error("spec.endpoints[].link carries an enum; readers ignore unknown values, so the apiserver must not refuse them")
+	}
+	// The pre-existing required set is unchanged: endpoints is optional.
+	req, _ := mapAt(t, v, "schema", "openAPIV3Schema", "properties", "spec")["required"].([]any)
+	for _, r := range req {
+		if r == "endpoints" {
+			t.Error("spec.endpoints is required; it is an additive optional field")
+		}
+	}
+}
+
 // TestMeshPeerAccessorReturnsAFreshCopy asserts the MeshPeer accessor hands out
 // a copy, on the same grounds as its MLXModel sibling: the embedded manifest is
 // process-global, and k3sm's server re-applies it on every mesh-path bring-up,
@@ -405,6 +478,7 @@ func TestNoGlobEmbed(t *testing.T) {
 	embedded := map[string]bool{
 		"mlx.k3sm.io_mlxmodels.yaml":         false,
 		"net.k3sm.io_meshpeers.yaml":         false,
+		"net.k3sm.io_directlinks.yaml":       false,
 		"helm.k3sm.io_helmcharts.yaml":       false,
 		"helm.k3sm.io_helmchartconfigs.yaml": false,
 	}
@@ -476,6 +550,15 @@ func TestNoGlobEmbed(t *testing.T) {
 	if strings.Contains(string(MeshPeerCRD()), MLXModelCRDName) {
 		t.Error("MeshPeerCRD returns the MLXModel CRD")
 	}
+	if !strings.Contains(string(DirectLinkCRD()), DirectLinkCRDName) {
+		t.Error("DirectLinkCRD does not return the DirectLink CRD")
+	}
+	if strings.Contains(string(DirectLinkCRD()), MeshPeerCRDName) {
+		t.Error("DirectLinkCRD returns the MeshPeer CRD")
+	}
+	if strings.Contains(string(MeshPeerCRD()), DirectLinkCRDName) {
+		t.Error("MeshPeerCRD returns the DirectLink CRD")
+	}
 	if !strings.Contains(string(HelmChartCRD()), HelmChartCRDName) {
 		t.Error("HelmChartCRD does not return the HelmChart CRD")
 	}
@@ -487,5 +570,125 @@ func TestNoGlobEmbed(t *testing.T) {
 	}
 	if strings.Contains(string(HelmChartConfigCRD()), HelmChartCRDName) {
 		t.Error("HelmChartConfigCRD returns the HelmChart CRD")
+	}
+}
+
+// TestDirectLinkCRDMatchesTheGoTypes asserts the embedded DirectLink manifest
+// describes the object k3sm.io/apis/net/v1alpha1 describes: its identity, the
+// single served+stored v1alpha1 version, the status subresource, and every spec
+// and status field declared.
+//
+// It deliberately does NOT import net/v1alpha1, like its siblings, so a
+// disagreement stays visible; the field lists below are the reviewable copy.
+// An undeclared field is pruned by the structural schema on write, so a port
+// attribute the node reports would silently never reach the resolver.
+func TestDirectLinkCRDMatchesTheGoTypes(t *testing.T) {
+	t.Parallel()
+	m := decodeManifest(t, DirectLinkCRD())
+
+	if got := m["kind"]; got != "CustomResourceDefinition" {
+		t.Errorf("kind = %v, want CustomResourceDefinition", got)
+	}
+	if got := mapAt(t, m, "metadata")["name"]; got != DirectLinkCRDName {
+		t.Errorf("metadata.name = %v, want %s (the accessor's constant)", got, DirectLinkCRDName)
+	}
+	if DirectLinkCRDName != "directlinks.net.k3sm.io" {
+		t.Errorf("DirectLinkCRDName = %q, want directlinks.net.k3sm.io", DirectLinkCRDName)
+	}
+	spec := mapAt(t, m, "spec")
+	if got := spec["group"]; got != "net.k3sm.io" {
+		t.Errorf("spec.group = %v, want net.k3sm.io", got)
+	}
+	// Cluster-scoped and one per node, like MeshPeer.
+	if got := spec["scope"]; got != "Cluster" {
+		t.Errorf("spec.scope = %v, want Cluster", got)
+	}
+	names := mapAt(t, m, "spec", "names")
+	for _, tc := range []struct{ key, want string }{
+		{"kind", "DirectLink"},
+		{"listKind", "DirectLinkList"},
+		{"plural", "directlinks"},
+		{"singular", "directlink"},
+	} {
+		t.Run("names."+tc.key, func(t *testing.T) {
+			if got := names[tc.key]; got != tc.want {
+				t.Errorf("spec.names.%s = %v, want %s", tc.key, got, tc.want)
+			}
+		})
+	}
+
+	v := onlyVersion(t, m, "v1alpha1")
+
+	// The status subresource is what lets the server write the resolved link
+	// state without being able to rewrite a node's spec, and the node write its
+	// spec without clobbering the resolver's status.
+	sub, ok := v["subresources"].(map[string]any)
+	if !ok {
+		t.Fatal("spec.versions[0].subresources is missing")
+	}
+	if _, ok := sub["status"]; !ok {
+		t.Error("the status subresource is not enabled")
+	}
+
+	sp := specProps(t, v)
+	for _, f := range []string{"schemaVersion", "nodeName", "medium", "ports"} {
+		if _, ok := sp[f]; !ok {
+			t.Errorf("spec.%s is not declared; the structural schema would prune it", f)
+		}
+	}
+	portProps := mapAt(t, sp, "ports", "items", "properties")
+	for _, f := range []string{
+		"iface", "portOrdinal", "domainUUID", "peerDomainUUID", "speedGbps",
+		"rdmaDevice", "linkIP", "linkUp", "routeReady", "tunnelOnly",
+	} {
+		if _, ok := portProps[f]; !ok {
+			t.Errorf("spec.ports[].%s is not declared; the structural schema would prune it", f)
+		}
+	}
+	if enum, _ := mapAt(t, sp, "medium")["enum"].([]any); len(enum) != 1 || enum[0] != "thunderbolt" {
+		t.Errorf("spec.medium enum = %v, want [thunderbolt]", enum)
+	}
+	if got := mapAt(t, portProps, "iface")["pattern"]; got != "^en[0-9]+$" {
+		t.Errorf("spec.ports[].iface pattern = %v, want ^en[0-9]+$", got)
+	}
+
+	stProps := mapAt(t, v, "schema", "openAPIV3Schema", "properties", "status", "properties")
+	if _, ok := stProps["observedSchemaVersion"]; !ok {
+		t.Error("status.observedSchemaVersion is not declared")
+	}
+	psProps := mapAt(t, stProps, "ports", "items", "properties")
+	for _, f := range []string{
+		"iface", "peerNodeName", "peerIface", "peerLinkIP", "peerRDMADevice",
+		"state", "lastTransition",
+	} {
+		if _, ok := psProps[f]; !ok {
+			t.Errorf("status.ports[].%s is not declared; the structural schema would prune it", f)
+		}
+	}
+	enum, _ := mapAt(t, psProps, "state")["enum"].([]any)
+	got := map[any]bool{}
+	for _, e := range enum {
+		got[e] = true
+	}
+	if len(enum) != 3 || !got["up"] || !got["peer-unknown"] || !got["down"] {
+		t.Errorf("status.ports[].state enum = %v, want [up peer-unknown down]", enum)
+	}
+}
+
+// TestDirectLinkAccessorReturnsAFreshCopy asserts the DirectLink accessor
+// hands out a copy, on the same grounds as its siblings.
+func TestDirectLinkAccessorReturnsAFreshCopy(t *testing.T) {
+	t.Parallel()
+	a := DirectLinkCRD()
+	if len(a) == 0 {
+		t.Fatal("DirectLinkCRD returned no bytes; the go:embed directive did not match")
+	}
+	a[0] = 'X'
+	b := DirectLinkCRD()
+	if b[0] == 'X' {
+		t.Fatal("DirectLinkCRD returns aliased bytes; a caller's scribble reaches every later caller")
+	}
+	if got := b[0]; got != '#' {
+		t.Errorf("second call starts with %q, want the manifest's leading comment", got)
 	}
 }

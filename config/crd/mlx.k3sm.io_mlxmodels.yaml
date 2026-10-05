@@ -137,12 +137,25 @@ spec:
                     type: string
                 distributed:
                   type: object
-                  description: Distributed is RESERVED for multi-node sharded serving and must not be set (rejected by the CEL rule on spec).
+                  description: Distributed is RESERVED for multi-node sharded serving and must not be set (rejected by the CEL rule on spec until the operator that honours it ships).
                   properties:
-                    nodes:
+                    ranks:
                       type: integer
                       format: int32
-                      description: Nodes is the number of nodes the model would shard across. Reserved; not honoured.
+                      description: Ranks is the number of ranks (one per node) the model shards across. Reserved; not honoured.
+                    backend:
+                      type: string
+                      description: Backend is the collective-communication backend the ranks use. Reserved; not honoured.
+                      enum:
+                        - auto
+                        - ring
+                        - jaccl
+                    parallelism:
+                      type: string
+                      description: Parallelism is how the model is split across the ranks. Reserved; not honoured.
+                      enum:
+                        - tensor
+                        - pipeline
             status:
               type: object
               description: MLXModelStatus is conditions-first — conditions are the contract, and phase/endpoint/resolvedRevision are derived conveniences.
