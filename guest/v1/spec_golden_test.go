@@ -67,7 +67,7 @@ func goldenGuestSpec() *GuestSpec {
 				RootfsTag:        "k3sm.rootfs.postgres",
 				Command:          []string{"/usr/local/bin/postgres"},
 				Args:             []string{"-D", "/pgdata"},
-				Env:              []string{"PGDATA=/pgdata", "POSTGRES_DB=stockkitty"},
+				Env:              []string{"PGDATA=/pgdata", "POSTGRES_DB=demo"},
 				WorkingDir:       "/var/lib/postgresql",
 				Tty:              false,
 				Stdin:            false,

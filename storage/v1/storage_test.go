@@ -143,17 +143,17 @@ func TestLocalPathClassDataDir(t *testing.T) {
 	t.Run("stable derivation from namespace/claim", func(t *testing.T) {
 		t.Parallel()
 		c := DefaultLocalPathClass()
-		got, err := c.DataDir("stockkitty", "postgres-data")
+		got, err := c.DataDir("demo", "postgres-data")
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := "/var/lib/k3sm/storage/stockkitty/postgres-data"
+		want := "/var/lib/k3sm/storage/demo/postgres-data"
 		if got != want {
 			t.Fatalf("DataDir = %q, want %q", got, want)
 		}
 		// Determinism: the same claim always maps to the same dir (the property
 		// runtimed and the provisioner both rely on).
-		again, _ := c.DataDir("stockkitty", "postgres-data")
+		again, _ := c.DataDir("demo", "postgres-data")
 		if again != got {
 			t.Fatalf("DataDir not deterministic: %q != %q", again, got)
 		}
@@ -212,7 +212,7 @@ func TestDataDirRejectsEscape(t *testing.T) {
 		want  string // "" means the call must be rejected with ErrInvalid
 	}{
 		// Positive controls — ordinary values still produce the expected path.
-		{"ordinary", "stockkitty", "postgres-data", "/var/lib/k3sm/storage/stockkitty/postgres-data"},
+		{"ordinary", "demo", "postgres-data", "/var/lib/k3sm/storage/demo/postgres-data"},
 		{"digits and hyphens", "ns-1", "claim-2", "/var/lib/k3sm/storage/ns-1/claim-2"},
 		{"single char components", "a", "b", "/var/lib/k3sm/storage/a/b"},
 		{"max-length label namespace", strings.Repeat("a", maxLabel), "data", "/var/lib/k3sm/storage/" + strings.Repeat("a", maxLabel) + "/data"},
