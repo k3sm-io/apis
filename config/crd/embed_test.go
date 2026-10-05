@@ -366,6 +366,44 @@ func TestMeshPeerCRDVersionDiscipline(t *testing.T) {
 	}
 }
 
+// TestMeshPeerCRDDeclaresEndpoints asserts spec.endpoints is declared in the
+// MeshPeer structural schema with its address/link items, and that link is an
+// open string.
+//
+// An undeclared field is pruned by the apiserver on write, so a node's endpoint
+// candidates would vanish between writer and reader with no error anywhere.
+// The link stays enum-free because readers ignore unknown link values; an enum
+// would turn a future value into an apiserver rejection instead.
+func TestMeshPeerCRDDeclaresEndpoints(t *testing.T) {
+	t.Parallel()
+	v := onlyVersion(t, decodeManifest(t, MeshPeerCRD()), "v1")
+	props := specProps(t, v)
+	ep, ok := props["endpoints"].(map[string]any)
+	if !ok {
+		t.Fatal("spec.endpoints is not declared; the structural schema would prune it")
+	}
+	if got := ep["type"]; got != "array" {
+		t.Errorf("spec.endpoints.type = %v, want array", got)
+	}
+	items := mapAt(t, ep, "items")
+	itemProps := mapAt(t, items, "properties")
+	for _, f := range []string{"address", "link"} {
+		if _, ok := itemProps[f]; !ok {
+			t.Errorf("spec.endpoints[].%s is not declared", f)
+		}
+	}
+	if _, ok := mapAt(t, itemProps, "link")["enum"]; ok {
+		t.Error("spec.endpoints[].link carries an enum; readers ignore unknown values, so the apiserver must not refuse them")
+	}
+	// The pre-existing required set is unchanged: endpoints is optional.
+	req, _ := mapAt(t, v, "schema", "openAPIV3Schema", "properties", "spec")["required"].([]any)
+	for _, r := range req {
+		if r == "endpoints" {
+			t.Error("spec.endpoints is required; it is an additive optional field")
+		}
+	}
+}
+
 // TestMeshPeerAccessorReturnsAFreshCopy asserts the MeshPeer accessor hands out
 // a copy, on the same grounds as its MLXModel sibling: the embedded manifest is
 // process-global, and k3sm's server re-applies it on every mesh-path bring-up,

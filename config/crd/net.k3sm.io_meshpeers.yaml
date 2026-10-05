@@ -79,7 +79,26 @@ spec:
                   description: PublicKey is the node's wireguard PUBLIC key (base64). The private key never leaves the node.
                 endpoint:
                   type: string
-                  description: Endpoint is the host:port the node's wireguard is reachable at.
+                  description: Endpoint is the host:port the node's wireguard is reachable at. Always written — the underlay address, or the direct-link address when the node has no underlay.
+                # endpoints is additive and rides schemaVersion 1. Declared here so the
+                # structural schema does not prune it. link carries NO enum on purpose:
+                # readers ignore an unknown link value, and an enum would make the
+                # apiserver refuse a future value instead.
+                endpoints:
+                  type: array
+                  description: Endpoints are the candidate addresses the node's wireguard is reachable at, each tagged with the link it rides. Optional; readers ignore a candidate whose link they do not recognise.
+                  items:
+                    type: object
+                    required:
+                      - address
+                      - link
+                    properties:
+                      address:
+                        type: string
+                        description: Address is the host:port of this candidate.
+                      link:
+                        type: string
+                        description: Link is the kind of link the address rides (underlay or direct).
                 podCIDR:
                   type: string
                   description: PodCIDR is the node's pod /24 (node.spec.podCIDR) — the single source of truth for its pod range.
