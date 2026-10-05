@@ -212,8 +212,43 @@ func TestMLXModelCRDReservesDistributed(t *testing.T) {
 	if !ok {
 		t.Fatal("spec.properties is missing")
 	}
-	if _, ok := specProps["distributed"]; !ok {
-		t.Error("spec.distributed is not declared; structural-schema pruning would drop it and the rejection could never fire")
+	dist, ok := specProps["distributed"].(map[string]any)
+	if !ok {
+		t.Fatal("spec.distributed is not declared; structural-schema pruning would drop it and the rejection could never fire")
+	}
+	// The reserved shape is ranks/backend/parallelism; the earlier nodes field
+	// is gone (an alpha break: it was never storable, so nothing carries it).
+	distProps := mapAt(t, dist, "properties")
+	if _, ok := distProps["nodes"]; ok {
+		t.Error("spec.distributed still declares nodes; the reserved shape is ranks/backend/parallelism")
+	}
+	for _, tc := range []struct {
+		field string
+		enum  []string
+	}{
+		{"ranks", nil},
+		{"backend", []string{"auto", "ring", "jaccl"}},
+		{"parallelism", []string{"tensor", "pipeline"}},
+	} {
+		f, ok := distProps[tc.field].(map[string]any)
+		if !ok {
+			t.Errorf("spec.distributed.%s is not declared", tc.field)
+			continue
+		}
+		if tc.enum == nil {
+			continue
+		}
+		got, _ := f["enum"].([]any)
+		if len(got) != len(tc.enum) {
+			t.Errorf("spec.distributed.%s enum = %v, want %v", tc.field, got, tc.enum)
+			continue
+		}
+		for i, want := range tc.enum {
+			if got[i] != want {
+				t.Errorf("spec.distributed.%s enum = %v, want %v", tc.field, got, tc.enum)
+				break
+			}
+		}
 	}
 
 	rules, ok := specProp["x-kubernetes-validations"].([]any)

@@ -70,7 +70,7 @@ func sampleMLXModel() *MLXModel {
 				StorageClassName: "k3sm-local-path",
 			},
 			NodeSelector: map[string]string{LabelChipFamily: "m4"},
-			Distributed:  &MLXDistributed{Nodes: 2},
+			Distributed:  &MLXDistributed{Ranks: 2, Backend: MLXDistributedBackendRing, Parallelism: MLXParallelismPipeline},
 		},
 		Status: MLXModelStatus{
 			Conditions: []metav1.Condition{{
@@ -186,7 +186,9 @@ func TestMLXModelJSONRoundTrip(t *testing.T) {
 		{"spec.runtime.args", got.Spec.Runtime.Args, []string{"--max-tokens", "4096"}},
 		{"spec.nodeSelector", got.Spec.NodeSelector, map[string]string{LabelChipFamily: "m4"}},
 		// The reserved seam must survive so a rejection can name it.
-		{"spec.distributed.nodes", got.Spec.Distributed.Nodes, int32(2)},
+		{"spec.distributed.ranks", got.Spec.Distributed.Ranks, int32(2)},
+		{"spec.distributed.backend", got.Spec.Distributed.Backend, MLXDistributedBackendRing},
+		{"spec.distributed.parallelism", got.Spec.Distributed.Parallelism, MLXParallelismPipeline},
 		{"status.observedGeneration", got.Status.ObservedGeneration, int64(3)},
 		{"status.phase", got.Status.Phase, MLXModelPhaseReady},
 		{"status.conditions[0].type", got.Status.Conditions[0].Type, MLXModelConditionReady},
@@ -303,8 +305,8 @@ func TestMLXModelDeepCopy(t *testing.T) {
 		},
 		{
 			"spec.distributed pointer",
-			func(m *MLXModel) { m.Spec.Distributed.Nodes = 99 },
-			func(m *MLXModel) any { return m.Spec.Distributed.Nodes },
+			func(m *MLXModel) { m.Spec.Distributed.Ranks = 99 },
+			func(m *MLXModel) any { return m.Spec.Distributed.Ranks },
 			int32(2),
 		},
 		{
@@ -431,5 +433,28 @@ func TestMLXModelPhaseValues(t *testing.T) {
 	}
 	if MLXModelConditionReady != "Ready" {
 		t.Errorf("MLXModelConditionReady = %q, want Ready", MLXModelConditionReady)
+	}
+}
+
+// TestMLXDistributedValues pins the backend and parallelism vocabularies the
+// CRD enums admit. They are what a user writes in spec.distributed, and the
+// manifest's enum lists must match them byte for byte.
+func TestMLXDistributedValues(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name, got, want string
+	}{
+		{"MLXDistributedBackendAuto", string(MLXDistributedBackendAuto), "auto"},
+		{"MLXDistributedBackendRing", string(MLXDistributedBackendRing), "ring"},
+		{"MLXDistributedBackendJACCL", string(MLXDistributedBackendJACCL), "jaccl"},
+		{"MLXParallelismTensor", string(MLXParallelismTensor), "tensor"},
+		{"MLXParallelismPipeline", string(MLXParallelismPipeline), "pipeline"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.got != tc.want {
+				t.Errorf("%s = %q, want %q", tc.name, tc.got, tc.want)
+			}
+		})
 	}
 }

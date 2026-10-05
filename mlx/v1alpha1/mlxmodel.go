@@ -127,7 +127,7 @@ type MLXModelSpec struct {
 
 	// Distributed is RESERVED for multi-node sharded serving and MUST NOT be set.
 	//
-	// The field exists so the seam has a stable shape and so a spec that sets it
+	// The field exists so the seam has a declared shape and so a spec that sets it
 	// is REPRESENTABLE and can therefore be rejected with a legible reason rather
 	// than silently ignored — a silently-ignored sharding request would serve the
 	// model single-node and look like success. Setting it is rejected at
@@ -157,15 +157,52 @@ type MLXCache struct {
 }
 
 // MLXDistributed is the RESERVED multi-node sharding seam (see
-// MLXModelSpec.Distributed). It is declared, not implemented: no controller
-// reads it, and admission rejects a spec that sets it. Its shape is explicitly
-// NOT part of even this package's alpha contract — it may change entirely when
-// multi-node serving lands.
+// MLXModelSpec.Distributed): how many ranks a model shards across, over which
+// collective backend, and with which parallelism.
+//
+// It is still declared, not implemented: no controller reads it yet, and the
+// CRD's CEL rule rejects a spec that sets it until the k3sm MLX operator that
+// honours it ships in the same binary, so a cluster can never accept a sharded
+// spec and serve it single-node. There is deliberately no second node selector
+// here; MLXModelSpec.NodeSelector applies to every rank.
+//
+// ALPHA BREAK: this shape replaces the earlier reserved Nodes field. Nodes was
+// never honoured and the CEL rule refused any object that set it, so no stored
+// object carries it and nothing needs migrating.
 type MLXDistributed struct {
-	// Nodes is the number of nodes the model would shard across. Reserved; it is
-	// not honoured.
-	Nodes int32 `json:"nodes,omitempty"`
+	// Ranks is the number of ranks (one per node) the model shards across.
+	Ranks int32 `json:"ranks,omitempty"`
+	// Backend is the collective-communication backend the ranks use.
+	Backend MLXDistributedBackend `json:"backend,omitempty"`
+	// Parallelism is how the model is split across the ranks.
+	Parallelism MLXParallelism `json:"parallelism,omitempty"`
 }
+
+// MLXDistributedBackend is the collective-communication backend of a sharded
+// MLXModel.
+type MLXDistributedBackend string
+
+const (
+	// MLXDistributedBackendAuto picks jaccl when every pair of placed nodes has
+	// an RDMA-capable direct link, and ring otherwise.
+	MLXDistributedBackendAuto MLXDistributedBackend = "auto"
+	// MLXDistributedBackendRing is MLX's TCP ring backend; it prefers ranks
+	// connected by direct links but runs over any path.
+	MLXDistributedBackendRing MLXDistributedBackend = "ring"
+	// MLXDistributedBackendJACCL is MLX's RDMA backend; it needs an RDMA-capable
+	// direct link between every pair of ranks.
+	MLXDistributedBackendJACCL MLXDistributedBackend = "jaccl"
+)
+
+// MLXParallelism is how a sharded MLXModel's weights are split across ranks.
+type MLXParallelism string
+
+const (
+	// MLXParallelismTensor splits each layer across the ranks.
+	MLXParallelismTensor MLXParallelism = "tensor"
+	// MLXParallelismPipeline assigns whole layers to each rank in sequence.
+	MLXParallelismPipeline MLXParallelism = "pipeline"
+)
 
 // MLXModelPhase is the DERIVED, human-facing summary of an MLXModel's state — a
 // single word for `kubectl get` and nothing more.
