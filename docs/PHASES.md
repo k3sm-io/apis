@@ -96,7 +96,7 @@ phases:
         deliverables:
           - id: M2.1-d1
             done: true
-            desc: "PodBox.volumes (field 15) — a repeated Volume carrying the pod-level volume sources stockkitty mounts: configMap, secret, emptyDir, downwardAPI, projected. ProjectedVolumeSource includes ServiceAccountTokenProjection{audience, expirationSeconds, path} (bound token — the in-pod-kubectl path) plus configMap/secret/downwardAPI projections. The source union is modeled as optional message fields (the ContainerState pointer-union precedent), not a oneof. Volume payloads are materialized by runtimed:M2 inside the pod data-volume; the proto carries only the source spec."
+            desc: "PodBox.volumes (field 15) — a repeated Volume carrying the pod-level volume sources a reference workload mounts: configMap, secret, emptyDir, downwardAPI, projected. ProjectedVolumeSource includes ServiceAccountTokenProjection{audience, expirationSeconds, path} (bound token — the in-pod-kubectl path) plus configMap/secret/downwardAPI projections. The source union is modeled as optional message fields (the ContainerState pointer-union precedent), not a oneof. Volume payloads are materialized by runtimed:M2 inside the pod data-volume; the proto carries only the source spec."
           - id: M2.1-d2
             done: true
             desc: "Container.volume_mounts (field 9) — a repeated VolumeMount{name, mountPath, readOnly, subPath} referencing PodBox.volumes by name. Secrets/SA-token mounts get a read-only sub-scope runtimed-side."
@@ -594,8 +594,8 @@ and `runtimed`'s M0 was a standalone Seatbelt prototype. First `apis` code lands
 - ✅ `M1.2-a1` builds pure-Go (`CGO_ENABLED=0`, standalone `GOWORK=off` + under `go.work`); table-driven `-race` tests (construction, validation, JSON round-trip/field-name pins); ready for the `darwin-net` proxy + shim compile-check — *method: build*
 
 ## M2 — Pod-spec fidelity proto additions + gRPC daemon surface + resource/metrics types ✅
-Decomposed now that M1 has landed. Headline: raise pod-spec fidelity to what the `stockkitty`
-reference workload exercises in **M2.1**, then extend `runtime/v1`
+Decomposed now that M1 has landed. Headline: raise pod-spec fidelity to what a reference
+workload exercises in **M2.1**, then extend `runtime/v1`
 for the **resource/metrics** surface (`ri_phys_footprint` → `kubectl top`) in **M2.2**. All additions are
 **additive-only**; field numbers are **STABLE** (`buf breaking` WIRE_JSON gate). **Allocation split** so the
 two sub-phases never collide: **M2.1** pod-spec fields take the next **FREE sequential numbers below 100**
@@ -618,7 +618,7 @@ Field numbers allocated (all below 100; reserved bands untouched): **PodBox** `v
 `user=12`.
 
 **Deliverables**
-- ✅ `M2.1-d1` `PodBox.volumes` (15) — a repeated `Volume` carrying the sources stockkitty mounts: `configMap`, `secret`, `emptyDir`, `downwardAPI`, `projected`. `ProjectedVolumeSource` includes `ServiceAccountTokenProjection{audience, expirationSeconds, path}` (bound token — the in-pod-kubectl path) plus configMap/secret/downwardAPI projections. The source union is **optional message fields** (the `ContainerState` pointer-union precedent), not a `oneof`. `runtimed:M2` materializes payloads inside the pod data-volume.
+- ✅ `M2.1-d1` `PodBox.volumes` (15) — a repeated `Volume` carrying the sources a reference workload mounts: `configMap`, `secret`, `emptyDir`, `downwardAPI`, `projected`. `ProjectedVolumeSource` includes `ServiceAccountTokenProjection{audience, expirationSeconds, path}` (bound token — the in-pod-kubectl path) plus configMap/secret/downwardAPI projections. The source union is **optional message fields** (the `ContainerState` pointer-union precedent), not a `oneof`. `runtimed:M2` materializes payloads inside the pod data-volume.
 - ✅ `M2.1-d2` `Container.volume_mounts` (9) — a repeated `VolumeMount{name, mountPath, readOnly, subPath}` referencing `PodBox.volumes` by name. Secrets / SA-token mounts get a read-only sub-scope runtimed-side.
 - ✅ `M2.1-d3` `Container` probes (`liveness_probe=11`/`readiness_probe=12`/`startup_probe=13`) — each a `Probe{initialDelaySeconds, periodSeconds, timeoutSeconds, successThreshold, failureThreshold}` with the handler modeled as **three optional message fields** (`http_get`/`tcp_socket`/`exec`, **not** a `oneof` — matching `ContainerState`; "exactly one set" documented). `HTTPGetAction{path, port IntOrString, scheme, host, httpHeaders}`; `TCPSocketAction{port IntOrString, host}`; `ExecAction{command}`. Adds `Container.ports` (10) = repeated `ContainerPort{name, containerPort, protocol}` (named-port table so named probe ports + named Service targetPorts resolve) and `IntOrString{intVal, strVal}`. Probes are **provider-served** (`k3sm:M2`), driving `ContainerStatus.ready` + Service endpoints.
 - ✅ `M2.1-d4` `securityContext` — `Container.security_context` (14) = `SecurityContext{runAsUser, runAsGroup, runAsNonRoot}` (**container scope; no `fsGroup`**); `PodBox.pod_security_context` (16) = `PodSecurityContext{fsGroup, runAsUser, runAsGroup}` (**`fsGroup` is pod-scope only**). Net-new runtimed privilege-drop: `setgid→initgroups→setuid` **before** `sandbox_apply`; `fsGroup` chown root-side **before** the drop.

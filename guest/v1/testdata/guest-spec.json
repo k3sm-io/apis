@@ -29,7 +29,7 @@
       ],
       "env": [
         "PGDATA=/pgdata",
-        "POSTGRES_DB=stockkitty"
+        "POSTGRES_DB=demo"
       ],
       "gid": "999",
       "name": "postgres",

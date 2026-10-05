@@ -390,7 +390,7 @@ func TestRoundTrip(t *testing.T) {
 	roundTrip(t, "PodBox_full_M2_1", &PodBox{
 		PodId:      "11111111-2222-3333-4444-555555555555",
 		Namespace:  "default",
-		Name:       "stockkitty",
+		Name:       "demo",
 		Uid:        501,
 		Gid:        20,
 		Containers: []*Container{{Name: "app", Image: "/app"}},
@@ -447,7 +447,7 @@ func TestRoundTrip(t *testing.T) {
 		Memory: &MemoryStats{Timestamp: ts, WorkingSetBytes: 32 << 20},
 	}, &ContainerStats{})
 	roundTrip(t, "PodStats", &PodStats{
-		PodId: "11111111-2222-3333-4444-555555555555", Namespace: "default", Name: "stockkitty", Timestamp: ts,
+		PodId: "11111111-2222-3333-4444-555555555555", Namespace: "default", Name: "demo", Timestamp: ts,
 		Cpu:    &CPUStats{Timestamp: ts, UsageNanoCores: 250_000_000, UsageCoreNanoSeconds: 9_000_000_000},
 		Memory: &MemoryStats{Timestamp: ts, WorkingSetBytes: 96 << 20, UsageBytes: 128 << 20, RssBytes: 72 << 20},
 		Containers: []*ContainerStats{
@@ -461,7 +461,7 @@ func TestRoundTrip(t *testing.T) {
 	// annotation seam runtimed bridged the limit on).
 	roundTrip(t, "PodBox_resources_M2_2", &PodBox{
 		PodId:            "11111111-2222-3333-4444-555555555555",
-		Name:             "stockkitty",
+		Name:             "demo",
 		MemoryLimitBytes: 512 << 20,
 		QosClass:         QOSClass_QOS_CLASS_BURSTABLE,
 		Rlimits: []*ResourceLimit{
@@ -512,11 +512,11 @@ func TestRoundTrip(t *testing.T) {
 	}, &Volume{})
 
 	// A PodBox carrying a PVC-backed volume alongside an ephemeral M2.1 source
-	// (the StatefulSet-storage shape stockkitty's Postgres needs), mounted by a
+	// (the StatefulSet-storage shape a Postgres needs), mounted by a
 	// container — the cross-message M3.1 wire surface.
 	roundTrip(t, "PodBox_persistentVolume_M3_1", &PodBox{
 		PodId:     "11111111-2222-3333-4444-555555555555",
-		Namespace: "stockkitty",
+		Namespace: "demo",
 		Name:      "postgres-0",
 		Uid:       501,
 		Gid:       20,
