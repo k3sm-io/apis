@@ -443,6 +443,7 @@ func TestNoGlobEmbed(t *testing.T) {
 	embedded := map[string]bool{
 		"mlx.k3sm.io_mlxmodels.yaml":         false,
 		"net.k3sm.io_meshpeers.yaml":         false,
+		"net.k3sm.io_directlinks.yaml":       false,
 		"helm.k3sm.io_helmcharts.yaml":       false,
 		"helm.k3sm.io_helmchartconfigs.yaml": false,
 	}
@@ -514,6 +515,15 @@ func TestNoGlobEmbed(t *testing.T) {
 	if strings.Contains(string(MeshPeerCRD()), MLXModelCRDName) {
 		t.Error("MeshPeerCRD returns the MLXModel CRD")
 	}
+	if !strings.Contains(string(DirectLinkCRD()), DirectLinkCRDName) {
+		t.Error("DirectLinkCRD does not return the DirectLink CRD")
+	}
+	if strings.Contains(string(DirectLinkCRD()), MeshPeerCRDName) {
+		t.Error("DirectLinkCRD returns the MeshPeer CRD")
+	}
+	if strings.Contains(string(MeshPeerCRD()), DirectLinkCRDName) {
+		t.Error("MeshPeerCRD returns the DirectLink CRD")
+	}
 	if !strings.Contains(string(HelmChartCRD()), HelmChartCRDName) {
 		t.Error("HelmChartCRD does not return the HelmChart CRD")
 	}
@@ -525,5 +535,125 @@ func TestNoGlobEmbed(t *testing.T) {
 	}
 	if strings.Contains(string(HelmChartConfigCRD()), HelmChartCRDName) {
 		t.Error("HelmChartConfigCRD returns the HelmChart CRD")
+	}
+}
+
+// TestDirectLinkCRDMatchesTheGoTypes asserts the embedded DirectLink manifest
+// describes the object k3sm.io/apis/net/v1alpha1 describes: its identity, the
+// single served+stored v1alpha1 version, the status subresource, and every spec
+// and status field declared.
+//
+// It deliberately does NOT import net/v1alpha1, like its siblings, so a
+// disagreement stays visible; the field lists below are the reviewable copy.
+// An undeclared field is pruned by the structural schema on write, so a port
+// attribute the node reports would silently never reach the resolver.
+func TestDirectLinkCRDMatchesTheGoTypes(t *testing.T) {
+	t.Parallel()
+	m := decodeManifest(t, DirectLinkCRD())
+
+	if got := m["kind"]; got != "CustomResourceDefinition" {
+		t.Errorf("kind = %v, want CustomResourceDefinition", got)
+	}
+	if got := mapAt(t, m, "metadata")["name"]; got != DirectLinkCRDName {
+		t.Errorf("metadata.name = %v, want %s (the accessor's constant)", got, DirectLinkCRDName)
+	}
+	if DirectLinkCRDName != "directlinks.net.k3sm.io" {
+		t.Errorf("DirectLinkCRDName = %q, want directlinks.net.k3sm.io", DirectLinkCRDName)
+	}
+	spec := mapAt(t, m, "spec")
+	if got := spec["group"]; got != "net.k3sm.io" {
+		t.Errorf("spec.group = %v, want net.k3sm.io", got)
+	}
+	// Cluster-scoped and one per node, like MeshPeer.
+	if got := spec["scope"]; got != "Cluster" {
+		t.Errorf("spec.scope = %v, want Cluster", got)
+	}
+	names := mapAt(t, m, "spec", "names")
+	for _, tc := range []struct{ key, want string }{
+		{"kind", "DirectLink"},
+		{"listKind", "DirectLinkList"},
+		{"plural", "directlinks"},
+		{"singular", "directlink"},
+	} {
+		t.Run("names."+tc.key, func(t *testing.T) {
+			if got := names[tc.key]; got != tc.want {
+				t.Errorf("spec.names.%s = %v, want %s", tc.key, got, tc.want)
+			}
+		})
+	}
+
+	v := onlyVersion(t, m, "v1alpha1")
+
+	// The status subresource is what lets the server write the resolved link
+	// state without being able to rewrite a node's spec, and the node write its
+	// spec without clobbering the resolver's status.
+	sub, ok := v["subresources"].(map[string]any)
+	if !ok {
+		t.Fatal("spec.versions[0].subresources is missing")
+	}
+	if _, ok := sub["status"]; !ok {
+		t.Error("the status subresource is not enabled")
+	}
+
+	sp := specProps(t, v)
+	for _, f := range []string{"schemaVersion", "nodeName", "medium", "ports"} {
+		if _, ok := sp[f]; !ok {
+			t.Errorf("spec.%s is not declared; the structural schema would prune it", f)
+		}
+	}
+	portProps := mapAt(t, sp, "ports", "items", "properties")
+	for _, f := range []string{
+		"iface", "portOrdinal", "domainUUID", "peerDomainUUID", "speedGbps",
+		"rdmaDevice", "linkIP", "linkUp", "routeReady", "tunnelOnly",
+	} {
+		if _, ok := portProps[f]; !ok {
+			t.Errorf("spec.ports[].%s is not declared; the structural schema would prune it", f)
+		}
+	}
+	if enum, _ := mapAt(t, sp, "medium")["enum"].([]any); len(enum) != 1 || enum[0] != "thunderbolt" {
+		t.Errorf("spec.medium enum = %v, want [thunderbolt]", enum)
+	}
+	if got := mapAt(t, portProps, "iface")["pattern"]; got != "^en[0-9]+$" {
+		t.Errorf("spec.ports[].iface pattern = %v, want ^en[0-9]+$", got)
+	}
+
+	stProps := mapAt(t, v, "schema", "openAPIV3Schema", "properties", "status", "properties")
+	if _, ok := stProps["observedSchemaVersion"]; !ok {
+		t.Error("status.observedSchemaVersion is not declared")
+	}
+	psProps := mapAt(t, stProps, "ports", "items", "properties")
+	for _, f := range []string{
+		"iface", "peerNodeName", "peerIface", "peerLinkIP", "peerRDMADevice",
+		"state", "lastTransition",
+	} {
+		if _, ok := psProps[f]; !ok {
+			t.Errorf("status.ports[].%s is not declared; the structural schema would prune it", f)
+		}
+	}
+	enum, _ := mapAt(t, psProps, "state")["enum"].([]any)
+	got := map[any]bool{}
+	for _, e := range enum {
+		got[e] = true
+	}
+	if len(enum) != 3 || !got["up"] || !got["peer-unknown"] || !got["down"] {
+		t.Errorf("status.ports[].state enum = %v, want [up peer-unknown down]", enum)
+	}
+}
+
+// TestDirectLinkAccessorReturnsAFreshCopy asserts the DirectLink accessor
+// hands out a copy, on the same grounds as its siblings.
+func TestDirectLinkAccessorReturnsAFreshCopy(t *testing.T) {
+	t.Parallel()
+	a := DirectLinkCRD()
+	if len(a) == 0 {
+		t.Fatal("DirectLinkCRD returned no bytes; the go:embed directive did not match")
+	}
+	a[0] = 'X'
+	b := DirectLinkCRD()
+	if b[0] == 'X' {
+		t.Fatal("DirectLinkCRD returns aliased bytes; a caller's scribble reaches every later caller")
+	}
+	if got := b[0]; got != '#' {
+		t.Errorf("second call starts with %q, want the manifest's leading comment", got)
 	}
 }
