@@ -153,6 +153,14 @@ spec:
                       enum:
                         - tensor
                         - pipeline
+                    interconnect:
+                      type: string
+                      description: Interconnect is the path the ranks' collective traffic takes; auto uses the thunderbolt Interconnect when a segment fits every rank and the network otherwise.
+                      default: auto
+                      enum:
+                        - auto
+                        - thunderbolt
+                        - network
             status:
               type: object
               description: MLXModelStatus is conditions-first — conditions are the contract, and phase/endpoint/resolvedRevision are derived conveniences.

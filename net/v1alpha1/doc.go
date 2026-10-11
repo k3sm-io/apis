@@ -19,6 +19,11 @@ limitations under the License.
 // derivation that gives each cabled port its address, the pairing wire types a
 // new Mac uses to join over such a cable, and the direct-link node-label keys.
 //
+// It also holds the Interconnect custom resource (the cable as an opt-in,
+// admin-armed network on bridge0), its versioned Node annotation payloads, the
+// interconnect slot addresses, and the interconnect annotation, condition and
+// reason constants.
+//
 // DirectLink is a real Kubernetes custom resource (kine-stored, apiserver-served
 // and -watched), written by each node for itself and resolved into a link graph
 // by the k3sm server. Being a served object it embeds metav1.TypeMeta +

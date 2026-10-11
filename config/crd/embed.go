@@ -39,6 +39,10 @@ limitations under the License.
 // net.k3sm.io/v1alpha1 direct-link topology record; whether and when k3sm
 // applies it is k3sm's decision, made by calling its accessor.
 //
+// The Interconnect manifest (net.k3sm.io_interconnects.yaml) is the alpha
+// net.k3sm.io/v1alpha1 record of the cable as an opt-in network; k3sm's server
+// ensures it through its accessor.
+//
 // The two helm.k3sm.io manifests (HelmChart and HelmChartConfig) are the k3s
 // helm.cattle.io/v1 contract mirrored; k3sm's helm controller applies both.
 package crd
@@ -102,6 +106,25 @@ var directLinkCRDYAML string
 // corrupt what every later apply sends.
 func DirectLinkCRD() []byte {
 	return []byte(directLinkCRDYAML)
+}
+
+// InterconnectCRDName is the metadata.name of the Interconnect
+// CustomResourceDefinition (the <plural>.<group> form the API server addresses
+// it by). Published so a consumer waiting on or reading back the CRD does not
+// spell the string.
+const InterconnectCRDName = "interconnects.net.k3sm.io"
+
+//go:embed net.k3sm.io_interconnects.yaml
+var interconnectCRDYAML string
+
+// InterconnectCRD returns the net.k3sm.io/v1alpha1 Interconnect
+// CustomResourceDefinition manifest as YAML bytes, ready to apply.
+//
+// It returns a fresh copy on every call, for the same reason as MLXModelCRD:
+// the embedded manifest is process-global, and a caller's in-place edit would
+// corrupt what every later apply sends.
+func InterconnectCRD() []byte {
+	return []byte(interconnectCRDYAML)
 }
 
 // HelmChartCRDName is the metadata.name of the HelmChart

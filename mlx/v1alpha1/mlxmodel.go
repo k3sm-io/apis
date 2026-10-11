@@ -181,7 +181,26 @@ type MLXDistributed struct {
 	Backend MLXDistributedBackend `json:"backend,omitempty"`
 	// Parallelism is how the model is split across the ranks.
 	Parallelism MLXParallelism `json:"parallelism,omitempty"`
+	// Interconnect is the path the ranks' collective traffic takes. Empty
+	// means MLXInterconnectAuto (the CRD defaults it).
+	Interconnect MLXInterconnect `json:"interconnect,omitempty"`
 }
+
+// MLXInterconnect is the path a sharded MLXModel's ranks talk over.
+type MLXInterconnect string
+
+const (
+	// MLXInterconnectAuto uses the thunderbolt Interconnect when one of its
+	// segments holds enough up nodes with GPU capacity for every rank, and the
+	// network otherwise. It is the default.
+	MLXInterconnectAuto MLXInterconnect = "auto"
+	// MLXInterconnectThunderbolt requires every rank's node to be up in one
+	// segment of the thunderbolt Interconnect; otherwise the placement is
+	// refused with the reason NoInterconnectSegment.
+	MLXInterconnectThunderbolt MLXInterconnect = "thunderbolt"
+	// MLXInterconnectNetwork uses pod IPs over the cluster network.
+	MLXInterconnectNetwork MLXInterconnect = "network"
+)
 
 // MLXDistributedBackend is the collective-communication backend of a sharded
 // MLXModel.

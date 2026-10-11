@@ -1,0 +1,70 @@
+{
+  "kind": "Interconnect",
+  "apiVersion": "net.k3sm.io/v1alpha1",
+  "metadata": {
+    "name": "thunderbolt",
+    "resourceVersion": "3"
+  },
+  "spec": {
+    "medium": "thunderbolt",
+    "fallback": "network",
+    "enabled": true,
+    "excludedNodes": [
+      "studio-3"
+    ],
+    "allowedNamespaces": [
+      "mlx",
+      "default"
+    ]
+  },
+  "status": {
+    "members": [
+      {
+        "node": "studio-1",
+        "index": 0,
+        "address": "169.254.0.1",
+        "state": "up",
+        "speedGbps": 80,
+        "segment": "seg-0",
+        "reachablePeers": [
+          "studio-2"
+        ],
+        "lastTransition": "2026-10-05T12:00:00Z"
+      },
+      {
+        "node": "studio-2",
+        "index": 1,
+        "address": "169.254.0.9",
+        "state": "up",
+        "speedGbps": 80,
+        "segment": "seg-0",
+        "reachablePeers": [
+          "studio-1"
+        ],
+        "lastTransition": "2026-10-05T12:00:00Z"
+      }
+    ],
+    "segments": [
+      {
+        "id": "seg-0",
+        "nodes": [
+          "studio-1",
+          "studio-2"
+        ]
+      }
+    ],
+    "attachedPods": 2,
+    "armedBy": "system:admin",
+    "armedAt": "2026-10-05T12:00:00Z",
+    "conditions": [
+      {
+        "type": "Ready",
+        "status": "True",
+        "observedGeneration": 2,
+        "lastTransitionTime": "2026-10-05T12:00:00Z",
+        "reason": "SegmentsUp",
+        "message": "1 segment, 2 members up"
+      }
+    ]
+  }
+}

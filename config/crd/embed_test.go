@@ -229,11 +229,17 @@ func TestMLXModelCRDValidatesDistributed(t *testing.T) {
 		{"ranks", nil},
 		{"backend", []string{"auto", "ring", "jaccl"}},
 		{"parallelism", []string{"tensor", "pipeline"}},
+		{"interconnect", []string{"auto", "thunderbolt", "network"}},
 	} {
 		f, ok := distProps[tc.field].(map[string]any)
 		if !ok {
 			t.Errorf("spec.distributed.%s is not declared", tc.field)
 			continue
+		}
+		// The interconnect default is auto (MLXInterconnectAuto; the Go-side
+		// agreement is TestDistributedInterconnectEnum in mlx/v1alpha1).
+		if tc.field == "interconnect" && f["default"] != "auto" {
+			t.Errorf("spec.distributed.interconnect default = %v, want auto", f["default"])
 		}
 		if tc.enum == nil {
 			continue
@@ -588,6 +594,7 @@ func TestNoGlobEmbed(t *testing.T) {
 		"mlx.k3sm.io_mlxmodels.yaml":         false,
 		"net.k3sm.io_meshpeers.yaml":         false,
 		"net.k3sm.io_directlinks.yaml":       false,
+		"net.k3sm.io_interconnects.yaml":     false,
 		"helm.k3sm.io_helmcharts.yaml":       false,
 		"helm.k3sm.io_helmchartconfigs.yaml": false,
 	}
@@ -667,6 +674,15 @@ func TestNoGlobEmbed(t *testing.T) {
 	}
 	if strings.Contains(string(MeshPeerCRD()), DirectLinkCRDName) {
 		t.Error("MeshPeerCRD returns the DirectLink CRD")
+	}
+	if !strings.Contains(string(InterconnectCRD()), InterconnectCRDName) {
+		t.Error("InterconnectCRD does not return the Interconnect CRD")
+	}
+	if strings.Contains(string(InterconnectCRD()), DirectLinkCRDName) {
+		t.Error("InterconnectCRD returns the DirectLink CRD")
+	}
+	if strings.Contains(string(DirectLinkCRD()), InterconnectCRDName) {
+		t.Error("DirectLinkCRD returns the Interconnect CRD")
 	}
 	if !strings.Contains(string(HelmChartCRD()), HelmChartCRDName) {
 		t.Error("HelmChartCRD does not return the HelmChart CRD")
@@ -799,5 +815,132 @@ func TestDirectLinkAccessorReturnsAFreshCopy(t *testing.T) {
 	}
 	if got := b[0]; got != '#' {
 		t.Errorf("second call starts with %q, want the manifest's leading comment", got)
+	}
+}
+
+// TestInterconnectCRDMatchesTheGoTypes asserts the embedded Interconnect
+// manifest describes the object k3sm.io/apis/net/v1alpha1 describes: its
+// identity, the single served+stored v1alpha1 version, the status subresource,
+// every spec and status field, and the enums and defaults.
+//
+// It deliberately does NOT import net/v1alpha1, like its siblings, so a
+// disagreement stays visible; the field lists below are the reviewable copy.
+func TestInterconnectCRDMatchesTheGoTypes(t *testing.T) {
+	t.Parallel()
+	m := decodeManifest(t, InterconnectCRD())
+
+	if got := m["kind"]; got != "CustomResourceDefinition" {
+		t.Errorf("kind = %v, want CustomResourceDefinition", got)
+	}
+	if got := mapAt(t, m, "metadata")["name"]; got != InterconnectCRDName {
+		t.Errorf("metadata.name = %v, want %s (the accessor's constant)", got, InterconnectCRDName)
+	}
+	if InterconnectCRDName != "interconnects.net.k3sm.io" {
+		t.Errorf("InterconnectCRDName = %q, want interconnects.net.k3sm.io", InterconnectCRDName)
+	}
+	spec := mapAt(t, m, "spec")
+	if got := spec["group"]; got != "net.k3sm.io" {
+		t.Errorf("spec.group = %v, want net.k3sm.io", got)
+	}
+	// Cluster-scoped, one per medium.
+	if got := spec["scope"]; got != "Cluster" {
+		t.Errorf("spec.scope = %v, want Cluster", got)
+	}
+	names := mapAt(t, m, "spec", "names")
+	for _, tc := range []struct{ key, want string }{
+		{"kind", "Interconnect"},
+		{"listKind", "InterconnectList"},
+		{"plural", "interconnects"},
+		{"singular", "interconnect"},
+	} {
+		if got := names[tc.key]; got != tc.want {
+			t.Errorf("spec.names.%s = %v, want %s", tc.key, got, tc.want)
+		}
+	}
+
+	v := onlyVersion(t, m, "v1alpha1")
+	// The status subresource lets the resolver write status without being able
+	// to arm the interconnect, and an admin arm it without clobbering status.
+	sub, ok := v["subresources"].(map[string]any)
+	if !ok {
+		t.Fatal("spec.versions[0].subresources is missing")
+	}
+	if _, ok := sub["status"]; !ok {
+		t.Error("the status subresource is not enabled")
+	}
+
+	sp := specProps(t, v)
+	for _, f := range []string{"medium", "fallback", "enabled", "excludedNodes", "allowedNamespaces"} {
+		if _, ok := sp[f]; !ok {
+			t.Errorf("spec.%s is not declared; the structural schema would prune it", f)
+		}
+	}
+	assertStringEnum(t, "spec.medium", mapAt(t, sp, "medium"), "thunderbolt")
+	assertStringEnum(t, "spec.fallback", mapAt(t, sp, "fallback"), "network", "none")
+	if got := mapAt(t, sp, "fallback")["default"]; got != "network" {
+		t.Errorf("spec.fallback default = %v, want network", got)
+	}
+	// Armed by an admin, never by plugging in: the default must be false.
+	if got := mapAt(t, sp, "enabled")["default"]; got != false {
+		t.Errorf("spec.enabled default = %v, want false", got)
+	}
+	// Bounded lists: the CRD's maxItems matches MaxInterconnectListItems.
+	for _, f := range []string{"excludedNodes", "allowedNamespaces"} {
+		if got, _ := mapAt(t, sp, f)["maxItems"].(int64); got != 64 {
+			t.Errorf("spec.%s maxItems = %v, want 64", f, mapAt(t, sp, f)["maxItems"])
+		}
+	}
+	if got := mapAt(t, sp, "allowedNamespaces", "items")["pattern"]; got != "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" {
+		t.Errorf("spec.allowedNamespaces[] pattern = %v, want the namespace-name shape", got)
+	}
+
+	st := mapAt(t, v, "schema", "openAPIV3Schema", "properties", "status", "properties")
+	for _, f := range []string{"members", "segments", "attachedPods", "armedBy", "armedAt", "conditions"} {
+		if _, ok := st[f]; !ok {
+			t.Errorf("status.%s is not declared; the structural schema would prune it", f)
+		}
+	}
+	mp := mapAt(t, st, "members", "items", "properties")
+	for _, f := range []string{"node", "index", "address", "state", "speedGbps", "segment", "reachablePeers", "lastTransition"} {
+		if _, ok := mp[f]; !ok {
+			t.Errorf("status.members[].%s is not declared", f)
+		}
+	}
+	assertStringEnum(t, "status.members[].state", mapAt(t, mp, "state"), "up", "down", "loop")
+	sg := mapAt(t, st, "segments", "items", "properties")
+	for _, f := range []string{"id", "nodes"} {
+		if _, ok := sg[f]; !ok {
+			t.Errorf("status.segments[].%s is not declared", f)
+		}
+	}
+}
+
+// assertStringEnum asserts node's enum is exactly want, in order.
+func assertStringEnum(t *testing.T, path string, node map[string]any, want ...string) {
+	t.Helper()
+	enum, _ := node["enum"].([]any)
+	if len(enum) != len(want) {
+		t.Errorf("%s enum = %v, want %v", path, enum, want)
+		return
+	}
+	for i := range want {
+		if enum[i] != want[i] {
+			t.Errorf("%s enum = %v, want %v", path, enum, want)
+			return
+		}
+	}
+}
+
+// TestInterconnectAccessorReturnsAFreshCopy asserts the Interconnect accessor
+// hands out a copy, on the same grounds as its siblings.
+func TestInterconnectAccessorReturnsAFreshCopy(t *testing.T) {
+	t.Parallel()
+	a := InterconnectCRD()
+	if len(a) == 0 {
+		t.Fatal("InterconnectCRD returned no bytes; the go:embed directive did not match")
+	}
+	a[0] = 'X'
+	if b := InterconnectCRD(); b[0] != '#' {
+		t.Fatalf("InterconnectCRD returns aliased bytes (first byte %q); a caller's scribble reaches every later caller", b[0])
 	}
 }
