@@ -570,13 +570,13 @@ phases:
         deliverables:
           - id: M19.1-d1
             done: false
-            desc: "B494 — runtime/v1: HandlerWasm = \"wasm\" + a DefaultHandlerConfig row → SANDBOX_BACKEND_WASM = 5 (additive; validBackend accepts it from SandboxBackend_name; ErrUnknownHandler keeps failing closed on anything else)."
+            desc: "B495 — runtime/v1: HandlerWasm = \"wasm\" + a DefaultHandlerConfig row → SANDBOX_BACKEND_WASM = 5 (additive; validBackend accepts it from SandboxBackend_name; ErrUnknownHandler keeps failing closed on anything else)."
           - id: M19.1-d2
             done: false
-            desc: "B494 — runtime/v1: the canonical wasm image platform tuple (wasi/wasm32, plus the alias tuples wasi/wasm, wasip1/wasm32, wasip2/wasm32) and the RuntimeCondition type string ConditionWasmBackendAvailable as exported constants, so runtimed and k3sm import one definition (m19-plan R4)."
+            desc: "B495 — runtime/v1: the canonical wasm image platform tuple (wasi/wasm32, plus the alias tuples wasi/wasm, wasip1/wasm32, wasip2/wasm32) and the RuntimeCondition type string ConditionWasmBackendAvailable as exported constants, so runtimed and k3sm import one definition (m19-plan R4)."
           - id: M19.1-d3
             done: false
-            desc: "B494 — TestHandlerTable pins the new row, the unknown-handler refusal and the numeric pin SandboxBackend_name[5] == WASM; golden fixtures updated; the buf breaking baseline refreshed."
+            desc: "B495 — TestHandlerTable pins the new row, the unknown-handler refusal and the numeric pin SandboxBackend_name[5] == WASM; golden fixtures updated; the buf breaking baseline refreshed."
         acceptance:
           - id: M19.1-a1
             met: false
