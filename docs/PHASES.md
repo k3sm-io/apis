@@ -2,8 +2,8 @@
 repo: apis
 schema: phases/v1
 current_phase: M7
-updated: 2026-10-05
-updated_by: m17-1-apis-writeback
+updated: 2026-10-10
+updated_by: M19 encode (docs/m19-plan.md — the wasm RuntimeClass, apis slice)
 
 phases:
   - id: M0
@@ -465,7 +465,7 @@ phases:
     status: todo
     strategy: phased (multi-node launchd rolling restart)
     depends_on: []
-    note: "Authoritative input: docs/m15-plan.md (workspace) — Phase C encodes ONLY from that doc; the B267 spike's answers are its BINDING inputs. apis is Wave 1 of M15 (consumer-first review order; the three waves ship in one binary, so the only skew is cross-node — hence the named exception). Every change is additive: a new HandlerName + SandboxBackend enum value 5, the sizing fields 100/101 renamed guest_vcpus/guest_memory_bytes with the banner rewritten (same numbers, no wire break), the guest/v1 header amended to admit a host-side-adapter topology with its own lockstep pin and trust note (m15-plan R2), and the GetRuntimeInfoResponse field-101 deferral recorded (R6). NO Swift artifact lives in apis: the helper's stubs are generated in its own package from these .proto files (m15-plan §Seams, Swift codegen)."
+    note: "Authoritative input: docs/m15-plan.md (workspace) — Phase C encodes ONLY from that doc; the B267 spike's answers are its BINDING inputs. apis is Wave 1 of M15 (consumer-first review order; the three waves ship in one binary, so the only skew is cross-node — hence the named exception). Every change is additive: a new HandlerName + SandboxBackend enum value 6, the sizing fields 100/101 renamed guest_vcpus/guest_memory_bytes with the banner rewritten (same numbers, no wire break), the guest/v1 header amended to admit a host-side-adapter topology with its own lockstep pin and trust note (m15-plan R2), and the GetRuntimeInfoResponse field-101 deferral recorded (R6). NO Swift artifact lives in apis: the helper's stubs are generated in its own package from these .proto files (m15-plan §Seams, Swift codegen). Amended 2026-10-10: SANDBOX_BACKEND_CONTAINER_VM is 6; M19 (the wasm RuntimeClass) took 5 first (docs/m19-plan.md R1)."
     subphases:
       - id: M15.1
         title: HandlerContainerVM + SANDBOX_BACKEND_CONTAINER_VM + guest_vcpus/guest_memory_bytes rename + the guest/v1 header amendment
@@ -475,7 +475,7 @@ phases:
         deliverables:
           - id: M15.1-d1
             done: false
-            desc: "runtime/v1: HandlerContainerVM = \"container-vm\" + a DefaultHandlerConfig row → SANDBOX_BACKEND_CONTAINER_VM = 5 (purely additive; validBackend accepts it from SandboxBackend_name; ErrUnknownHandler keeps failing closed on anything else)."
+            desc: "runtime/v1: HandlerContainerVM = \"container-vm\" + a DefaultHandlerConfig row → SANDBOX_BACKEND_CONTAINER_VM = 6 (purely additive; validBackend accepts it from SandboxBackend_name; ErrUnknownHandler keeps failing closed on anything else)."
           - id: M15.1-d2
             done: false
             desc: "runtime/v1: fields 100/101 renamed guest_vcpus/guest_memory_bytes (same field numbers; the Go identifier rename is an in-repo refactor across consumers in the same wave) and the section banner rewritten from 'Read ONLY when backend == VM' to 'any guest-booting backend'; golden fixtures updated."
@@ -554,6 +554,35 @@ phases:
             met: true  # 2026-10-05 — gofmt clean, go vet, CGO_ENABLED=0 build+test (and GOWORK=off build), -race on net/mlx/config, verify-boilerplate, go mod tidy no diff, staticcheck 2026.2.1 clean; named tests listed per deliverable above
             check: "CGO_ENABLED=0 go vet ./... && go test ./... green; the named tests present and green (the WithDefaults stamp-1 golden, the pre-M17-reader acceptance test, the LinkIP boundary table, the DirectLink Validate table + golden fixtures, the reserved-half/zoned-IPv6 Validate table); go mod tidy no diff; the DirectLink CRD YAML (status subresource) regenerated and committed under config/crd"
             method: unit
+
+  - id: M19
+    title: wasm RuntimeClass (apis slice — handler + backend enum + platform/condition constants)
+    status: todo
+    strategy: phased (multi-node launchd rolling restart)
+    depends_on: []
+    note: "Authoritative input: docs/m19-plan.md (workspace) — Phase C encodes ONLY from that doc. apis is Wave 1 of M19 (consumer-first review order). Every change is additive: a new HandlerName + SandboxBackend enum value **5**, the canonical wasm platform tuple and the ConditionWasmBackendAvailable type string as apis constants. M15's container-vm enum moves to 6 (m19-plan R1). The only skew is cross-node (a server that provisions the wasm class beside an older worker) — hence the named exception."
+    subphases:
+      - id: M19.1
+        title: HandlerWasm + SANDBOX_BACKEND_WASM + the wasm platform/condition constants
+        status: todo
+        strategy: phased (multi-node launchd rolling restart)
+        depends_on: []
+        deliverables:
+          - id: M19.1-d1
+            done: false
+            desc: "B494 — runtime/v1: HandlerWasm = \"wasm\" + a DefaultHandlerConfig row → SANDBOX_BACKEND_WASM = 5 (additive; validBackend accepts it from SandboxBackend_name; ErrUnknownHandler keeps failing closed on anything else)."
+          - id: M19.1-d2
+            done: false
+            desc: "B494 — runtime/v1: the canonical wasm image platform tuple (wasi/wasm32, plus the alias tuples wasi/wasm, wasip1/wasm32, wasip2/wasm32) and the RuntimeCondition type string ConditionWasmBackendAvailable as exported constants, so runtimed and k3sm import one definition (m19-plan R4)."
+          - id: M19.1-d3
+            done: false
+            desc: "B494 — TestHandlerTable pins the new row, the unknown-handler refusal and the numeric pin SandboxBackend_name[5] == WASM; golden fixtures updated; the buf breaking baseline refreshed."
+        acceptance:
+          - id: M19.1-a1
+            met: false
+            check: "buf lint + generate-diff + breaking all green; TestHandlerTable pins the wasm row, the numeric pin and the unknown-handler refusal"
+            method: unit
+
 ---
 
 # apis — Phase roadmap
@@ -883,3 +912,16 @@ single-node. No `Validate` check in `apis` needs the node index; the server-side
 **Acceptance (exit gate)**
 - ✅ `M17.1-a1` `CGO_ENABLED=0 go vet ./... && go test ./...` green; the named tests present and
   green; `go mod tidy` no diff; the `DirectLink` CRD YAML regenerated and committed — *method: unit*
+
+## M19 — wasm RuntimeClass: HandlerWasm, SANDBOX_BACKEND_WASM, the wasm platform and condition constants (apis slice) ⬜
+`apis` is **Wave 1** of M19 and ships first (`docs/m19-plan.md`, workspace, is authoritative):
+consumer-first, so `runtimed` and `k3sm` build against these types. **Phased** (named exception:
+multi-node launchd rolling restart) because a server that provisions the `wasm` class can run
+beside an older worker. The enum value is additive and consumers already fail closed on an
+unknown handler or backend. `SANDBOX_BACKEND_WASM` takes 5; M15's `container-vm` moves to 6
+(m19-plan R1).
+
+### M19.1 — HandlerWasm, SANDBOX_BACKEND_WASM, the wasm platform and condition constants ⬜
+- ⬜ `M19.1-d1` **`runtime/v1`**: `HandlerWasm = "wasm"` + a `DefaultHandlerConfig` row → `SANDBOX_BACKEND_WASM = 5`.
+- ⬜ `M19.1-d2` **`runtime/v1`**: the canonical wasm platform tuple and its aliases, and `ConditionWasmBackendAvailable`, as exported constants.
+- ⬜ `M19.1-d3` `TestHandlerTable` pins the row, the unknown-handler refusal and `SandboxBackend_name[5] == WASM`; goldens and the buf baseline refreshed.
