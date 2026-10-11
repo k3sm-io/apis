@@ -74,6 +74,7 @@ spec:
                   default: false
                 excludedNodes:
                   type: array
+                  maxItems: 64
                   description: ExcludedNodes are node names that never become members.
                   items:
                     type: string
@@ -82,6 +83,7 @@ spec:
                   x-kubernetes-list-type: set
                 allowedNamespaces:
                   type: array
+                  maxItems: 64
                   description: AllowedNamespaces limits which namespaces' pods may attach; empty means every namespace.
                   items:
                     type: string

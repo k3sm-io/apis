@@ -36,6 +36,10 @@ var dns1123LabelRE = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 // most 253 characters, checked separately).
 var dns1123SubdomainRE = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
 
+// MaxInterconnectListItems is the most entries Spec.ExcludedNodes and
+// Spec.AllowedNamespaces may each hold (the CRD's maxItems).
+const MaxInterconnectListItems = 64
+
 // isNodeName reports whether s has the shape of a Kubernetes node name.
 func isNodeName(s string) bool {
 	return len(s) <= 253 && dns1123SubdomainRE.MatchString(s)
@@ -119,8 +123,12 @@ func (s InterconnectSpec) EffectiveFallback() InterconnectFallback {
 	return s.Fallback
 }
 
-// NamespaceAllowed reports whether pods in namespace ns may attach: true when
-// AllowedNamespaces is empty or lists ns.
+// NamespaceAllowed reports whether pods in namespace ns may attach under the
+// namespace rule alone. An EMPTY AllowedNamespaces allows every namespace (plan
+// I9); a non-empty one allows only the namespaces it lists.
+//
+// It does not check that the interconnect is armed: a caller must also require
+// Spec.Enabled before letting any pod attach.
 func (s InterconnectSpec) NamespaceAllowed(ns string) bool {
 	if len(s.AllowedNamespaces) == 0 {
 		return true
@@ -137,7 +145,7 @@ func (s InterconnectSpec) NamespaceAllowed(ns string) bool {
 // MediumThunderbolt; Fallback is empty, "network" or "none"; every
 // ExcludedNodes entry is a node-name shape (an RFC 1123 subdomain); and every
 // AllowedNamespaces entry is a namespace-name shape (an RFC 1123 label). Neither
-// list may repeat an entry.
+// list may repeat an entry or hold more than MaxInterconnectListItems entries.
 //
 // It checks shape only; whether a named node or namespace exists is the
 // server's concern. Errors wrap ErrInvalidInterconnect.
@@ -149,6 +157,12 @@ func (s InterconnectSpec) Validate() error {
 	case "", InterconnectFallbackNetwork, InterconnectFallbackNone:
 	default:
 		return fmt.Errorf("%w: fallback %q, want %q or %q", ErrInvalidInterconnect, s.Fallback, InterconnectFallbackNetwork, InterconnectFallbackNone)
+	}
+	if n := len(s.ExcludedNodes); n > MaxInterconnectListItems {
+		return fmt.Errorf("%w: excludedNodes has %d entries, at most %d", ErrInvalidInterconnect, n, MaxInterconnectListItems)
+	}
+	if n := len(s.AllowedNamespaces); n > MaxInterconnectListItems {
+		return fmt.Errorf("%w: allowedNamespaces has %d entries, at most %d", ErrInvalidInterconnect, n, MaxInterconnectListItems)
 	}
 	seen := make(map[string]bool, len(s.ExcludedNodes))
 	for i, n := range s.ExcludedNodes {

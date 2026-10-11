@@ -113,6 +113,10 @@ func TestInterconnectValidate(t *testing.T) {
 		{"wildcard namespace", func(ic *Interconnect) { ic.Spec.AllowedNamespaces = []string{"*"} }, true},
 		{"overlong namespace", func(ic *Interconnect) { ic.Spec.AllowedNamespaces = []string{strings.Repeat("a", 64)} }, true},
 		{"repeated namespace", func(ic *Interconnect) { ic.Spec.AllowedNamespaces = []string{"mlx", "mlx"} }, true},
+		{"64 excluded nodes", func(ic *Interconnect) { ic.Spec.ExcludedNodes = peers(MaxInterconnectListItems) }, false},
+		{"65 excluded nodes", func(ic *Interconnect) { ic.Spec.ExcludedNodes = peers(MaxInterconnectListItems + 1) }, true},
+		{"64 namespaces", func(ic *Interconnect) { ic.Spec.AllowedNamespaces = peers(MaxInterconnectListItems) }, false},
+		{"65 namespaces", func(ic *Interconnect) { ic.Spec.AllowedNamespaces = peers(MaxInterconnectListItems + 1) }, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -273,7 +277,8 @@ func TestInterconnectKeys(t *testing.T) {
 		}
 	}
 	if MaxInterconnectReportBytes != 4096 || MaxInterconnectReportPeers != 16 ||
-		InterconnectReportMinInterval != 10*time.Second || InterconnectAnnotationSchema != 1 {
+		InterconnectReportMinInterval != 10*time.Second || InterconnectAnnotationSchema != 1 ||
+		MaxInterconnectDomainUUIDBytes != 64 || MaxInterconnectListItems != 64 {
 		t.Error("the I6 report bounds moved")
 	}
 }
@@ -330,6 +335,13 @@ func TestInterconnectReportParse(t *testing.T) {
 			t.Fatalf("Parse: %v", err)
 		}
 	})
+	t.Run("64-byte uuid accepted", func(t *testing.T) {
+		t.Parallel()
+		u := strings.Repeat("a", MaxInterconnectDomainUUIDBytes)
+		if _, err := ParseInterconnectReport(`{"schema":1,"peerDomainUUIDs":["` + u + `"]}`); err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+	})
 	t.Run("unknown fields ignored", func(t *testing.T) {
 		t.Parallel()
 		got, err := ParseInterconnectReport(`{"schema":1,"carrier":true,"futureField":{"x":1}}`)
@@ -355,6 +367,10 @@ func TestInterconnectReportParse(t *testing.T) {
 		{"bad peer name", `{"schema":1,"reachablePeers":["Not A Node"]}`, ErrInvalidInterconnectAnnotation},
 		{"repeated peer", `{"schema":1,"reachablePeers":["a","a"]}`, ErrInvalidInterconnectAnnotation},
 		{"empty uuid", `{"schema":1,"localDomainUUIDs":[""]}`, ErrInvalidInterconnectAnnotation},
+		{"65-byte uuid", `{"schema":1,"localDomainUUIDs":["` + strings.Repeat("a", MaxInterconnectDomainUUIDBytes+1) + `"]}`, ErrInvalidInterconnectAnnotation},
+		{"newline in peer uuid", `{"schema":1,"peerDomainUUIDs":["abc\nFAKE log line"]}`, ErrInvalidInterconnectAnnotation},
+		{"escape in local uuid", `{"schema":1,"localDomainUUIDs":["\u001b[31mred"]}`, ErrInvalidInterconnectAnnotation},
+		{"non-ascii uuid", `{"schema":1,"peerDomainUUIDs":["caf\u00e9"]}`, ErrInvalidInterconnectAnnotation},
 		{"negative speed", `{"schema":1,"speedGbps":-1}`, ErrInvalidInterconnectAnnotation},
 		{"wrong type", `{"schema":1,"carrier":"yes"}`, ErrInvalidInterconnectAnnotation},
 	}

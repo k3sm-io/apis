@@ -236,6 +236,11 @@ func TestMLXModelCRDValidatesDistributed(t *testing.T) {
 			t.Errorf("spec.distributed.%s is not declared", tc.field)
 			continue
 		}
+		// The interconnect default is auto (MLXInterconnectAuto; the Go-side
+		// agreement is TestDistributedInterconnectEnum in mlx/v1alpha1).
+		if tc.field == "interconnect" && f["default"] != "auto" {
+			t.Errorf("spec.distributed.interconnect default = %v, want auto", f["default"])
+		}
 		if tc.enum == nil {
 			continue
 		}
@@ -878,6 +883,12 @@ func TestInterconnectCRDMatchesTheGoTypes(t *testing.T) {
 	// Armed by an admin, never by plugging in: the default must be false.
 	if got := mapAt(t, sp, "enabled")["default"]; got != false {
 		t.Errorf("spec.enabled default = %v, want false", got)
+	}
+	// Bounded lists: the CRD's maxItems matches MaxInterconnectListItems.
+	for _, f := range []string{"excludedNodes", "allowedNamespaces"} {
+		if got, _ := mapAt(t, sp, f)["maxItems"].(int64); got != 64 {
+			t.Errorf("spec.%s maxItems = %v, want 64", f, mapAt(t, sp, f)["maxItems"])
+		}
 	}
 	if got := mapAt(t, sp, "allowedNamespaces", "items")["pattern"]; got != "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" {
 		t.Errorf("spec.allowedNamespaces[] pattern = %v, want the namespace-name shape", got)

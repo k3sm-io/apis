@@ -37,6 +37,10 @@ const (
 	// MaxInterconnectReportPeers is the most reachable peers (and the most peer
 	// domain UUIDs) a report may list.
 	MaxInterconnectReportPeers = 16
+	// MaxInterconnectDomainUUIDBytes is the longest domain UUID a report may
+	// carry. Each must be printable ASCII, so a node cannot inject control
+	// characters into the Events and logs that quote it.
+	MaxInterconnectDomainUUIDBytes = 64
 	// InterconnectReportMinInterval is the shortest interval at which a node
 	// rewrites its report.
 	InterconnectReportMinInterval = 10 * time.Second
@@ -80,7 +84,8 @@ type InterconnectReport struct {
 // Validate reports whether the report is within the I6 bounds on its own:
 // Schema is current (else ErrUnknownInterconnectSchema), at most
 // MaxInterconnectReportPeers reachable peers and peer domain UUIDs, local
-// domain UUIDs no more than MaxInterconnectSlot+1, no empty UUID, SpeedGbps not
+// domain UUIDs no more than MaxInterconnectSlot+1, every UUID 1 to
+// MaxInterconnectDomainUUIDBytes bytes of printable ASCII, SpeedGbps not
 // negative, and every peer a node-name shape listed once. Other errors wrap
 // ErrInvalidInterconnectAnnotation.
 func (r InterconnectReport) Validate() error {
@@ -97,13 +102,13 @@ func (r InterconnectReport) Validate() error {
 		return fmt.Errorf("%w: report lists %d local domain UUIDs, at most %d", ErrInvalidInterconnectAnnotation, n, MaxInterconnectSlot+1)
 	}
 	for i, u := range r.LocalDomainUUIDs {
-		if u == "" {
-			return fmt.Errorf("%w: report localDomainUUIDs[%d] is empty", ErrInvalidInterconnectAnnotation, i)
+		if !isDomainUUID(u) {
+			return fmt.Errorf("%w: report localDomainUUIDs[%d] is not 1..%d printable ASCII bytes", ErrInvalidInterconnectAnnotation, i, MaxInterconnectDomainUUIDBytes)
 		}
 	}
 	for i, u := range r.PeerDomainUUIDs {
-		if u == "" {
-			return fmt.Errorf("%w: report peerDomainUUIDs[%d] is empty", ErrInvalidInterconnectAnnotation, i)
+		if !isDomainUUID(u) {
+			return fmt.Errorf("%w: report peerDomainUUIDs[%d] is not 1..%d printable ASCII bytes", ErrInvalidInterconnectAnnotation, i, MaxInterconnectDomainUUIDBytes)
 		}
 	}
 	if r.SpeedGbps < 0 {
@@ -242,4 +247,18 @@ func decodeInterconnectAnnotation(value string, v any) error {
 		return fmt.Errorf("%w: %w", ErrInvalidInterconnectAnnotation, err)
 	}
 	return nil
+}
+
+// isDomainUUID reports whether u is 1..MaxInterconnectDomainUUIDBytes bytes of
+// printable ASCII (0x20..0x7e).
+func isDomainUUID(u string) bool {
+	if u == "" || len(u) > MaxInterconnectDomainUUIDBytes {
+		return false
+	}
+	for i := 0; i < len(u); i++ {
+		if u[i] < 0x20 || u[i] > 0x7e {
+			return false
+		}
+	}
+	return true
 }
