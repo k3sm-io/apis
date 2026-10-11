@@ -1,0 +1,203 @@
+# Interconnect CRD (net.k3sm.io/v1alpha1): the cable between nodes as an
+# opt-in, admin-armed network.
+#
+# Hand-authored (apis runs no controller-gen) to match the Go type in
+# k3sm.io/apis/net/v1alpha1 (interconnect.go). ALPHA: a SINGLE version v1alpha1
+# is both served and stored, and its shape may change incompatibly until it
+# graduates.
+#
+# Scope is Cluster: ONE PER MEDIUM, named for it (thunderbolt). The server
+# auto-creates it with enabled false; an admin arms it by setting enabled true.
+# The server's resolver writes status through the status subresource.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: interconnects.net.k3sm.io
+spec:
+  group: net.k3sm.io
+  scope: Cluster
+  names:
+    kind: Interconnect
+    listKind: InterconnectList
+    plural: interconnects
+    singular: interconnect
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      additionalPrinterColumns:
+        - name: Medium
+          type: string
+          jsonPath: .spec.medium
+        - name: Enabled
+          type: boolean
+          jsonPath: .spec.enabled
+        - name: Attached
+          type: integer
+          jsonPath: .status.attachedPods
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: Interconnect is the cable between nodes as an opt-in network (spec, set by an admin) and its resolved membership and segments (status, written by the server).
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required:
+                - medium
+              properties:
+                medium:
+                  type: string
+                  description: Medium is the kind of cable.
+                  enum:
+                    - thunderbolt
+                fallback:
+                  type: string
+                  description: Fallback is what happens when a pod's attach cannot be satisfied; network starts the pod without the interconnect address, none holds it in creation.
+                  default: network
+                  enum:
+                    - network
+                    - none
+                enabled:
+                  type: boolean
+                  description: Enabled arms the interconnect; nothing gets an address until an admin sets it true.
+                  default: false
+                excludedNodes:
+                  type: array
+                  description: ExcludedNodes are node names that never become members.
+                  items:
+                    type: string
+                    minLength: 1
+                    maxLength: 253
+                  x-kubernetes-list-type: set
+                allowedNamespaces:
+                  type: array
+                  description: AllowedNamespaces limits which namespaces' pods may attach; empty means every namespace.
+                  items:
+                    type: string
+                    minLength: 1
+                    maxLength: 63
+                    pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+                  x-kubernetes-list-type: set
+            status:
+              type: object
+              properties:
+                members:
+                  type: array
+                  description: Members are the nodes that reported a cabled peer.
+                  items:
+                    type: object
+                    required:
+                      - node
+                      - index
+                      - state
+                    properties:
+                      node:
+                        type: string
+                        description: Node is the member's node name.
+                      index:
+                        type: integer
+                        format: int32
+                        description: Index is the node's cluster index.
+                        minimum: 0
+                      address:
+                        type: string
+                        description: Address is the node's slot-0 interconnect address (169.254.0.0/24), recomputed by the server; empty when the node has none.
+                      state:
+                        type: string
+                        description: State is the resolved state of the member.
+                        enum:
+                          - up
+                          - down
+                          - loop
+                      speedGbps:
+                        type: integer
+                        format: int32
+                        description: SpeedGbps is the reported link speed in Gb/s (0 = unknown).
+                        minimum: 0
+                      segment:
+                        type: string
+                        description: Segment is the ID of the segment the member belongs to.
+                      reachablePeers:
+                        type: array
+                        description: ReachablePeers are the node names the member reports reaching.
+                        items:
+                          type: string
+                      lastTransition:
+                        type: string
+                        format: date-time
+                        description: LastTransition is when state last changed.
+                segments:
+                  type: array
+                  description: Segments are the connected components of mutual reachability among up members.
+                  items:
+                    type: object
+                    required:
+                      - id
+                    properties:
+                      id:
+                        type: string
+                        description: ID identifies the segment within this status.
+                      nodes:
+                        type: array
+                        description: Nodes are the member node names in the segment.
+                        items:
+                          type: string
+                attachedPods:
+                  type: integer
+                  format: int32
+                  description: AttachedPods is the number of pods holding an interconnect address.
+                  minimum: 0
+                armedBy:
+                  type: string
+                  description: ArmedBy is the user that set spec.enabled true.
+                armedAt:
+                  type: string
+                  format: date-time
+                  description: ArmedAt is when spec.enabled was set true.
+                conditions:
+                  type: array
+                  description: Conditions are the standard Kubernetes conditions for the interconnect.
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                      - lastTransitionTime
+                      - reason
+                    properties:
+                      type:
+                        type: string
+                        maxLength: 316
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                        maxLength: 1024
+                      message:
+                        type: string
+                        maxLength: 32768
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - type
