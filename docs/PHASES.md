@@ -3,7 +3,7 @@ repo: apis
 schema: phases/v1
 current_phase: M7
 updated: 2026-10-10
-updated_by: M19 encode (docs/m19-plan.md — the wasm RuntimeClass, apis slice)
+updated_by: M19 Amendment A (docs/m19-plan.md R3 — the opt-in module signature check; apis slice)
 
 phases:
   - id: M0
@@ -560,7 +560,7 @@ phases:
     status: todo
     strategy: phased (multi-node launchd rolling restart)
     depends_on: []
-    note: "Authoritative input: docs/m19-plan.md (workspace) — Phase C encodes ONLY from that doc. apis is Wave 1 of M19 (consumer-first review order). Every change is additive: a new HandlerName + SandboxBackend enum value **5**, the canonical wasm platform tuple and the ConditionWasmBackendAvailable type string as apis constants. M15's container-vm enum moves to 6 (m19-plan R1). The only skew is cross-node (a server that provisions the wasm class beside an older worker) — hence the named exception."
+    note: "Authoritative input: docs/m19-plan.md (workspace) — Phase C encodes ONLY from that doc. apis is Wave 1 of M19 (consumer-first review order). Every change is additive: a new HandlerName + SandboxBackend enum value **5**, the canonical wasm platform tuple and the ConditionWasmBackendAvailable type string as apis constants, and (Amendment A, 2026-10-10) the two k3sm.io/wasm-signature annotation constants plus the additive typed PodBox.wasm_signature message (m19-plan R3). M15's container-vm enum moves to 6 (m19-plan R1). The only skew is cross-node (a server that provisions the wasm class beside an older worker) — hence the named exception."
     subphases:
       - id: M19.1
         title: HandlerWasm + SANDBOX_BACKEND_WASM + the wasm platform/condition constants
@@ -573,7 +573,7 @@ phases:
             desc: "B495 — runtime/v1: HandlerWasm = \"wasm\" + a DefaultHandlerConfig row → SANDBOX_BACKEND_WASM = 5 (additive; validBackend accepts it from SandboxBackend_name; ErrUnknownHandler keeps failing closed on anything else)."
           - id: M19.1-d2
             done: false
-            desc: "B495 — runtime/v1: the canonical wasm image platform tuple (wasi/wasm32, plus the alias tuples wasi/wasm, wasip1/wasm32, wasip2/wasm32) and the RuntimeCondition type string ConditionWasmBackendAvailable as exported constants, so runtimed and k3sm import one definition (m19-plan R4)."
+            desc: "B495 — runtime/v1: the canonical wasm image platform tuple (wasi/wasm32, plus the alias tuples wasi/wasm, wasip1/wasm32, wasip2/wasm32) and the RuntimeCondition type string ConditionWasmBackendAvailable as exported constants, so runtimed and k3sm import one definition (m19-plan R4); Amendment A: AnnotationWasmSignature (k3sm.io/wasm-signature) and AnnotationWasmSignatureKey (k3sm.io/wasm-signature-key), read only by the provider, and the additive PodBox message wasm_signature { bool required; bytes public_key_spki_der; } at the next free 100+ field number, pod-level, DER not PEM (m19-plan R3)."
           - id: M19.1-d3
             done: false
             desc: "B495 — TestHandlerTable pins the new row, the unknown-handler refusal and the numeric pin SandboxBackend_name[5] == WASM; golden fixtures updated; the buf breaking baseline refreshed."
@@ -923,5 +923,5 @@ unknown handler or backend. `SANDBOX_BACKEND_WASM` takes 5; M15's `container-vm`
 
 ### M19.1 — HandlerWasm, SANDBOX_BACKEND_WASM, the wasm platform and condition constants ⬜
 - ⬜ `M19.1-d1` **`runtime/v1`**: `HandlerWasm = "wasm"` + a `DefaultHandlerConfig` row → `SANDBOX_BACKEND_WASM = 5`.
-- ⬜ `M19.1-d2` **`runtime/v1`**: the canonical wasm platform tuple and its aliases, and `ConditionWasmBackendAvailable`, as exported constants.
+- ⬜ `M19.1-d2` **`runtime/v1`**: the canonical wasm platform tuple and its aliases, `ConditionWasmBackendAvailable`, the two `k3sm.io/wasm-signature*` annotation constants and the additive `PodBox.wasm_signature` message (Amendment A), as exported contracts.
 - ⬜ `M19.1-d3` `TestHandlerTable` pins the row, the unknown-handler refusal and `SandboxBackend_name[5] == WASM`; goldens and the buf baseline refreshed.
