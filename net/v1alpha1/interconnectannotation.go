@@ -41,6 +41,9 @@ const (
 	// carry. Each must be printable ASCII, so a node cannot inject control
 	// characters into the Events and logs that quote it.
 	MaxInterconnectDomainUUIDBytes = 64
+	// MaxInterconnectUIDBytes is the longest object UID a desired payload may
+	// carry in MLXModels, in bytes (a Kubernetes UID is 36).
+	MaxInterconnectUIDBytes = 64
 	// InterconnectReportMinInterval is the shortest interval at which a node
 	// rewrites its report.
 	InterconnectReportMinInterval = 10 * time.Second
@@ -168,12 +171,58 @@ type InterconnectDesired struct {
 	Interconnect string `json:"interconnect"`
 	// Fallback is the Interconnect's fallback, for the node's pod attach.
 	Fallback InterconnectFallback `json:"fallback"`
+	// AllowedNamespaces is a copy of the Interconnect's
+	// Spec.AllowedNamespaces, so the node's pod attach can apply the namespace
+	// rule without reading the Interconnect. Empty means every namespace.
+	AllowedNamespaces []string `json:"allowedNamespaces,omitempty"`
+	// MLXModels are the existing MLXModels that use an interconnect, so the
+	// node's pod attach can verify a slot-1 pod's controller ownerReference
+	// (its namespace, name and UID) without reading MLXModel.
+	MLXModels []InterconnectModelRef `json:"mlxModels,omitempty"`
+}
+
+// InterconnectModelRef names one MLXModel by namespace, name and UID. A pod's
+// controller ownerReference matches it only when all three agree (the pod's
+// own namespace standing for the reference's), so a reference copied into a pod
+// in another namespace, or under another name, matches nothing.
+type InterconnectModelRef struct {
+	// Namespace is the MLXModel's namespace.
+	Namespace string `json:"namespace"`
+	// Name is the MLXModel's name.
+	Name string `json:"name"`
+	// UID is the MLXModel's UID.
+	UID string `json:"uid"`
+}
+
+// NamespaceAllowed reports whether pods in namespace ns may attach: an EMPTY
+// AllowedNamespaces allows every namespace, a non-empty one only the
+// namespaces it lists (the InterconnectSpec.NamespaceAllowed rule).
+func (d InterconnectDesired) NamespaceAllowed(ns string) bool {
+	return InterconnectSpec{AllowedNamespaces: d.AllowedNamespaces}.NamespaceAllowed(ns)
+}
+
+// HasMLXModel reports whether MLXModels lists the model with this namespace,
+// name and UID, all three. An empty field is never a match.
+func (d InterconnectDesired) HasMLXModel(namespace, name, uid string) bool {
+	if namespace == "" || name == "" || uid == "" {
+		return false
+	}
+	for _, m := range d.MLXModels {
+		if m.Namespace == namespace && m.Name == name && m.UID == uid {
+			return true
+		}
+	}
+	return false
 }
 
 // Validate reports whether the payload is well-formed: Schema is current (else
-// ErrUnknownInterconnectSchema), Interconnect is an object-name shape, and
-// Fallback is "network" or "none". Other errors wrap
-// ErrInvalidInterconnectAnnotation.
+// ErrUnknownInterconnectSchema), Interconnect is an object-name shape,
+// Fallback is "network" or "none", AllowedNamespaces holds at most
+// MaxInterconnectListItems distinct namespace-name shapes (RFC 1123 labels),
+// and MLXModels holds at most MaxInterconnectListItems entries, each with a
+// namespace-name shape, an object-name shape (an RFC 1123 subdomain) and a UID
+// of 1 to MaxInterconnectUIDBytes printable ASCII bytes, no namespace/name and
+// no UID repeated. Other errors wrap ErrInvalidInterconnectAnnotation.
 func (d InterconnectDesired) Validate() error {
 	if d.Schema != InterconnectAnnotationSchema {
 		return fmt.Errorf("%w: desired schema %d, want %d", ErrUnknownInterconnectSchema, d.Schema, InterconnectAnnotationSchema)
@@ -185,6 +234,40 @@ func (d InterconnectDesired) Validate() error {
 	case InterconnectFallbackNetwork, InterconnectFallbackNone:
 	default:
 		return fmt.Errorf("%w: desired fallback %q, want %q or %q", ErrInvalidInterconnectAnnotation, d.Fallback, InterconnectFallbackNetwork, InterconnectFallbackNone)
+	}
+	if n := len(d.AllowedNamespaces); n > MaxInterconnectListItems {
+		return fmt.Errorf("%w: desired allowedNamespaces has %d entries, at most %d", ErrInvalidInterconnectAnnotation, n, MaxInterconnectListItems)
+	}
+	if n := len(d.MLXModels); n > MaxInterconnectListItems {
+		return fmt.Errorf("%w: desired mlxModels has %d entries, at most %d", ErrInvalidInterconnectAnnotation, n, MaxInterconnectListItems)
+	}
+	seen := make(map[string]bool, len(d.AllowedNamespaces))
+	for i, ns := range d.AllowedNamespaces {
+		if !isNamespaceName(ns) {
+			return fmt.Errorf("%w: desired allowedNamespaces[%d] %q is not a namespace name", ErrInvalidInterconnectAnnotation, i, ns)
+		}
+		if seen[ns] {
+			return fmt.Errorf("%w: desired allowedNamespaces[%d] %q is repeated", ErrInvalidInterconnectAnnotation, i, ns)
+		}
+		seen[ns] = true
+	}
+	names := make(map[string]bool, len(d.MLXModels))
+	uids := make(map[string]bool, len(d.MLXModels))
+	for i, m := range d.MLXModels {
+		if !isNamespaceName(m.Namespace) {
+			return fmt.Errorf("%w: desired mlxModels[%d] namespace %q is not a namespace name", ErrInvalidInterconnectAnnotation, i, m.Namespace)
+		}
+		if !isNodeName(m.Name) {
+			return fmt.Errorf("%w: desired mlxModels[%d] name %q is not an object name", ErrInvalidInterconnectAnnotation, i, m.Name)
+		}
+		if !isPrintableASCII(m.UID, MaxInterconnectUIDBytes) {
+			return fmt.Errorf("%w: desired mlxModels[%d] uid is not 1..%d printable ASCII bytes", ErrInvalidInterconnectAnnotation, i, MaxInterconnectUIDBytes)
+		}
+		key := m.Namespace + "/" + m.Name
+		if names[key] || uids[m.UID] {
+			return fmt.Errorf("%w: desired mlxModels[%d] %s (uid %q) is repeated", ErrInvalidInterconnectAnnotation, i, key, m.UID)
+		}
+		names[key], uids[m.UID] = true, true
 	}
 	return nil
 }
@@ -252,7 +335,13 @@ func decodeInterconnectAnnotation(value string, v any) error {
 // isDomainUUID reports whether u is 1..MaxInterconnectDomainUUIDBytes bytes of
 // printable ASCII (0x20..0x7e).
 func isDomainUUID(u string) bool {
-	if u == "" || len(u) > MaxInterconnectDomainUUIDBytes {
+	return isPrintableASCII(u, MaxInterconnectDomainUUIDBytes)
+}
+
+// isPrintableASCII reports whether u is 1..max bytes of printable ASCII
+// (0x20..0x7e).
+func isPrintableASCII(u string, max int) bool {
+	if u == "" || len(u) > max {
 		return false
 	}
 	for i := 0; i < len(u); i++ {

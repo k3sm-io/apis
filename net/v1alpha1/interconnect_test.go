@@ -420,9 +420,92 @@ func TestInterconnectDesiredParse(t *testing.T) {
 		t.Errorf("Encode = %s", v)
 	}
 	got, err := ParseInterconnectDesired(v)
-	if err != nil || got != want {
+	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("Parse = %+v, %v; want %+v", got, err, want)
 	}
+
+	t.Run("round trip with allowed namespaces and models", func(t *testing.T) {
+		t.Parallel()
+		const uid = "0f8b6c3e-1d2a-4b5c-9e7f-0123456789ab"
+		want := InterconnectDesired{
+			Schema:            InterconnectAnnotationSchema,
+			Interconnect:      MediumThunderbolt,
+			Fallback:          InterconnectFallbackNetwork,
+			AllowedNamespaces: []string{"ml", "serving"},
+			MLXModels:         []InterconnectModelRef{{Namespace: "ml", Name: "llm", UID: uid}},
+		}
+		v, err := want.Encode()
+		if err != nil {
+			t.Fatalf("Encode: %v", err)
+		}
+		if wantV := `{"schema":1,"interconnect":"thunderbolt","fallback":"network","allowedNamespaces":["ml","serving"],"mlxModels":[{"namespace":"ml","name":"llm","uid":"` + uid + `"}]}`; v != wantV {
+			t.Errorf("Encode = %s, want %s", v, wantV)
+		}
+		got, err := ParseInterconnectDesired(v)
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Fatalf("Parse = %+v, %v; want %+v", got, err, want)
+		}
+		if !got.NamespaceAllowed("ml") || got.NamespaceAllowed("default") {
+			t.Errorf("NamespaceAllowed: ml allowed=%v, default allowed=%v; want true, false", got.NamespaceAllowed("ml"), got.NamespaceAllowed("default"))
+		}
+		for _, tc := range []struct {
+			ns, name, uid string
+			want          bool
+		}{
+			{"ml", "llm", uid, true},
+			{"serving", "llm", uid, false},
+			{"ml", "other", uid, false},
+			{"ml", "llm", "other-uid", false},
+			{"", "", "", false},
+		} {
+			if got := got.HasMLXModel(tc.ns, tc.name, tc.uid); got != tc.want {
+				t.Errorf("HasMLXModel(%q, %q, %q) = %v, want %v", tc.ns, tc.name, tc.uid, got, tc.want)
+			}
+		}
+	})
+	t.Run("empty allowed namespaces allows every namespace", func(t *testing.T) {
+		t.Parallel()
+		d := InterconnectDesired{Schema: 1, Interconnect: MediumThunderbolt, Fallback: InterconnectFallbackNetwork}
+		if !d.NamespaceAllowed("anything") || d.HasMLXModel("ns", "m", "x") {
+			t.Fatalf("empty lists: NamespaceAllowed=%v HasMLXModel=%v", d.NamespaceAllowed("anything"), d.HasMLXModel("ns", "m", "x"))
+		}
+	})
+	t.Run("a reader of the old shape ignores the new fields", func(t *testing.T) {
+		t.Parallel()
+		var old struct {
+			Schema       int    `json:"schema"`
+			Interconnect string `json:"interconnect"`
+			Fallback     string `json:"fallback"`
+		}
+		if err := json.Unmarshal([]byte(`{"schema":1,"interconnect":"thunderbolt","fallback":"none","allowedNamespaces":["a"],"mlxModels":[{"namespace":"a","name":"m","uid":"u"}]}`), &old); err != nil || old.Fallback != "none" {
+			t.Fatalf("old-shape decode = %+v, %v", old, err)
+		}
+	})
+	t.Run("64 entries accepted", func(t *testing.T) {
+		t.Parallel()
+		d := InterconnectDesired{Schema: 1, Interconnect: MediumThunderbolt, Fallback: InterconnectFallbackNone, AllowedNamespaces: peers(MaxInterconnectListItems)}
+		if err := d.Validate(); err != nil {
+			t.Fatalf("Validate of 64 namespaces: %v", err)
+		}
+		d = InterconnectDesired{Schema: 1, Interconnect: MediumThunderbolt, Fallback: InterconnectFallbackNone, MLXModels: models(MaxInterconnectListItems)}
+		if err := d.Validate(); err != nil {
+			t.Fatalf("Validate of 64 models: %v", err)
+		}
+	})
+	t.Run("encode refuses a payload over 4 KiB", func(t *testing.T) {
+		t.Parallel()
+		ms := models(MaxInterconnectListItems)
+		for i := range ms {
+			ms[i].UID = fmt.Sprintf("%064d", i)
+		}
+		d := InterconnectDesired{Schema: 1, Interconnect: MediumThunderbolt, Fallback: InterconnectFallbackNone, MLXModels: ms}
+		if err := d.Validate(); err != nil {
+			t.Fatalf("Validate: %v", err)
+		}
+		if _, err := d.Encode(); !errors.Is(err, ErrInvalidInterconnectAnnotation) {
+			t.Fatalf("Encode of an oversize desired = %v", err)
+		}
+	})
 	for _, tc := range []struct {
 		name, value string
 		want        error
@@ -434,6 +517,25 @@ func TestInterconnectDesiredParse(t *testing.T) {
 		{"unknown fallback", `{"schema":1,"interconnect":"thunderbolt","fallback":"mesh"}`, ErrInvalidInterconnectAnnotation},
 		{"empty interconnect", `{"schema":1,"interconnect":"","fallback":"none"}`, ErrInvalidInterconnectAnnotation},
 		{"legacy text form", `thunderbolt;fallback=network`, ErrInvalidInterconnectAnnotation},
+		{"65 namespaces", mustJSON(t, map[string]any{"schema": 1, "interconnect": "thunderbolt", "fallback": "none", "allowedNamespaces": peers(MaxInterconnectListItems + 1)}), ErrInvalidInterconnectAnnotation},
+		{"namespace not a label", `{"schema":1,"interconnect":"thunderbolt","fallback":"none","allowedNamespaces":["a.b"]}`, ErrInvalidInterconnectAnnotation},
+		{"namespace upper case", `{"schema":1,"interconnect":"thunderbolt","fallback":"none","allowedNamespaces":["ML"]}`, ErrInvalidInterconnectAnnotation},
+		{"namespace too long", `{"schema":1,"interconnect":"thunderbolt","fallback":"none","allowedNamespaces":["` + strings.Repeat("a", 64) + `"]}`, ErrInvalidInterconnectAnnotation},
+		{"empty namespace", `{"schema":1,"interconnect":"thunderbolt","fallback":"none","allowedNamespaces":[""]}`, ErrInvalidInterconnectAnnotation},
+		{"repeated namespace", `{"schema":1,"interconnect":"thunderbolt","fallback":"none","allowedNamespaces":["a","a"]}`, ErrInvalidInterconnectAnnotation},
+		{"65 models", mustJSON(t, map[string]any{"schema": 1, "interconnect": "thunderbolt", "fallback": "none", "mlxModels": models(MaxInterconnectListItems + 1)}), ErrInvalidInterconnectAnnotation},
+		{"model namespace not a label", desiredWithModel("a.b", "m", "u"), ErrInvalidInterconnectAnnotation},
+		{"model namespace empty", desiredWithModel("", "m", "u"), ErrInvalidInterconnectAnnotation},
+		{"model name not an object name", desiredWithModel("ml", "Not A Name", "u"), ErrInvalidInterconnectAnnotation},
+		{"model name empty", desiredWithModel("ml", "", "u"), ErrInvalidInterconnectAnnotation},
+		{"empty uid", desiredWithModel("ml", "m", ""), ErrInvalidInterconnectAnnotation},
+		{"65-byte uid", desiredWithModel("ml", "m", strings.Repeat("a", MaxInterconnectUIDBytes+1)), ErrInvalidInterconnectAnnotation},
+		{"newline in uid", desiredWithModel("ml", "m", "abc\\nFAKE"), ErrInvalidInterconnectAnnotation},
+		{"non-ascii uid", desiredWithModel("ml", "m", "caf\\u00e9"), ErrInvalidInterconnectAnnotation},
+		{"repeated model", `{"schema":1,"interconnect":"thunderbolt","fallback":"none","mlxModels":[{"namespace":"ml","name":"m","uid":"u1"},{"namespace":"ml","name":"m","uid":"u2"}]}`, ErrInvalidInterconnectAnnotation},
+		{"repeated model uid", `{"schema":1,"interconnect":"thunderbolt","fallback":"none","mlxModels":[{"namespace":"ml","name":"a","uid":"u"},{"namespace":"ml","name":"b","uid":"u"}]}`, ErrInvalidInterconnectAnnotation},
+		{"models wrong type", `{"schema":1,"interconnect":"thunderbolt","fallback":"none","mlxModels":["u"]}`, ErrInvalidInterconnectAnnotation},
+		{"namespaces wrong type", `{"schema":1,"interconnect":"thunderbolt","fallback":"none","allowedNamespaces":"ml"}`, ErrInvalidInterconnectAnnotation},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -442,6 +544,21 @@ func TestInterconnectDesiredParse(t *testing.T) {
 			}
 		})
 	}
+}
+
+// models returns n distinct, well-formed model references.
+func models(n int) []InterconnectModelRef {
+	out := make([]InterconnectModelRef, n)
+	for i := range out {
+		out[i] = InterconnectModelRef{Namespace: "ml", Name: fmt.Sprintf("m-%d", i), UID: fmt.Sprintf("uid-%d", i)}
+	}
+	return out
+}
+
+// desiredWithModel is a desired payload naming one model reference, spelled
+// as raw JSON so escapes reach the parser.
+func desiredWithModel(ns, name, uid string) string {
+	return `{"schema":1,"interconnect":"thunderbolt","fallback":"none","mlxModels":[{"namespace":"` + ns + `","name":"` + name + `","uid":"` + uid + `"}]}`
 }
 
 func mustJSON(t *testing.T, v any) string {
