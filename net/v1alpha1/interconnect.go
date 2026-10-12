@@ -25,6 +25,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+// MediumThunderbolt is the Medium value for a Thunderbolt cable between two
+// Macs. It is the only medium today; a future point-to-point medium is a new
+// value of InterconnectSpec.Medium, not a new type.
+const MediumThunderbolt = "thunderbolt"
+
 // ErrInvalidInterconnect is wrapped by every Interconnect validation error.
 var ErrInvalidInterconnect = errors.New("netv1alpha1: invalid interconnect")
 

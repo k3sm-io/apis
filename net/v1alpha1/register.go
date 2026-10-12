@@ -26,7 +26,7 @@ import (
 // net/v1 (MeshPeer); this package serves its own version within it.
 const GroupName = "net.k3sm.io"
 
-// SchemeGroupVersion is the GroupVersion the DirectLink and Interconnect types
+// SchemeGroupVersion is the GroupVersion the Interconnect types
 // register under (net.k3sm.io/v1alpha1, the single served + stored version of
 // each CRD).
 var SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: "v1alpha1"}
@@ -46,7 +46,7 @@ func Resource(resource string) schema.GroupResource {
 }
 
 func addKnownTypes(s *runtime.Scheme) error {
-	s.AddKnownTypes(SchemeGroupVersion, &DirectLink{}, &DirectLinkList{}, &Interconnect{}, &InterconnectList{})
+	s.AddKnownTypes(SchemeGroupVersion, &Interconnect{}, &InterconnectList{})
 	metav1.AddToGroupVersion(s, SchemeGroupVersion)
 	return nil
 }
