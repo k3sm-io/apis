@@ -68,6 +68,10 @@ This installs a pinned `buf` and pinned `protoc-gen-go`/`protoc-gen-go-grpc` ver
 fails if it produces a diff, so the checked-in code and the `.proto` source can never drift apart
 silently.
 
+Regeneration uses the committed `buf.lock` as is. `hack/gen.sh --update-deps` runs `buf dep update`
+and moves the lock deliberately; `hack/gen.sh --check-lock` (offline) fails when `buf.lock` and
+`buf.yaml` disagree.
+
 ### The wire-stability check
 
 `hack/ci.sh` also runs `buf breaking --against buf/baseline.binpb`: it fails the build if a
