@@ -21,21 +21,17 @@ import (
 	"testing"
 )
 
-// TestDirectLinkLabelKeys pins the exact byte strings of the direct-link label
-// keys and that each is a valid, medium-agnostic k3sm.io/* key.
+// TestLabelKeys pins the exact byte string of the node label key and that it
+// is a valid, medium-agnostic k3sm.io/* key.
 //
-// A node is labelled with them and selectors are written against them, so a
+// A node is labelled with it and selectors are written against it, so a
 // rename breaks every already-labelled node silently: a selector that matches
 // nothing is not an error.
-func TestDirectLinkLabelKeys(t *testing.T) {
+func TestLabelKeys(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name, got, want string
 	}{
-		{"LabelDirectLinkPorts", LabelDirectLinkPorts, "k3sm.io/direct-link-ports"},
-		{"LabelDirectLinkMedium", LabelDirectLinkMedium, "k3sm.io/direct-link-medium"},
-		{"LabelDirectLinkSpeedGbps", LabelDirectLinkSpeedGbps, "k3sm.io/direct-link-speed-gbps"},
-		{"LabelDirectLinks", LabelDirectLinks, "k3sm.io/direct-links"},
 		{"LabelRDMA", LabelRDMA, "k3sm.io/rdma"},
 	}
 	for _, tc := range cases {

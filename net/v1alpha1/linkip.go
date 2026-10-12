@@ -62,8 +62,7 @@ const (
 // the interconnect gives each slot of that interface an address (0 the node, 1
 // the sharded-MLX rank, 2..7 general pods). InterconnectSlotAddress is the
 // interconnect's own derivation and equals LinkIP for idx 0..30; the
-// interconnect never uses the 169.254.255.0/24 half. DirectLink validation still
-// calls LinkIP with a port ordinal until DirectLink is removed.
+// interconnect never uses the 169.254.255.0/24 half.
 func LinkIP(idx, portOrdinal int) (netip.Addr, error) {
 	if portOrdinal < 0 || portOrdinal > MaxPortOrdinal {
 		return netip.Addr{}, fmt.Errorf("%w: port ordinal %d is outside 0..%d", ErrNoLinkAddress, portOrdinal, MaxPortOrdinal)

@@ -14,27 +14,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package netv1alpha1 holds the net.k3sm.io/v1alpha1 API: the DirectLink custom
-// resource that records a node's point-to-point cable ports, the LinkIP
+// Package netv1alpha1 holds the net.k3sm.io/v1alpha1 API: the LinkIP
 // derivation that gives each cabled port its address, the pairing wire types a
-// new Mac uses to join over such a cable, and the direct-link node-label keys.
+// new Mac uses to join over such a cable, and the RDMA node-label key.
 //
-// It also holds the Interconnect custom resource (the cable as an opt-in,
+// It holds the Interconnect custom resource (the cable as an opt-in,
 // admin-armed network on bridge0), its versioned Node annotation payloads, the
 // interconnect slot addresses, and the interconnect annotation, condition and
 // reason constants.
 //
-// DirectLink is a real Kubernetes custom resource (kine-stored, apiserver-served
-// and -watched), written by each node for itself and resolved into a link graph
-// by the k3sm server. Being a served object it embeds metav1.TypeMeta +
-// ObjectMeta and carries hand-written DeepCopy*/DeepCopyObject methods (this
-// module runs no code generation), the same shape net/v1's MeshPeer uses.
+// Interconnect is a real Kubernetes custom resource (kine-stored, apiserver-served
+// and -watched). Being a served object it embeds metav1.TypeMeta + ObjectMeta
+// and carries hand-written DeepCopy*/DeepCopyObject methods (this module runs
+// no code generation), the same shape net/v1's MeshPeer uses.
 //
 // # Stability: alpha — incompatible changes are allowed
 //
 // The object shapes in this package may be renamed, retyped, given different
 // defaults, or removed in any release. net.k3sm.io/v1 keeps only the stable
-// MeshPeer; DirectLink lives here until its behaviour is proven on real cables.
+// MeshPeer; Interconnect lives here until its behaviour is proven on real cables.
 // Three things are stable regardless, because a change would strand state that
 // no version bump can migrate: the LinkIP derivation (an address already
 // configured on a cable and recorded in a peer's routes), the k3sm.io/* label

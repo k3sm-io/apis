@@ -724,3 +724,28 @@ func TestInterconnectDeepCopy(t *testing.T) {
 		t.Fatal("DeepCopyObject did not return *InterconnectList")
 	}
 }
+
+// fixedLinkTime is a deterministic, second-precision UTC instant so metav1.Time
+// status fields round-trip losslessly through RFC3339 JSON.
+var fixedLinkTime = metav1.NewTime(time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC))
+
+// walkDeclared records in missing every path under v that sch does not declare.
+func walkDeclared(path string, v any, sch map[string]any, missing *[]string) {
+	switch val := v.(type) {
+	case map[string]any:
+		props, _ := sch["properties"].(map[string]any)
+		for k, child := range val {
+			cs, ok := props[k].(map[string]any)
+			if !ok {
+				*missing = append(*missing, path+"."+k)
+				continue
+			}
+			walkDeclared(path+"."+k, child, cs, missing)
+		}
+	case []any:
+		items, _ := sch["items"].(map[string]any)
+		for _, child := range val {
+			walkDeclared(path+"[]", child, items, missing)
+		}
+	}
+}
