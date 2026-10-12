@@ -3,6 +3,11 @@
 # `buf generate`. The generated *.pb.go / *_grpc.pb.go are checked in; CI re-runs
 # this and fails on any diff (reproducible codegen). Run from anywhere.
 #
+# Usage: hack/gen.sh [--update-deps | --check-lock]
+#   (none)         regenerate using the committed buf.lock as is (never moves it)
+#   --update-deps  also run `buf dep update`, deliberately moving buf.lock
+#   --check-lock   offline: fail when buf.lock and buf.yaml deps disagree
+#
 # Sourceable: sourcing defines needs_install / ensure_tool / ensure_toolchain (and,
 # via hack/lib/buf-env.sh, the pins) without installing or generating anything, so
 # a gate can drive the install decision in isolation. Executing it runs main.
@@ -39,14 +44,59 @@ ensure_toolchain() {
 	ensure_tool protoc-gen-go-grpc "$PROTOC_GEN_GO_GRPC_VERSION" google.golang.org/grpc/cmd/protoc-gen-go-grpc
 }
 
+# yaml_dep_names <file> <key-regex> — module names listed under the top-level
+# `deps:` of buf.yaml (`  - buf.build/x/y`) or buf.lock (`  - name: buf.build/x/y`).
+yaml_dep_names() {
+	awk -v pat="$2" '
+		/^deps:/ { in_deps = 1; next }
+		/^[^ #]/ { in_deps = 0 }
+		in_deps && $0 ~ pat { sub(pat, ""); sub(/[ \t]*(#.*)?$/, ""); print }
+	' "$1" | sort
+}
+
+# check_lock — offline check that buf.lock still matches buf.yaml: the same set
+# of deps, each pinned with a commit and digest. It cannot see upstream moves
+# (that needs the network and `buf dep update`); it catches the drift a regen
+# would otherwise paper over. Never modifies any file.
+check_lock() {
+	local want have bad=0
+	want=$(yaml_dep_names buf.yaml '^[ \t]*-[ \t]+')
+	have=$(yaml_dep_names buf.lock '^[ \t]*-[ \t]+name:[ \t]+')
+	if [ "$want" != "$have" ]; then
+		echo "FAIL  [apis] buf.lock deps differ from buf.yaml deps" >&2
+		echo "      buf.yaml: $(echo $want)" >&2
+		echo "      buf.lock: $(echo $have)" >&2
+		bad=1
+	fi
+	local n
+	n=$(echo "$have" | grep -c . || true)
+	if [ "$(grep -cE '^[ ]+commit: [0-9a-f]+$' buf.lock)" != "$n" ] ||
+		[ "$(grep -cE '^[ ]+digest: b5:[0-9a-f]+$' buf.lock)" != "$n" ]; then
+		echo "FAIL  [apis] buf.lock has a dep without a pinned commit and digest" >&2
+		bad=1
+	fi
+	[ "$bad" = 0 ] || { echo "      run hack/gen.sh --update-deps and commit buf.lock deliberately" >&2; return 1; }
+	echo "OK: buf.lock matches buf.yaml"
+}
+
 main() {
 	cd "$(dirname "${BASH_SOURCE[0]}")/.."   # repo root
+
+	local update_deps=0
+	case "${1:-}" in
+	--check-lock) check_lock; return ;;
+	--update-deps) update_deps=1 ;;
+	"") ;;
+	*) echo "usage: hack/gen.sh [--update-deps | --check-lock]" >&2; return 2 ;;
+	esac
 
 	echo "==> [apis] ensuring pinned codegen toolchain"
 	ensure_toolchain
 
-	echo "==> [apis] buf dep update (refresh buf.lock for the google/rpc/status import)"
-	buf dep update
+	if [ "$update_deps" = 1 ]; then
+		echo "==> [apis] buf dep update (deliberately moving buf.lock)"
+		buf dep update
+	fi
 
 	echo "==> [apis] buf generate"
 	buf generate
