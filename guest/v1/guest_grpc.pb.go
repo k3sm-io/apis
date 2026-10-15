@@ -49,13 +49,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	GuestAgent_Health_FullMethodName          = "/k3sm.guest.v1.GuestAgent/Health"
-	GuestAgent_ContainerEvents_FullMethodName = "/k3sm.guest.v1.GuestAgent/ContainerEvents"
-	GuestAgent_Exec_FullMethodName            = "/k3sm.guest.v1.GuestAgent/Exec"
-	GuestAgent_Logs_FullMethodName            = "/k3sm.guest.v1.GuestAgent/Logs"
-	GuestAgent_Stats_FullMethodName           = "/k3sm.guest.v1.GuestAgent/Stats"
-	GuestAgent_Stop_FullMethodName            = "/k3sm.guest.v1.GuestAgent/Stop"
-	GuestAgent_Attach_FullMethodName          = "/k3sm.guest.v1.GuestAgent/Attach"
+	GuestAgent_Health_FullMethodName           = "/k3sm.guest.v1.GuestAgent/Health"
+	GuestAgent_ContainerEvents_FullMethodName  = "/k3sm.guest.v1.GuestAgent/ContainerEvents"
+	GuestAgent_Exec_FullMethodName             = "/k3sm.guest.v1.GuestAgent/Exec"
+	GuestAgent_Logs_FullMethodName             = "/k3sm.guest.v1.GuestAgent/Logs"
+	GuestAgent_Stats_FullMethodName            = "/k3sm.guest.v1.GuestAgent/Stats"
+	GuestAgent_Stop_FullMethodName             = "/k3sm.guest.v1.GuestAgent/Stop"
+	GuestAgent_Attach_FullMethodName           = "/k3sm.guest.v1.GuestAgent/Attach"
+	GuestAgent_RestartContainer_FullMethodName = "/k3sm.guest.v1.GuestAgent/RestartContainer"
 )
 
 // GuestAgentClient is the client API for GuestAgent service.
@@ -157,6 +158,26 @@ type GuestAgentClient interface {
 	// so nothing produced while the attach was being set up is lost. When the
 	// container exits, the stream ends with a final AttachResponse carrying exit.
 	Attach(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[v1.AttachRequest, v1.AttachResponse], error)
+	// RestartContainer is the CRI container restart inside a live sandbox: the
+	// pod's guest keeps running, and only the named container is replaced. The
+	// agent stops the container if it is still running (the Stop path: SIGTERM,
+	// then SIGKILL after grace_seconds, scoped to that one container), then starts
+	// a new instance of it from the SAME GuestContainer spec the guest booted
+	// with (image rootfs, command, env, mounts, user, and the retained stdio
+	// endpoints), emits the same ContainerEvents a first start emits (an exited
+	// event for the old instance when it was still running, then a started event
+	// for the new one), and returns once the new instance is running, or fails
+	// with the start error.
+	//
+	// The host (runtimed) keeps the restart count and the previous instance's
+	// log; the guest never counts restarts.
+	//
+	// An agent that implements this RPC advertises the capability token
+	// restart-container in HealthResponse.capabilities. The host refuses the verb
+	// to a guest that does not advertise it (an older initramfs answers
+	// Unimplemented), so the restart is never attempted against an agent that
+	// cannot perform it.
+	RestartContainer(ctx context.Context, in *RestartContainerRequest, opts ...grpc.CallOption) (*RestartContainerResponse, error)
 }
 
 type guestAgentClient struct {
@@ -261,6 +282,16 @@ func (c *guestAgentClient) Attach(ctx context.Context, opts ...grpc.CallOption) 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type GuestAgent_AttachClient = grpc.BidiStreamingClient[v1.AttachRequest, v1.AttachResponse]
 
+func (c *guestAgentClient) RestartContainer(ctx context.Context, in *RestartContainerRequest, opts ...grpc.CallOption) (*RestartContainerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RestartContainerResponse)
+	err := c.cc.Invoke(ctx, GuestAgent_RestartContainer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GuestAgentServer is the server API for GuestAgent service.
 // All implementations must embed UnimplementedGuestAgentServer
 // for forward compatibility.
@@ -360,6 +391,26 @@ type GuestAgentServer interface {
 	// so nothing produced while the attach was being set up is lost. When the
 	// container exits, the stream ends with a final AttachResponse carrying exit.
 	Attach(grpc.BidiStreamingServer[v1.AttachRequest, v1.AttachResponse]) error
+	// RestartContainer is the CRI container restart inside a live sandbox: the
+	// pod's guest keeps running, and only the named container is replaced. The
+	// agent stops the container if it is still running (the Stop path: SIGTERM,
+	// then SIGKILL after grace_seconds, scoped to that one container), then starts
+	// a new instance of it from the SAME GuestContainer spec the guest booted
+	// with (image rootfs, command, env, mounts, user, and the retained stdio
+	// endpoints), emits the same ContainerEvents a first start emits (an exited
+	// event for the old instance when it was still running, then a started event
+	// for the new one), and returns once the new instance is running, or fails
+	// with the start error.
+	//
+	// The host (runtimed) keeps the restart count and the previous instance's
+	// log; the guest never counts restarts.
+	//
+	// An agent that implements this RPC advertises the capability token
+	// restart-container in HealthResponse.capabilities. The host refuses the verb
+	// to a guest that does not advertise it (an older initramfs answers
+	// Unimplemented), so the restart is never attempted against an agent that
+	// cannot perform it.
+	RestartContainer(context.Context, *RestartContainerRequest) (*RestartContainerResponse, error)
 	mustEmbedUnimplementedGuestAgentServer()
 }
 
@@ -390,6 +441,9 @@ func (UnimplementedGuestAgentServer) Stop(context.Context, *StopRequest) (*StopR
 }
 func (UnimplementedGuestAgentServer) Attach(grpc.BidiStreamingServer[v1.AttachRequest, v1.AttachResponse]) error {
 	return status.Error(codes.Unimplemented, "method Attach not implemented")
+}
+func (UnimplementedGuestAgentServer) RestartContainer(context.Context, *RestartContainerRequest) (*RestartContainerResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RestartContainer not implemented")
 }
 func (UnimplementedGuestAgentServer) mustEmbedUnimplementedGuestAgentServer() {}
 func (UnimplementedGuestAgentServer) testEmbeddedByValue()                    {}
@@ -502,6 +556,24 @@ func _GuestAgent_Attach_Handler(srv interface{}, stream grpc.ServerStream) error
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type GuestAgent_AttachServer = grpc.BidiStreamingServer[v1.AttachRequest, v1.AttachResponse]
 
+func _GuestAgent_RestartContainer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RestartContainerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GuestAgentServer).RestartContainer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GuestAgent_RestartContainer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GuestAgentServer).RestartContainer(ctx, req.(*RestartContainerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // GuestAgent_ServiceDesc is the grpc.ServiceDesc for GuestAgent service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -520,6 +592,10 @@ var GuestAgent_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Stop",
 			Handler:    _GuestAgent_Stop_Handler,
+		},
+		{
+			MethodName: "RestartContainer",
+			Handler:    _GuestAgent_RestartContainer_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
