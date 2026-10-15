@@ -732,6 +732,21 @@ type PodBox struct {
 	// Allocated the next free sequential number below 100 (18 was the last),
 	// never inside the 100..199 resource band below.
 	LogDirectory string `protobuf:"bytes,19,opt,name=log_directory,json=logDirectory,proto3" json:"log_directory,omitempty"`
+	// hostname is the pod's kernel hostname, already resolved by the producer.
+	// It is not spec.hostname: the producer resolves it.
+	//
+	// Contract: a valid DNS-1123 subdomain (lowercase a-z, 0-9, '.' and '-', no
+	// leading or trailing '.' or '-') of at most 64 bytes. Empty means leave the
+	// backend default (a hostNetwork pod, a native backend, and a producer that
+	// predates the field all send empty). A consumer validates charset and
+	// length at its own boundary before use (runtimed does, at the VMSpec
+	// boundary) and otherwise applies no derivation.
+	//
+	// A backend with its own UTS namespace (the vm guest) sets it; the native
+	// host-process backends cannot and ignore it.
+	//
+	// Allocated the next free sequential number below 100.
+	Hostname string `protobuf:"bytes,20,opt,name=hostname,proto3" json:"hostname,omitempty"`
 	// memory_limit_bytes is the resolved per-pod memory limit in bytes (the
 	// provider converts the corev1 resource.Quantity). runtimed compares the
 	// pod's ri_phys_footprint (proc_pid_rusage — NOT RSS) against this to drive
@@ -926,6 +941,13 @@ func (x *PodBox) GetImagePullSecrets() []*LocalObjectReference {
 func (x *PodBox) GetLogDirectory() string {
 	if x != nil {
 		return x.LogDirectory
+	}
+	return ""
+}
+
+func (x *PodBox) GetHostname() string {
+	if x != nil {
+		return x.Hostname
 	}
 	return ""
 }
@@ -7805,7 +7827,7 @@ var File_runtime_v1_runtime_proto protoreflect.FileDescriptor
 
 const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\n" +
-	"\x18runtime/v1/runtime.proto\x12\x0fk3sm.runtime.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17google/rpc/status.proto\"\x97\n" +
+	"\x18runtime/v1/runtime.proto\x12\x0fk3sm.runtime.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17google/rpc/status.proto\"\xb3\n" +
 	"\n" +
 	"\x06PodBox\x12\x15\n" +
 	"\x06pod_id\x18\x01 \x01(\tR\x05podId\x12\x1c\n" +
@@ -7828,7 +7850,8 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\x14pod_security_context\x18\x10 \x01(\v2#.k3sm.runtime.v1.PodSecurityContextR\x12podSecurityContext\x12G\n" +
 	" termination_grace_period_seconds\x18\x11 \x01(\x03R\x1dterminationGracePeriodSeconds\x12S\n" +
 	"\x12image_pull_secrets\x18\x12 \x03(\v2%.k3sm.runtime.v1.LocalObjectReferenceR\x10imagePullSecrets\x12#\n" +
-	"\rlog_directory\x18\x13 \x01(\tR\flogDirectory\x12,\n" +
+	"\rlog_directory\x18\x13 \x01(\tR\flogDirectory\x12\x1a\n" +
+	"\bhostname\x18\x14 \x01(\tR\bhostname\x12,\n" +
 	"\x12memory_limit_bytes\x18d \x01(\x03R\x10memoryLimitBytes\x126\n" +
 	"\tqos_class\x18e \x01(\x0e2\x19.k3sm.runtime.v1.QOSClassR\bqosClass\x128\n" +
 	"\arlimits\x18f \x03(\v2\x1e.k3sm.runtime.v1.ResourceLimitR\arlimits\x12M\n" +
