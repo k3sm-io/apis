@@ -228,6 +228,22 @@ message PodBox {
   // never inside the 100..199 resource band below.
   string log_directory = 19;
 
+  // hostname is the pod's kernel hostname, already resolved by the producer.
+  // It is not spec.hostname: the producer resolves it.
+  //
+  // Contract: a valid DNS-1123 subdomain (lowercase a-z, 0-9, '.' and '-', no
+  // leading or trailing '.' or '-') of at most 64 bytes. Empty means leave the
+  // backend default (a hostNetwork pod, a native backend, and a producer that
+  // predates the field all send empty). A consumer validates charset and
+  // length at its own boundary before use (runtimed does, at the VMSpec
+  // boundary) and otherwise applies no derivation.
+  //
+  // A backend with its own UTS namespace (the vm guest) sets it; the native
+  // host-process backends cannot and ignore it.
+  //
+  // Allocated the next free sequential number below 100.
+  string hostname = 20;
+
   // --- resource limits (allocated from PodBox's reserved 100..199 band; they
   // never collide with the low-number fields above) ---
 
