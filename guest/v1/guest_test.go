@@ -29,7 +29,7 @@ import (
 // TestGuestAgentServiceSurface pins the shape of the host↔guest contract that no
 // later additive change can repair if it lands wrong:
 //
-//   - the service is k3sm.guest.v1.GuestAgent with EXACTLY the seven verbs;
+//   - the service is k3sm.guest.v1.GuestAgent with EXACTLY the eight verbs;
 //   - each verb's streaming shape (Exec/Attach bidirectional, ContainerEvents/
 //     Logs server-streaming, the rest unary) — a wrong stream shape is a wire
 //     break, not a detail;
@@ -47,13 +47,14 @@ func TestGuestAgentServiceSurface(t *testing.T) {
 		t.Fatal("service GuestAgent does not exist in guest.proto")
 	}
 
-	t.Run("the service is k3sm.guest.v1.GuestAgent with exactly seven verbs", func(t *testing.T) {
+	t.Run("the service is k3sm.guest.v1.GuestAgent with exactly eight verbs", func(t *testing.T) {
 		if got, want := string(sd.FullName()), "k3sm.guest.v1.GuestAgent"; got != want {
 			t.Errorf("service full name = %q, want %q", got, want)
 		}
 		want := map[string]bool{
 			"Health": false, "ContainerEvents": false, "Exec": false,
 			"Logs": false, "Stats": false, "Stop": false, "Attach": false,
+			"RestartContainer": false,
 		}
 		ms := sd.Methods()
 		if ms.Len() != len(want) {
@@ -63,7 +64,7 @@ func TestGuestAgentServiceSurface(t *testing.T) {
 			name := string(ms.Get(i).Name())
 			seen, known := want[name]
 			if !known {
-				t.Errorf("unexpected method %s on GuestAgent (the surface is exactly seven verbs)", name)
+				t.Errorf("unexpected method %s on GuestAgent (the surface is exactly eight verbs)", name)
 				continue
 			}
 			if seen {
@@ -99,6 +100,9 @@ func TestGuestAgentServiceSurface(t *testing.T) {
 			// Bidirectional like Exec, but bridging an already-running
 			// container's retained stdio rather than spawning a process.
 			{"Attach", true, true},
+			// One container restarted in place; returns once the new instance
+			// runs, and its events ride ContainerEvents.
+			{"RestartContainer", false, false},
 		}
 		for _, tc := range cases {
 			md := sd.Methods().ByName(tc.name)

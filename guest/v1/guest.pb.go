@@ -193,6 +193,10 @@ type HealthResponse struct {
 	//   sidecar-init          GuestContainer.sidecar (diagnostic).
 	//   image-user            GuestContainer.image_user (diagnostic).
 	//
+	// Tokens tied to GuestAgent RPCs:
+	//   restart-container     GuestAgent.RestartContainer. A host MUST NOT call
+	//                         RestartContainer on an agent that does not advertise it.
+	//
 	// These tokens are diagnosis: they let a host name the fix ("this guest
 	// predates the field") before booting a spec the guest cannot honor. They are
 	// not what makes an older guest fail closed. That comes from the guest
@@ -767,6 +771,114 @@ func (*StopResponse) Descriptor() ([]byte, []int) {
 	return file_guest_v1_guest_proto_rawDescGZIP(), []int{10}
 }
 
+// RestartContainerRequest asks the guest to restart one container of the booted
+// pod in place.
+type RestartContainerRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// pod_id must equal the pod this guest booted; the agent rejects any other.
+	PodId string `protobuf:"bytes,1,opt,name=pod_id,json=podId,proto3" json:"pod_id,omitempty"`
+	// container is the container name within the pod, as in GuestSpec
+	// containers[].name. An unknown name fails with NotFound.
+	Container string `protobuf:"bytes,2,opt,name=container,proto3" json:"container,omitempty"`
+	// grace_seconds is the budget for graceful termination of a still-running
+	// instance before SIGKILL, with StopRequest.grace_seconds' meaning: the host
+	// clamps it before sending, so the guest can treat it as already-budgeted.
+	// It is unused when the container has already exited.
+	GraceSeconds  int32 `protobuf:"varint,3,opt,name=grace_seconds,json=graceSeconds,proto3" json:"grace_seconds,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RestartContainerRequest) Reset() {
+	*x = RestartContainerRequest{}
+	mi := &file_guest_v1_guest_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RestartContainerRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RestartContainerRequest) ProtoMessage() {}
+
+func (x *RestartContainerRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_guest_v1_guest_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RestartContainerRequest.ProtoReflect.Descriptor instead.
+func (*RestartContainerRequest) Descriptor() ([]byte, []int) {
+	return file_guest_v1_guest_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *RestartContainerRequest) GetPodId() string {
+	if x != nil {
+		return x.PodId
+	}
+	return ""
+}
+
+func (x *RestartContainerRequest) GetContainer() string {
+	if x != nil {
+		return x.Container
+	}
+	return ""
+}
+
+func (x *RestartContainerRequest) GetGraceSeconds() int32 {
+	if x != nil {
+		return x.GraceSeconds
+	}
+	return 0
+}
+
+// RestartContainerResponse is empty: the restart is acknowledged by the call
+// returning, at which point the new instance is running and its started event
+// is on the ContainerEvents stream. Reserved for future detail.
+type RestartContainerResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RestartContainerResponse) Reset() {
+	*x = RestartContainerResponse{}
+	mi := &file_guest_v1_guest_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RestartContainerResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RestartContainerResponse) ProtoMessage() {}
+
+func (x *RestartContainerResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_guest_v1_guest_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RestartContainerResponse.ProtoReflect.Descriptor instead.
+func (*RestartContainerResponse) Descriptor() ([]byte, []int) {
+	return file_guest_v1_guest_proto_rawDescGZIP(), []int{12}
+}
+
 // GuestSpec is everything the guest init needs to realize one pod. It is
 // produced host-side (all Kubernetes-level resolution — env, image config
 // merge, user resolution inputs — has already happened) and consumed by the
@@ -820,7 +932,7 @@ type GuestSpec struct {
 
 func (x *GuestSpec) Reset() {
 	*x = GuestSpec{}
-	mi := &file_guest_v1_guest_proto_msgTypes[11]
+	mi := &file_guest_v1_guest_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -832,7 +944,7 @@ func (x *GuestSpec) String() string {
 func (*GuestSpec) ProtoMessage() {}
 
 func (x *GuestSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_guest_v1_guest_proto_msgTypes[11]
+	mi := &file_guest_v1_guest_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -845,7 +957,7 @@ func (x *GuestSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GuestSpec.ProtoReflect.Descriptor instead.
 func (*GuestSpec) Descriptor() ([]byte, []int) {
-	return file_guest_v1_guest_proto_rawDescGZIP(), []int{11}
+	return file_guest_v1_guest_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GuestSpec) GetHostname() string {
@@ -922,7 +1034,7 @@ type ResolvConf struct {
 
 func (x *ResolvConf) Reset() {
 	*x = ResolvConf{}
-	mi := &file_guest_v1_guest_proto_msgTypes[12]
+	mi := &file_guest_v1_guest_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -934,7 +1046,7 @@ func (x *ResolvConf) String() string {
 func (*ResolvConf) ProtoMessage() {}
 
 func (x *ResolvConf) ProtoReflect() protoreflect.Message {
-	mi := &file_guest_v1_guest_proto_msgTypes[12]
+	mi := &file_guest_v1_guest_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -947,7 +1059,7 @@ func (x *ResolvConf) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolvConf.ProtoReflect.Descriptor instead.
 func (*ResolvConf) Descriptor() ([]byte, []int) {
-	return file_guest_v1_guest_proto_rawDescGZIP(), []int{12}
+	return file_guest_v1_guest_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ResolvConf) GetNameservers() []string {
@@ -1057,7 +1169,7 @@ type GuestContainer struct {
 
 func (x *GuestContainer) Reset() {
 	*x = GuestContainer{}
-	mi := &file_guest_v1_guest_proto_msgTypes[13]
+	mi := &file_guest_v1_guest_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1069,7 +1181,7 @@ func (x *GuestContainer) String() string {
 func (*GuestContainer) ProtoMessage() {}
 
 func (x *GuestContainer) ProtoReflect() protoreflect.Message {
-	mi := &file_guest_v1_guest_proto_msgTypes[13]
+	mi := &file_guest_v1_guest_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1082,7 +1194,7 @@ func (x *GuestContainer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GuestContainer.ProtoReflect.Descriptor instead.
 func (*GuestContainer) Descriptor() ([]byte, []int) {
-	return file_guest_v1_guest_proto_rawDescGZIP(), []int{13}
+	return file_guest_v1_guest_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GuestContainer) GetName() string {
@@ -1227,7 +1339,7 @@ type GuestMount struct {
 
 func (x *GuestMount) Reset() {
 	*x = GuestMount{}
-	mi := &file_guest_v1_guest_proto_msgTypes[14]
+	mi := &file_guest_v1_guest_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1239,7 +1351,7 @@ func (x *GuestMount) String() string {
 func (*GuestMount) ProtoMessage() {}
 
 func (x *GuestMount) ProtoReflect() protoreflect.Message {
-	mi := &file_guest_v1_guest_proto_msgTypes[14]
+	mi := &file_guest_v1_guest_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1252,7 +1364,7 @@ func (x *GuestMount) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GuestMount.ProtoReflect.Descriptor instead.
 func (*GuestMount) Descriptor() ([]byte, []int) {
-	return file_guest_v1_guest_proto_rawDescGZIP(), []int{14}
+	return file_guest_v1_guest_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *GuestMount) GetTagOrSource() string {
@@ -1344,7 +1456,7 @@ type VMHostSpec struct {
 
 func (x *VMHostSpec) Reset() {
 	*x = VMHostSpec{}
-	mi := &file_guest_v1_guest_proto_msgTypes[15]
+	mi := &file_guest_v1_guest_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1356,7 +1468,7 @@ func (x *VMHostSpec) String() string {
 func (*VMHostSpec) ProtoMessage() {}
 
 func (x *VMHostSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_guest_v1_guest_proto_msgTypes[15]
+	mi := &file_guest_v1_guest_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1369,7 +1481,7 @@ func (x *VMHostSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VMHostSpec.ProtoReflect.Descriptor instead.
 func (*VMHostSpec) Descriptor() ([]byte, []int) {
-	return file_guest_v1_guest_proto_rawDescGZIP(), []int{15}
+	return file_guest_v1_guest_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *VMHostSpec) GetPodId() string {
@@ -1463,7 +1575,7 @@ type VMShare struct {
 
 func (x *VMShare) Reset() {
 	*x = VMShare{}
-	mi := &file_guest_v1_guest_proto_msgTypes[16]
+	mi := &file_guest_v1_guest_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1475,7 +1587,7 @@ func (x *VMShare) String() string {
 func (*VMShare) ProtoMessage() {}
 
 func (x *VMShare) ProtoReflect() protoreflect.Message {
-	mi := &file_guest_v1_guest_proto_msgTypes[16]
+	mi := &file_guest_v1_guest_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1488,7 +1600,7 @@ func (x *VMShare) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VMShare.ProtoReflect.Descriptor instead.
 func (*VMShare) Descriptor() ([]byte, []int) {
-	return file_guest_v1_guest_proto_rawDescGZIP(), []int{16}
+	return file_guest_v1_guest_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *VMShare) GetTag() string {
@@ -1552,7 +1664,12 @@ const file_guest_v1_guest_proto_rawDesc = "" +
 	"\x18memory_working_set_bytes\x18\x03 \x01(\x04R\x15memoryWorkingSetBytesJ\x05\bd\x10\x96\x01\"9\n" +
 	"\vStopRequest\x12#\n" +
 	"\rgrace_seconds\x18\x01 \x01(\x05R\fgraceSecondsJ\x05\bd\x10\x96\x01\"\x15\n" +
-	"\fStopResponseJ\x05\bd\x10\x96\x01\"\xcb\x02\n" +
+	"\fStopResponseJ\x05\bd\x10\x96\x01\"z\n" +
+	"\x17RestartContainerRequest\x12\x15\n" +
+	"\x06pod_id\x18\x01 \x01(\tR\x05podId\x12\x1c\n" +
+	"\tcontainer\x18\x02 \x01(\tR\tcontainer\x12#\n" +
+	"\rgrace_seconds\x18\x03 \x01(\x05R\fgraceSecondsJ\x05\bd\x10\x96\x01\"!\n" +
+	"\x18RestartContainerResponseJ\x05\bd\x10\x96\x01\"\xcb\x02\n" +
 	"\tGuestSpec\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12:\n" +
 	"\vresolv_conf\x18\x02 \x01(\v2\x19.k3sm.guest.v1.ResolvConfR\n" +
@@ -1622,7 +1739,7 @@ const file_guest_v1_guest_proto_rawDesc = "" +
 	"\x1cGUEST_MOUNT_KIND_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19GUEST_MOUNT_KIND_VIRTIOFS\x10\x01\x12\x1a\n" +
 	"\x16GUEST_MOUNT_KIND_TMPFS\x10\x02\x12\x19\n" +
-	"\x15GUEST_MOUNT_KIND_BIND\x10\x032\x91\x04\n" +
+	"\x15GUEST_MOUNT_KIND_BIND\x10\x032\xf6\x04\n" +
 	"\n" +
 	"GuestAgent\x12E\n" +
 	"\x06Health\x12\x1c.k3sm.guest.v1.HealthRequest\x1a\x1d.k3sm.guest.v1.HealthResponse\x12Y\n" +
@@ -1631,7 +1748,8 @@ const file_guest_v1_guest_proto_rawDesc = "" +
 	"\x04Logs\x12\x1f.k3sm.runtime.v1.GetLogsRequest\x1a\x19.k3sm.runtime.v1.LogEntry0\x01\x12B\n" +
 	"\x05Stats\x12\x1b.k3sm.guest.v1.StatsRequest\x1a\x1c.k3sm.guest.v1.StatsResponse\x12?\n" +
 	"\x04Stop\x12\x1a.k3sm.guest.v1.StopRequest\x1a\x1b.k3sm.guest.v1.StopResponse\x12M\n" +
-	"\x06Attach\x12\x1e.k3sm.runtime.v1.AttachRequest\x1a\x1f.k3sm.runtime.v1.AttachResponse(\x010\x01B\x94\x01\n" +
+	"\x06Attach\x12\x1e.k3sm.runtime.v1.AttachRequest\x1a\x1f.k3sm.runtime.v1.AttachResponse(\x010\x01\x12c\n" +
+	"\x10RestartContainer\x12&.k3sm.guest.v1.RestartContainerRequest\x1a'.k3sm.guest.v1.RestartContainerResponseB\x94\x01\n" +
 	"\x11com.k3sm.guest.v1B\n" +
 	"GuestProtoP\x01Z\x1dk3sm.io/apis/guest/v1;guestv1\xa2\x02\x03KGX\xaa\x02\rK3sm.Guest.V1\xca\x02\rK3sm\\Guest\\V1\xe2\x02\x19K3sm\\Guest\\V1\\GPBMetadata\xea\x02\x0fK3sm::Guest::V1b\x06proto3"
 
@@ -1648,61 +1766,65 @@ func file_guest_v1_guest_proto_rawDescGZIP() []byte {
 }
 
 var file_guest_v1_guest_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_guest_v1_guest_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_guest_v1_guest_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_guest_v1_guest_proto_goTypes = []any{
-	(GuestMountKind)(0),            // 0: k3sm.guest.v1.GuestMountKind
-	(*HealthRequest)(nil),          // 1: k3sm.guest.v1.HealthRequest
-	(*HealthResponse)(nil),         // 2: k3sm.guest.v1.HealthResponse
-	(*ContainerEventsRequest)(nil), // 3: k3sm.guest.v1.ContainerEventsRequest
-	(*ContainerEvent)(nil),         // 4: k3sm.guest.v1.ContainerEvent
-	(*ContainerStarted)(nil),       // 5: k3sm.guest.v1.ContainerStarted
-	(*ContainerExited)(nil),        // 6: k3sm.guest.v1.ContainerExited
-	(*StatsRequest)(nil),           // 7: k3sm.guest.v1.StatsRequest
-	(*StatsResponse)(nil),          // 8: k3sm.guest.v1.StatsResponse
-	(*GuestContainerStats)(nil),    // 9: k3sm.guest.v1.GuestContainerStats
-	(*StopRequest)(nil),            // 10: k3sm.guest.v1.StopRequest
-	(*StopResponse)(nil),           // 11: k3sm.guest.v1.StopResponse
-	(*GuestSpec)(nil),              // 12: k3sm.guest.v1.GuestSpec
-	(*ResolvConf)(nil),             // 13: k3sm.guest.v1.ResolvConf
-	(*GuestContainer)(nil),         // 14: k3sm.guest.v1.GuestContainer
-	(*GuestMount)(nil),             // 15: k3sm.guest.v1.GuestMount
-	(*VMHostSpec)(nil),             // 16: k3sm.guest.v1.VMHostSpec
-	(*VMShare)(nil),                // 17: k3sm.guest.v1.VMShare
-	(*timestamppb.Timestamp)(nil),  // 18: google.protobuf.Timestamp
-	(*v1.ExecRequest)(nil),         // 19: k3sm.runtime.v1.ExecRequest
-	(*v1.GetLogsRequest)(nil),      // 20: k3sm.runtime.v1.GetLogsRequest
-	(*v1.AttachRequest)(nil),       // 21: k3sm.runtime.v1.AttachRequest
-	(*v1.ExecResponse)(nil),        // 22: k3sm.runtime.v1.ExecResponse
-	(*v1.LogEntry)(nil),            // 23: k3sm.runtime.v1.LogEntry
-	(*v1.AttachResponse)(nil),      // 24: k3sm.runtime.v1.AttachResponse
+	(GuestMountKind)(0),              // 0: k3sm.guest.v1.GuestMountKind
+	(*HealthRequest)(nil),            // 1: k3sm.guest.v1.HealthRequest
+	(*HealthResponse)(nil),           // 2: k3sm.guest.v1.HealthResponse
+	(*ContainerEventsRequest)(nil),   // 3: k3sm.guest.v1.ContainerEventsRequest
+	(*ContainerEvent)(nil),           // 4: k3sm.guest.v1.ContainerEvent
+	(*ContainerStarted)(nil),         // 5: k3sm.guest.v1.ContainerStarted
+	(*ContainerExited)(nil),          // 6: k3sm.guest.v1.ContainerExited
+	(*StatsRequest)(nil),             // 7: k3sm.guest.v1.StatsRequest
+	(*StatsResponse)(nil),            // 8: k3sm.guest.v1.StatsResponse
+	(*GuestContainerStats)(nil),      // 9: k3sm.guest.v1.GuestContainerStats
+	(*StopRequest)(nil),              // 10: k3sm.guest.v1.StopRequest
+	(*StopResponse)(nil),             // 11: k3sm.guest.v1.StopResponse
+	(*RestartContainerRequest)(nil),  // 12: k3sm.guest.v1.RestartContainerRequest
+	(*RestartContainerResponse)(nil), // 13: k3sm.guest.v1.RestartContainerResponse
+	(*GuestSpec)(nil),                // 14: k3sm.guest.v1.GuestSpec
+	(*ResolvConf)(nil),               // 15: k3sm.guest.v1.ResolvConf
+	(*GuestContainer)(nil),           // 16: k3sm.guest.v1.GuestContainer
+	(*GuestMount)(nil),               // 17: k3sm.guest.v1.GuestMount
+	(*VMHostSpec)(nil),               // 18: k3sm.guest.v1.VMHostSpec
+	(*VMShare)(nil),                  // 19: k3sm.guest.v1.VMShare
+	(*timestamppb.Timestamp)(nil),    // 20: google.protobuf.Timestamp
+	(*v1.ExecRequest)(nil),           // 21: k3sm.runtime.v1.ExecRequest
+	(*v1.GetLogsRequest)(nil),        // 22: k3sm.runtime.v1.GetLogsRequest
+	(*v1.AttachRequest)(nil),         // 23: k3sm.runtime.v1.AttachRequest
+	(*v1.ExecResponse)(nil),          // 24: k3sm.runtime.v1.ExecResponse
+	(*v1.LogEntry)(nil),              // 25: k3sm.runtime.v1.LogEntry
+	(*v1.AttachResponse)(nil),        // 26: k3sm.runtime.v1.AttachResponse
 }
 var file_guest_v1_guest_proto_depIdxs = []int32{
-	18, // 0: k3sm.guest.v1.ContainerEvent.timestamp:type_name -> google.protobuf.Timestamp
+	20, // 0: k3sm.guest.v1.ContainerEvent.timestamp:type_name -> google.protobuf.Timestamp
 	5,  // 1: k3sm.guest.v1.ContainerEvent.started:type_name -> k3sm.guest.v1.ContainerStarted
 	6,  // 2: k3sm.guest.v1.ContainerEvent.exited:type_name -> k3sm.guest.v1.ContainerExited
-	18, // 3: k3sm.guest.v1.StatsResponse.timestamp:type_name -> google.protobuf.Timestamp
+	20, // 3: k3sm.guest.v1.StatsResponse.timestamp:type_name -> google.protobuf.Timestamp
 	9,  // 4: k3sm.guest.v1.StatsResponse.containers:type_name -> k3sm.guest.v1.GuestContainerStats
-	13, // 5: k3sm.guest.v1.GuestSpec.resolv_conf:type_name -> k3sm.guest.v1.ResolvConf
-	14, // 6: k3sm.guest.v1.GuestSpec.containers:type_name -> k3sm.guest.v1.GuestContainer
-	15, // 7: k3sm.guest.v1.GuestSpec.mounts:type_name -> k3sm.guest.v1.GuestMount
+	15, // 5: k3sm.guest.v1.GuestSpec.resolv_conf:type_name -> k3sm.guest.v1.ResolvConf
+	16, // 6: k3sm.guest.v1.GuestSpec.containers:type_name -> k3sm.guest.v1.GuestContainer
+	17, // 7: k3sm.guest.v1.GuestSpec.mounts:type_name -> k3sm.guest.v1.GuestMount
 	0,  // 8: k3sm.guest.v1.GuestMount.kind:type_name -> k3sm.guest.v1.GuestMountKind
-	17, // 9: k3sm.guest.v1.VMHostSpec.shares:type_name -> k3sm.guest.v1.VMShare
+	19, // 9: k3sm.guest.v1.VMHostSpec.shares:type_name -> k3sm.guest.v1.VMShare
 	1,  // 10: k3sm.guest.v1.GuestAgent.Health:input_type -> k3sm.guest.v1.HealthRequest
 	3,  // 11: k3sm.guest.v1.GuestAgent.ContainerEvents:input_type -> k3sm.guest.v1.ContainerEventsRequest
-	19, // 12: k3sm.guest.v1.GuestAgent.Exec:input_type -> k3sm.runtime.v1.ExecRequest
-	20, // 13: k3sm.guest.v1.GuestAgent.Logs:input_type -> k3sm.runtime.v1.GetLogsRequest
+	21, // 12: k3sm.guest.v1.GuestAgent.Exec:input_type -> k3sm.runtime.v1.ExecRequest
+	22, // 13: k3sm.guest.v1.GuestAgent.Logs:input_type -> k3sm.runtime.v1.GetLogsRequest
 	7,  // 14: k3sm.guest.v1.GuestAgent.Stats:input_type -> k3sm.guest.v1.StatsRequest
 	10, // 15: k3sm.guest.v1.GuestAgent.Stop:input_type -> k3sm.guest.v1.StopRequest
-	21, // 16: k3sm.guest.v1.GuestAgent.Attach:input_type -> k3sm.runtime.v1.AttachRequest
-	2,  // 17: k3sm.guest.v1.GuestAgent.Health:output_type -> k3sm.guest.v1.HealthResponse
-	4,  // 18: k3sm.guest.v1.GuestAgent.ContainerEvents:output_type -> k3sm.guest.v1.ContainerEvent
-	22, // 19: k3sm.guest.v1.GuestAgent.Exec:output_type -> k3sm.runtime.v1.ExecResponse
-	23, // 20: k3sm.guest.v1.GuestAgent.Logs:output_type -> k3sm.runtime.v1.LogEntry
-	8,  // 21: k3sm.guest.v1.GuestAgent.Stats:output_type -> k3sm.guest.v1.StatsResponse
-	11, // 22: k3sm.guest.v1.GuestAgent.Stop:output_type -> k3sm.guest.v1.StopResponse
-	24, // 23: k3sm.guest.v1.GuestAgent.Attach:output_type -> k3sm.runtime.v1.AttachResponse
-	17, // [17:24] is the sub-list for method output_type
-	10, // [10:17] is the sub-list for method input_type
+	23, // 16: k3sm.guest.v1.GuestAgent.Attach:input_type -> k3sm.runtime.v1.AttachRequest
+	12, // 17: k3sm.guest.v1.GuestAgent.RestartContainer:input_type -> k3sm.guest.v1.RestartContainerRequest
+	2,  // 18: k3sm.guest.v1.GuestAgent.Health:output_type -> k3sm.guest.v1.HealthResponse
+	4,  // 19: k3sm.guest.v1.GuestAgent.ContainerEvents:output_type -> k3sm.guest.v1.ContainerEvent
+	24, // 20: k3sm.guest.v1.GuestAgent.Exec:output_type -> k3sm.runtime.v1.ExecResponse
+	25, // 21: k3sm.guest.v1.GuestAgent.Logs:output_type -> k3sm.runtime.v1.LogEntry
+	8,  // 22: k3sm.guest.v1.GuestAgent.Stats:output_type -> k3sm.guest.v1.StatsResponse
+	11, // 23: k3sm.guest.v1.GuestAgent.Stop:output_type -> k3sm.guest.v1.StopResponse
+	26, // 24: k3sm.guest.v1.GuestAgent.Attach:output_type -> k3sm.runtime.v1.AttachResponse
+	13, // 25: k3sm.guest.v1.GuestAgent.RestartContainer:output_type -> k3sm.guest.v1.RestartContainerResponse
+	18, // [18:26] is the sub-list for method output_type
+	10, // [10:18] is the sub-list for method input_type
 	10, // [10:10] is the sub-list for extension type_name
 	10, // [10:10] is the sub-list for extension extendee
 	0,  // [0:10] is the sub-list for field type_name
@@ -1719,7 +1841,7 @@ func file_guest_v1_guest_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_guest_v1_guest_proto_rawDesc), len(file_guest_v1_guest_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   17,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

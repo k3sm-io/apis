@@ -140,6 +140,27 @@ service GuestAgent {
   // so nothing produced while the attach was being set up is lost. When the
   // container exits, the stream ends with a final AttachResponse carrying exit.
   rpc Attach(stream k3sm.runtime.v1.AttachRequest) returns (stream k3sm.runtime.v1.AttachResponse);
+
+  // RestartContainer is the CRI container restart inside a live sandbox: the
+  // pod's guest keeps running, and only the named container is replaced. The
+  // agent stops the container if it is still running (the Stop path: SIGTERM,
+  // then SIGKILL after grace_seconds, scoped to that one container), then starts
+  // a new instance of it from the SAME GuestContainer spec the guest booted
+  // with (image rootfs, command, env, mounts, user, and the retained stdio
+  // endpoints), emits the same ContainerEvents a first start emits (an exited
+  // event for the old instance when it was still running, then a started event
+  // for the new one), and returns once the new instance is running, or fails
+  // with the start error.
+  //
+  // The host (runtimed) keeps the restart count and the previous instance's
+  // log; the guest never counts restarts.
+  //
+  // An agent that implements this RPC advertises the capability token
+  // restart-container in HealthResponse.capabilities. The host refuses the verb
+  // to a guest that does not advertise it (an older initramfs answers
+  // Unimplemented), so the restart is never attempted against an agent that
+  // cannot perform it.
+  rpc RestartContainer(RestartContainerRequest) returns (RestartContainerResponse);
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +218,10 @@ message HealthResponse {
   //                         guest_private to an agent that does not advertise it.
   //   sidecar-init          GuestContainer.sidecar (diagnostic).
   //   image-user            GuestContainer.image_user (diagnostic).
+  //
+  // Tokens tied to GuestAgent RPCs:
+  //   restart-container     GuestAgent.RestartContainer. A host MUST NOT call
+  //                         RestartContainer on an agent that does not advertise it.
   //
   // These tokens are diagnosis: they let a host name the fix ("this guest
   // predates the field") before booting a spec the guest cannot honor. They are
@@ -319,6 +344,32 @@ message StopRequest {
 // StopResponse is empty: shutdown is acknowledged by the call returning, and
 // the guest powers off immediately after. Reserved for future detail.
 message StopResponse {
+  reserved 100 to 149;
+}
+
+// RestartContainerRequest asks the guest to restart one container of the booted
+// pod in place.
+message RestartContainerRequest {
+  // pod_id must equal the pod this guest booted; the agent rejects any other.
+  string pod_id = 1;
+
+  // container is the container name within the pod, as in GuestSpec
+  // containers[].name. An unknown name fails with NotFound.
+  string container = 2;
+
+  // grace_seconds is the budget for graceful termination of a still-running
+  // instance before SIGKILL, with StopRequest.grace_seconds' meaning: the host
+  // clamps it before sending, so the guest can treat it as already-budgeted.
+  // It is unused when the container has already exited.
+  int32 grace_seconds = 3;
+
+  reserved 100 to 149;
+}
+
+// RestartContainerResponse is empty: the restart is acknowledged by the call
+// returning, at which point the new instance is running and its started event
+// is on the ContainerEvents stream. Reserved for future detail.
+message RestartContainerResponse {
   reserved 100 to 149;
 }
 
