@@ -364,6 +364,24 @@ message GuestSpec {
   // and a disagreement makes the guest unreachable.
   uint32 agent_port = 7;
 
+  // pod_fqdn is the pod's fully qualified name for the guest /etc/hosts pod
+  // line, <short>.<subdomain>.<ns>.svc.<clusterDomain>, rendered by the host.
+  // Its first label IS the short name by contract. Empty when the pod has no
+  // subdomain, uses hostnameOverride, or is hostNetwork. When set it is a
+  // DNS-1123 subdomain of at most 253 bytes.
+  //
+  // The guest consumes it exactly as given and never derives a name from
+  // hostname, a subdomain, or the cluster domain.
+  //
+  // An older pinned guest init decodes guest-spec.json strictly and refuses
+  // any field it does not know, so a non-empty value fails its boot. The host
+  // therefore emits this field only when its pinned initramfs names a guest
+  // init that knows it; proto-JSON omits the empty value, so every guest boots
+  // while the host sends none.
+  //
+  // Allocated the next free sequential number below 100.
+  string pod_fqdn = 8;
+
   reserved 100 to 149;
 }
 

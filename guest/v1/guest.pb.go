@@ -796,7 +796,24 @@ type GuestSpec struct {
 	// agent_port is the VSOCK port the agent listens on. It MUST equal
 	// VMHostSpec.agent_vsock_port — the two specs are written by the same host
 	// and a disagreement makes the guest unreachable.
-	AgentPort     uint32 `protobuf:"varint,7,opt,name=agent_port,json=agentPort,proto3" json:"agent_port,omitempty"`
+	AgentPort uint32 `protobuf:"varint,7,opt,name=agent_port,json=agentPort,proto3" json:"agent_port,omitempty"`
+	// pod_fqdn is the pod's fully qualified name for the guest /etc/hosts pod
+	// line, <short>.<subdomain>.<ns>.svc.<clusterDomain>, rendered by the host.
+	// Its first label IS the short name by contract. Empty when the pod has no
+	// subdomain, uses hostnameOverride, or is hostNetwork. When set it is a
+	// DNS-1123 subdomain of at most 253 bytes.
+	//
+	// The guest consumes it exactly as given and never derives a name from
+	// hostname, a subdomain, or the cluster domain.
+	//
+	// An older pinned guest init decodes guest-spec.json strictly and refuses
+	// any field it does not know, so a non-empty value fails its boot. The host
+	// therefore emits this field only when its pinned initramfs names a guest
+	// init that knows it; proto-JSON omits the empty value, so every guest boots
+	// while the host sends none.
+	//
+	// Allocated the next free sequential number below 100.
+	PodFqdn       string `protobuf:"bytes,8,opt,name=pod_fqdn,json=podFqdn,proto3" json:"pod_fqdn,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -878,6 +895,13 @@ func (x *GuestSpec) GetAgentPort() uint32 {
 		return x.AgentPort
 	}
 	return 0
+}
+
+func (x *GuestSpec) GetPodFqdn() string {
+	if x != nil {
+		return x.PodFqdn
+	}
+	return ""
 }
 
 // ResolvConf is the guest's DNS configuration, rendered into
@@ -1528,7 +1552,7 @@ const file_guest_v1_guest_proto_rawDesc = "" +
 	"\x18memory_working_set_bytes\x18\x03 \x01(\x04R\x15memoryWorkingSetBytesJ\x05\bd\x10\x96\x01\"9\n" +
 	"\vStopRequest\x12#\n" +
 	"\rgrace_seconds\x18\x01 \x01(\x05R\fgraceSecondsJ\x05\bd\x10\x96\x01\"\x15\n" +
-	"\fStopResponseJ\x05\bd\x10\x96\x01\"\xb0\x02\n" +
+	"\fStopResponseJ\x05\bd\x10\x96\x01\"\xcb\x02\n" +
 	"\tGuestSpec\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12:\n" +
 	"\vresolv_conf\x18\x02 \x01(\v2\x19.k3sm.guest.v1.ResolvConfR\n" +
@@ -1540,7 +1564,8 @@ const file_guest_v1_guest_proto_rawDesc = "" +
 	"\arosetta\x18\x05 \x01(\bR\arosetta\x12\x19\n" +
 	"\bfs_group\x18\x06 \x01(\x03R\afsGroup\x12\x1d\n" +
 	"\n" +
-	"agent_port\x18\a \x01(\rR\tagentPortJ\x05\bd\x10\x96\x01\"k\n" +
+	"agent_port\x18\a \x01(\rR\tagentPort\x12\x19\n" +
+	"\bpod_fqdn\x18\b \x01(\tR\apodFqdnJ\x05\bd\x10\x96\x01\"k\n" +
 	"\n" +
 	"ResolvConf\x12 \n" +
 	"\vnameservers\x18\x01 \x03(\tR\vnameservers\x12\x1a\n" +

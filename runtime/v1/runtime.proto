@@ -244,6 +244,22 @@ message PodBox {
   // Allocated the next free sequential number below 100.
   string hostname = 20;
 
+  // pod_fqdn is the pod's fully qualified name,
+  // <short>.<subdomain>.<ns>.svc.<clusterDomain>, which a backend with its own
+  // /etc/hosts maps to the pod's address beside the short name. The provider
+  // computes it at the single derivation site, the same one that resolves
+  // hostname, from the truncated short name and the cluster domain of its DNS
+  // configuration; no consumer derives a name.
+  //
+  // Contract: the first label IS the short name of hostname. Empty when the
+  // pod has no subdomain, uses hostnameOverride, or is hostNetwork, or runs on
+  // a non-vm backend (native pods have no /etc/hosts of their own), and from a
+  // producer that predates the field. When set it is a DNS-1123 subdomain of at
+  // most 253 bytes; a consumer validates it at its own boundary before use.
+  //
+  // Allocated the next free sequential number below 100.
+  string pod_fqdn = 21;
+
   // --- resource limits (allocated from PodBox's reserved 100..199 band; they
   // never collide with the low-number fields above) ---
 
