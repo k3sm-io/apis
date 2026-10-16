@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,16 +37,15 @@ const updateGolden = "update.golden.json"
 // metav1.Time status fields round-trip losslessly through RFC3339 JSON.
 var fixedUpdateTime = metav1.NewTime(time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC))
 
-func boolPtr(v bool) *bool { return &v }
-
-// sampleUpdate is a fully populated Update: every field set, so the golden
-// and the deep-copy checks cover every reference type.
+// sampleUpdate is a fully populated Update: every field set to a non-zero
+// value, so the golden and the deep-copy checks cover every field and every
+// reference type. A field added to the types belongs here too.
 func sampleUpdate() *Update {
 	started := fixedUpdateTime
 	finished := metav1.NewTime(fixedUpdateTime.Add(90 * time.Second))
 	return &Update{
 		TypeMeta:   metav1.TypeMeta{APIVersion: "updates.k3sm.io/v1alpha1", Kind: "Update"},
-		ObjectMeta: metav1.ObjectMeta{Name: "to-v0.2.0", Generation: 2},
+		ObjectMeta: metav1.ObjectMeta{Name: UpdateName, Generation: 2},
 		Spec: UpdateSpec{
 			Version: "v0.2.0",
 			Strategy: UpdateStrategy{
@@ -54,30 +54,34 @@ func sampleUpdate() *Update {
 				Drain:          true,
 			},
 			Verify: UpdateVerify{
-				Checksums: boolPtr(true),
 				Signature: UpdateSignatureRequired,
 			},
-			AllowDowngrade: false,
-			Cancel:         false,
+			AllowDowngrade: true,
+			Cancel:         true,
 		},
 		Status: UpdateStatus{
-			Phase: UpdatePhaseRolling,
+			Phase: UpdatePhaseCancelled,
+			Resolved: &UpdateResolved{
+				Version: "v0.2.0",
+				Digest:  "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			},
 			Nodes: []UpdateNodeStatus{
 				{
 					Name: "worker-1", From: "v0.1.7", To: "v0.2.0", Phase: UpdateNodePhaseDone,
 					Message: "running v0.2.0", StartedAt: &started, FinishedAt: &finished,
 				},
 				{
-					Name: "server-1", From: "v0.1.7", To: "v0.2.0", Phase: UpdateNodePhasePending,
+					Name: "server-1", From: "v0.1.7", To: "v0.2.0", Phase: UpdateNodePhaseCancelled,
+					Message: "cancelled before this node started", StartedAt: &started, FinishedAt: &finished,
 				},
 			},
 			Conditions: []metav1.Condition{{
 				Type:               "Progressing",
-				Status:             metav1.ConditionTrue,
+				Status:             metav1.ConditionFalse,
 				ObservedGeneration: 2,
 				LastTransitionTime: fixedUpdateTime,
-				Reason:             "Rolling",
-				Message:            "1 of 2 nodes updated",
+				Reason:             "Cancelled",
+				Message:            "cancelled after 1 of 2 nodes",
 			}},
 			ObservedGeneration: 2,
 		},
@@ -144,36 +148,28 @@ func TestUpdateJSONGolden(t *testing.T) {
 	}
 }
 
-// TestUpdateVerifyChecksums asserts an explicit false survives the wire (the
-// reason Checksums is a pointer) and that nil means enabled.
-func TestUpdateVerifyChecksums(t *testing.T) {
+// TestUpdateSharedKeys pins the strings the controller, the root helper and
+// any reader share: the singleton name, the Reconciled condition and its
+// NotTheSingleton reason, and the k3sm.io/* Node annotation keys (which are
+// not under the updates.k3sm.io group).
+func TestUpdateSharedKeys(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		name string
-		in   UpdateVerify
-		wire string
-		want bool
-	}{
-		{"unset is enabled", UpdateVerify{}, `{}`, true},
-		{"explicit true", UpdateVerify{Checksums: boolPtr(true)}, `{"checksums":true}`, true},
-		{"explicit false is kept", UpdateVerify{Checksums: boolPtr(false)}, `{"checksums":false}`, false},
+	for _, tc := range []struct{ name, got, want string }{
+		{"UpdateName", UpdateName, "current"},
+		{"UpdateConditionReconciled", UpdateConditionReconciled, "Reconciled"},
+		{"UpdateReasonNotTheSingleton", UpdateReasonNotTheSingleton, "NotTheSingleton"},
+		{"AnnotationUpdateVersion", AnnotationUpdateVersion, "k3sm.io/update-version"},
+		{"AnnotationUpdatePayload", AnnotationUpdatePayload, "k3sm.io/update-payload"},
+		{"AnnotationUpdatePhase", AnnotationUpdatePhase, "k3sm.io/update-phase"},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			b, err := json.Marshal(tc.in)
-			if err != nil {
-				t.Fatalf("marshal: %v", err)
-			}
-			if string(b) != tc.wire {
-				t.Errorf("wire = %s, want %s", b, tc.wire)
-			}
-			var back UpdateVerify
-			if err := json.Unmarshal(b, &back); err != nil {
-				t.Fatalf("unmarshal: %v", err)
-			}
-			if got := back.ChecksumsEnabled(); got != tc.want {
-				t.Errorf("ChecksumsEnabled() = %v, want %v", got, tc.want)
-			}
-		})
+		if tc.got != tc.want {
+			t.Errorf("%s = %q, want %q", tc.name, tc.got, tc.want)
+		}
+	}
+	for _, k := range []string{AnnotationUpdateVersion, AnnotationUpdatePayload, AnnotationUpdatePhase} {
+		if strings.HasPrefix(k, GroupName) {
+			t.Errorf("%s is under the CRD group %s; annotations are k3sm.io/*", k, GroupName)
+		}
 	}
 }
 
@@ -184,7 +180,7 @@ func TestUpdateDeepCopy(t *testing.T) {
 	t.Parallel()
 	orig := sampleUpdate()
 	cp := orig.DeepCopy()
-	*orig.Spec.Verify.Checksums = false
+	orig.Status.Resolved.Digest = "x"
 	orig.Status.Nodes[0].Name = "x"
 	orig.Status.Nodes[0].StartedAt.Time = time.Unix(0, 0)
 	orig.Status.Nodes[0].FinishedAt.Time = time.Unix(0, 0)
@@ -209,9 +205,10 @@ func TestUpdateDeepCopy(t *testing.T) {
 	}
 }
 
-// TestUpdateEnumValues pins the wire strings of every enum constant; the CRD
-// manifest's enums are checked against the same strings in config/crd and
-// k3smtest.
+// TestUpdateEnumValues pins the wire strings of every enum constant. The
+// signature policy is a closed enum in the CRD; the phases are open there
+// (display only), so these constants are the only list of the values this
+// release writes.
 func TestUpdateEnumValues(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ got, want string }{
@@ -224,6 +221,7 @@ func TestUpdateEnumValues(t *testing.T) {
 		{string(UpdatePhaseFailed), "Failed"},
 		{string(UpdatePhaseCancelled), "Cancelled"},
 		{string(UpdateNodePhasePending), "Pending"},
+		{string(UpdateNodePhaseSkipped), "Skipped"},
 		{string(UpdateNodePhaseCordoning), "Cordoning"},
 		{string(UpdateNodePhaseDraining), "Draining"},
 		{string(UpdateNodePhaseDownloading), "Downloading"},
@@ -232,6 +230,7 @@ func TestUpdateEnumValues(t *testing.T) {
 		{string(UpdateNodePhaseRestarting), "Restarting"},
 		{string(UpdateNodePhaseDone), "Done"},
 		{string(UpdateNodePhaseFailed), "Failed"},
+		{string(UpdateNodePhaseCancelled), "Cancelled"},
 	} {
 		if tc.got != tc.want {
 			t.Errorf("enum constant = %q, want %q", tc.got, tc.want)

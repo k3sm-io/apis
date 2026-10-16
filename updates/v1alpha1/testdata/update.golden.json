@@ -2,7 +2,7 @@
   "kind": "Update",
   "apiVersion": "updates.k3sm.io/v1alpha1",
   "metadata": {
-    "name": "to-v0.2.0",
+    "name": "current",
     "generation": 2
   },
   "spec": {
@@ -13,12 +13,17 @@
       "drain": true
     },
     "verify": {
-      "checksums": true,
       "signature": "required"
-    }
+    },
+    "allowDowngrade": true,
+    "cancel": true
   },
   "status": {
-    "phase": "Rolling",
+    "phase": "Cancelled",
+    "resolved": {
+      "version": "v0.2.0",
+      "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
     "nodes": [
       {
         "name": "worker-1",
@@ -33,17 +38,20 @@
         "name": "server-1",
         "from": "v0.1.7",
         "to": "v0.2.0",
-        "phase": "Pending"
+        "phase": "Cancelled",
+        "message": "cancelled before this node started",
+        "startedAt": "2026-10-15T12:00:00Z",
+        "finishedAt": "2026-10-15T12:01:30Z"
       }
     ],
     "conditions": [
       {
         "type": "Progressing",
-        "status": "True",
+        "status": "False",
         "observedGeneration": 2,
         "lastTransitionTime": "2026-10-15T12:00:00Z",
-        "reason": "Rolling",
-        "message": "1 of 2 nodes updated"
+        "reason": "Cancelled",
+        "message": "cancelled after 1 of 2 nodes"
       }
     ],
     "observedGeneration": 2

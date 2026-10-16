@@ -17,7 +17,16 @@ limitations under the License.
 package crd
 
 import (
+	"strings"
 	"testing"
+)
+
+// The pinned transition-rule texts and the display-only wording on the
+// phase fields.
+const (
+	updateVersionImmutableRule = "self == oldSelf"
+	updateCancelOneWayRule     = "!oldSelf || self"
+	displayOnly                = "Display only, derived from conditions; readers tolerate values they do not know."
 )
 
 // TestUpdateCRDMatchesTheGoTypes asserts the embedded Update manifest
@@ -83,6 +92,9 @@ func TestUpdateCRDMatchesTheGoTypes(t *testing.T) {
 			if col["jsonPath"] != path {
 				t.Errorf("%s printer column jsonPath = %v, want %s", name, col["jsonPath"], path)
 			}
+			if d, _ := col["description"].(string); name == "Phase" && !strings.Contains(d, displayOnly) {
+				t.Errorf("Phase printer column description = %q, want it to say %q", d, displayOnly)
+			}
 			delete(want, name)
 		}
 	}
@@ -125,8 +137,7 @@ func TestUpdateCRDMatchesTheGoTypes(t *testing.T) {
 		{"spec.strategy.order", mapAt(t, st, "order"), "workers-then-server"},
 		{"spec.strategy.maxUnavailable", mapAt(t, st, "maxUnavailable"), int64(1)},
 		{"spec.strategy.drain", mapAt(t, st, "drain"), false},
-		{"spec.verify.checksums", mapAt(t, sp, "verify", "properties", "checksums"), true},
-		{"spec.verify.signature", mapAt(t, sp, "verify", "properties", "signature"), "required"},
+		{"spec.verify.signature", mapAt(t, sp, "verify", "properties", "signature"), "if-signed"},
 		{"spec.allowDowngrade", mapAt(t, sp, "allowDowngrade"), false},
 		{"spec.cancel", mapAt(t, sp, "cancel"), false},
 	} {
@@ -137,24 +148,68 @@ func TestUpdateCRDMatchesTheGoTypes(t *testing.T) {
 	if got := mapAt(t, st, "maxUnavailable")["minimum"]; got != int64(1) {
 		t.Errorf("spec.strategy.maxUnavailable minimum = %v, want 1", got)
 	}
-	assertStringEnum(t, "spec.verify.signature", mapAt(t, sp, "verify", "properties", "signature"), "required", "if-signed")
+	assertStringEnum(t, "spec.verify.signature", mapAt(t, sp, "verify", "properties", "signature"), "if-signed", "required")
+	// The checksum is always verified; there is no field to turn it off.
+	if _, ok := mapAt(t, sp, "verify", "properties")["checksums"]; ok {
+		t.Error("spec.verify.checksums is declared; the checksum is always verified and has no switch")
+	}
+
+	// The two transition rules, pinned by text: version is immutable and
+	// cancel is one-way. k3smtest's TestUpdateCRDRoundTrip evaluates the same
+	// texts against old/new pairs.
+	for _, tc := range []struct{ field, rule, message string }{
+		{"version", updateVersionImmutableRule, "spec.version is immutable after create"},
+		{"cancel", updateCancelOneWayRule, "spec.cancel cannot be set back to false"},
+	} {
+		rules, _ := mapAt(t, sp, tc.field)["x-kubernetes-validations"].([]any)
+		if len(rules) != 1 {
+			t.Errorf("spec.%s x-kubernetes-validations = %v, want exactly one rule", tc.field, rules)
+			continue
+		}
+		r, _ := rules[0].(map[string]any)
+		if r["rule"] != tc.rule || r["message"] != tc.message {
+			t.Errorf("spec.%s rule = %v / %v, want %q / %q", tc.field, r["rule"], r["message"], tc.rule, tc.message)
+		}
+	}
 
 	stp := mapAt(t, v, "schema", "openAPIV3Schema", "properties", "status", "properties")
-	for _, f := range []string{"phase", "nodes", "conditions", "observedGeneration"} {
+	for _, f := range []string{"phase", "resolved", "nodes", "conditions", "observedGeneration"} {
 		if _, ok := stp[f]; !ok {
 			t.Errorf("status.%s is not declared; the structural schema would prune it", f)
 		}
 	}
-	assertStringEnum(t, "status.phase", mapAt(t, stp, "phase"),
-		"Pending", "Rolling", "Succeeded", "Failed", "Cancelled")
+	for _, f := range []string{"version", "digest"} {
+		if _, ok := mapAt(t, stp, "resolved", "properties")[f]; !ok {
+			t.Errorf("status.resolved.%s is not declared", f)
+		}
+	}
+	for _, tc := range []struct {
+		field string
+		want  int64
+	}{{"nodes", 64}, {"conditions", 16}} {
+		if got := mapAt(t, stp, tc.field)["maxItems"]; got != tc.want {
+			t.Errorf("status.%s maxItems = %v, want %d", tc.field, got, tc.want)
+		}
+	}
 	np := mapAt(t, stp, "nodes", "items", "properties")
 	for _, f := range []string{"name", "from", "to", "phase", "message", "startedAt", "finishedAt"} {
 		if _, ok := np[f]; !ok {
 			t.Errorf("status.nodes[].%s is not declared", f)
 		}
 	}
-	assertStringEnum(t, "status.nodes[].phase", mapAt(t, np, "phase"),
-		"Pending", "Cordoning", "Draining", "Downloading", "Verifying", "Installing", "Restarting", "Done", "Failed")
+	// The phases are display only and open: a closed enum would make an older
+	// apiserver schema refuse a phase a newer controller writes.
+	for path, node := range map[string]map[string]any{
+		"status.phase":         mapAt(t, stp, "phase"),
+		"status.nodes[].phase": mapAt(t, np, "phase"),
+	} {
+		if _, ok := node["enum"]; ok {
+			t.Errorf("%s carries a closed enum; the phases are display only and readers tolerate unknown values", path)
+		}
+		if d, _ := node["description"].(string); !strings.Contains(d, displayOnly) {
+			t.Errorf("%s description = %q, want it to say %q", path, d, displayOnly)
+		}
+	}
 	if got := mapAt(t, stp, "nodes")["x-kubernetes-list-type"]; got != "map" {
 		t.Errorf("status.nodes list-type = %v, want map (one entry per node name)", got)
 	}

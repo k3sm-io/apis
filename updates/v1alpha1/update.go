@@ -21,6 +21,21 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+// UpdateName is the one metadata.name the update controller reconciles. An
+// Update under any other name is ignored: the controller sets its
+// UpdateConditionReconciled condition to False with the reason
+// UpdateReasonNotTheSingleton and touches no node for it.
+const UpdateName = "current"
+
+// UpdateConditionReconciled is the condition type reporting whether the
+// update controller acts on this Update. Published so no consumer spells the
+// string.
+const UpdateConditionReconciled = "Reconciled"
+
+// UpdateReasonNotTheSingleton is the UpdateConditionReconciled reason on an
+// Update whose name is not UpdateName.
+const UpdateReasonNotTheSingleton = "NotTheSingleton"
+
 // Update is one request to move every node of the cluster to the release
 // Spec.Version. It is cluster-scoped (a cluster has one release) and its status
 // is written by the update controller through the status subresource.
@@ -40,7 +55,8 @@ type Update struct {
 // UpdateSpec is the requested update.
 type UpdateSpec struct {
 	// Version is the release tag to install on every node (for example
-	// "v0.2.0"). Required.
+	// "v0.2.0"). Required, and immutable after create (a CEL transition rule
+	// on the CRD).
 	Version string `json:"version"`
 
 	// Strategy is how the roll proceeds across the nodes. Every field has a
@@ -56,7 +72,9 @@ type UpdateSpec struct {
 
 	// Cancel stops the roll: the node in progress finishes its current step
 	// and no further node is started. The update then ends Cancelled. Nodes
-	// already moved stay on Version; a cancel is not a rollback.
+	// already moved stay on Version; a cancel is not a rollback. It is
+	// one-way: once true it cannot be set back to false (a CEL transition rule
+	// on the CRD).
 	Cancel bool `json:"cancel,omitempty"`
 }
 
@@ -85,41 +103,38 @@ type UpdateStrategy struct {
 	Drain bool `json:"drain,omitempty"`
 }
 
-// UpdateSignaturePolicy is how an Update treats the release signature.
+// UpdateSignaturePolicy is how an Update treats the code signatures of the
+// release payload's Mach-O binaries. The payload's checksum is always
+// verified against the release's published checksums, under either policy;
+// there is no switch for it.
 type UpdateSignaturePolicy string
 
 const (
-	// UpdateSignatureRequired refuses a release whose signature is missing or
-	// does not verify. It is the default.
-	UpdateSignatureRequired UpdateSignaturePolicy = "required"
-	// UpdateSignatureIfSigned verifies the signature when the release carries
-	// one and accepts a release that carries none. A signature that is present
-	// and does not verify is still refused.
+	// UpdateSignatureIfSigned matches the payload to the installed build. When
+	// the installed build carries a Developer ID team signature, every Mach-O
+	// in the payload must carry that same team's signature. When the
+	// installed build is ad-hoc signed, an ad-hoc signed payload is accepted.
+	// It is the default.
 	UpdateSignatureIfSigned UpdateSignaturePolicy = "if-signed"
+	// UpdateSignatureRequired refuses any payload whose Mach-Os do not carry a
+	// Developer ID team signature, whatever the installed build carries.
+	UpdateSignatureRequired UpdateSignaturePolicy = "required"
 )
 
 // UpdateVerify is what the downloaded release must prove before an Update
-// installs it.
+// installs it, beyond the checksum, which is always verified.
 type UpdateVerify struct {
-	// Checksums checks every downloaded artifact against the release's
-	// published checksums. Nil means true (the CRD defaults it). It is a
-	// pointer because the default is true: a plain bool marshalled with
-	// omitempty would drop an explicit false, and the apiserver would then
-	// default it back to true.
-	Checksums *bool `json:"checksums,omitempty"`
-
-	// Signature is the release-signature policy. Empty means
-	// UpdateSignatureRequired (the CRD defaults it).
+	// Signature is the code-signature policy for the payload. Empty means
+	// UpdateSignatureIfSigned (the CRD defaults it).
 	Signature UpdateSignaturePolicy `json:"signature,omitempty"`
 }
 
-// ChecksumsEnabled reports whether the checksum check applies: true unless
-// Checksums is explicitly false.
-func (v UpdateVerify) ChecksumsEnabled() bool {
-	return v.Checksums == nil || *v.Checksums
-}
-
-// UpdatePhase is the overall state of an Update.
+// UpdatePhase is the DERIVED, human-facing summary of an Update's state: a
+// single word for `kubectl get`, computed from Status.Conditions, which are
+// the source of truth. It is display only. The CRD schema deliberately
+// carries no closed enum for it, so a later release can add a value without
+// breaking an older reader; readers tolerate values they do not know and
+// never branch on this field.
 type UpdatePhase string
 
 const (
@@ -137,12 +152,18 @@ const (
 	UpdatePhaseCancelled UpdatePhase = "Cancelled"
 )
 
-// UpdateNodePhase is the step one node of an Update is on.
+// UpdateNodePhase is the DERIVED, display-only step one node of an Update is
+// on. Like UpdatePhase it has no closed enum in the CRD schema: readers
+// tolerate values they do not know, and the conditions remain the source of
+// truth.
 type UpdateNodePhase string
 
 const (
 	// UpdateNodePhasePending means the node has not started.
 	UpdateNodePhasePending UpdateNodePhase = "Pending"
+	// UpdateNodePhaseSkipped means the node already ran Spec.Version, so
+	// nothing was done to it.
+	UpdateNodePhaseSkipped UpdateNodePhase = "Skipped"
 	// UpdateNodePhaseCordoning means the node is being marked unschedulable.
 	UpdateNodePhaseCordoning UpdateNodePhase = "Cordoning"
 	// UpdateNodePhaseDraining means the node's pods are being evicted.
@@ -150,7 +171,7 @@ const (
 	// UpdateNodePhaseDownloading means the release is being fetched.
 	UpdateNodePhaseDownloading UpdateNodePhase = "Downloading"
 	// UpdateNodePhaseVerifying means the fetched release is being checked
-	// against Spec.Verify.
+	// against its checksum and Spec.Verify.
 	UpdateNodePhaseVerifying UpdateNodePhase = "Verifying"
 	// UpdateNodePhaseInstalling means the release is being installed.
 	UpdateNodePhaseInstalling UpdateNodePhase = "Installing"
@@ -163,6 +184,9 @@ const (
 	// UpdateNodePhaseFailed means the node's update failed; Message carries
 	// the reason.
 	UpdateNodePhaseFailed UpdateNodePhase = "Failed"
+	// UpdateNodePhaseCancelled means Spec.Cancel stopped the roll before this
+	// node started.
+	UpdateNodePhaseCancelled UpdateNodePhase = "Cancelled"
 )
 
 // UpdateNodeStatus is the progress of one node through an Update.
@@ -173,7 +197,8 @@ type UpdateNodeStatus struct {
 	From string `json:"from,omitempty"`
 	// To is the release the node is moving to (Spec.Version).
 	To string `json:"to,omitempty"`
-	// Phase is the step the node is on.
+	// Phase is the derived, display-only step the node is on; see
+	// UpdateNodePhase.
 	Phase UpdateNodePhase `json:"phase,omitempty"`
 	// Message is a human-readable detail of the current step, or the reason
 	// it failed.
@@ -184,14 +209,31 @@ type UpdateNodeStatus struct {
 	FinishedAt *metav1.Time `json:"finishedAt,omitempty"`
 }
 
+// UpdateResolved is the release an Update actually verified: the tag and the
+// digest of the payload whose checksum and signatures passed.
+type UpdateResolved struct {
+	// Version is the release tag that was resolved.
+	Version string `json:"version,omitempty"`
+	// Digest is the digest of the verified payload, in the
+	// <algorithm>:<hex> form (for example "sha256:...").
+	Digest string `json:"digest,omitempty"`
+}
+
 // UpdateStatus is the observed progress of an Update, written by the update
-// controller through the status subresource.
+// controller through the status subresource. It is CONDITIONS-FIRST:
+// Conditions are the contract, and the phases are derived display values.
 type UpdateStatus struct {
-	// Phase is the overall state of the update.
+	// Phase is the derived single-word summary shown as a printer column.
+	// Display only; see UpdatePhase.
 	Phase UpdatePhase `json:"phase,omitempty"`
-	// Nodes is the progress of each node, one entry per node name.
+	// Resolved is the release that was verified. Nil until verification has
+	// passed once.
+	Resolved *UpdateResolved `json:"resolved,omitempty"`
+	// Nodes is the progress of each node, one entry per node name (at most
+	// 64).
 	Nodes []UpdateNodeStatus `json:"nodes,omitempty"`
-	// Conditions are the standard Kubernetes conditions for the update.
+	// Conditions are the standard Kubernetes conditions for the update (at
+	// most 16), the source of truth the phases are derived from.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// ObservedGeneration is the metadata.generation this status was computed
 	// from; a status whose ObservedGeneration trails the object's generation
@@ -213,29 +255,10 @@ type UpdateList struct {
 // net/v1 MeshPeer precedent). Every pointer and slice is copied, or a
 // client-go informer's cached object and a caller's mutation share memory.
 
-// DeepCopyInto copies the receiver into out.
-func (in *UpdateVerify) DeepCopyInto(out *UpdateVerify) {
-	*out = *in
-	if in.Checksums != nil {
-		v := *in.Checksums
-		out.Checksums = &v
-	}
-}
-
-// DeepCopy returns a deep copy of the verify policy.
-func (in *UpdateVerify) DeepCopy() *UpdateVerify {
-	if in == nil {
-		return nil
-	}
-	out := new(UpdateVerify)
-	in.DeepCopyInto(out)
-	return out
-}
-
-// DeepCopyInto copies the receiver into out.
+// DeepCopyInto copies the receiver into out. UpdateSpec holds no reference
+// types, so a value copy is a deep copy.
 func (in *UpdateSpec) DeepCopyInto(out *UpdateSpec) {
 	*out = *in
-	in.Verify.DeepCopyInto(&out.Verify)
 }
 
 // DeepCopy returns a deep copy of the spec.
@@ -272,6 +295,10 @@ func (in *UpdateNodeStatus) DeepCopy() *UpdateNodeStatus {
 // DeepCopyInto copies the receiver into out.
 func (in *UpdateStatus) DeepCopyInto(out *UpdateStatus) {
 	*out = *in
+	if in.Resolved != nil {
+		r := *in.Resolved
+		out.Resolved = &r
+	}
 	if in.Nodes != nil {
 		out.Nodes = make([]UpdateNodeStatus, len(in.Nodes))
 		for i := range in.Nodes {

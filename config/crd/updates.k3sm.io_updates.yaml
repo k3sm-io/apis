@@ -6,10 +6,12 @@
 # is both served and stored, and its shape may change incompatibly until it
 # graduates.
 #
-# Scope is Cluster: a cluster runs one release. Only one Update at a time is
-# intended; the schema cannot see other objects, so the update controller
-# refuses a second one. The controller writes status through the status
-# subresource.
+# Scope is Cluster: a cluster runs one release. The update controller
+# reconciles only the Update named "current" and ignores any other name (the
+# schema cannot see other objects). spec.version is immutable and spec.cancel
+# is one-way, both as CEL transition rules. The phases are display only and
+# carry no closed enum; conditions are the source of truth. The controller
+# writes status through the status subresource.
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -33,6 +35,7 @@ spec:
         - name: Phase
           type: string
           jsonPath: .status.phase
+          description: Display only, derived from conditions; readers tolerate values they do not know.
         - name: Age
           type: date
           jsonPath: .metadata.creationTimestamp
@@ -62,6 +65,9 @@ spec:
                   minLength: 1
                   maxLength: 128
                   pattern: '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: spec.version is immutable after create
                 strategy:
                   type: object
                   description: Strategy is how the roll proceeds across the nodes.
@@ -85,43 +91,50 @@ spec:
                       default: false
                 verify:
                   type: object
-                  description: Verify is what the downloaded release must prove before it is installed.
+                  description: Verify is what the downloaded release must prove before it is installed, beyond its checksum, which is always verified against the release's published checksums.
                   default: {}
                   properties:
-                    checksums:
-                      type: boolean
-                      description: Checksums checks every downloaded artifact against the release's published checksums.
-                      default: true
                     signature:
                       type: string
-                      description: Signature is the release-signature policy; required refuses an unsigned or badly signed release, if-signed accepts an unsigned one but still refuses a bad signature.
-                      default: required
+                      description: "Signature is the code-signature policy for the payload's Mach-Os. if-signed (the default) matches the installed build: an installed build that carries a Developer ID team signature requires the payload's Mach-Os to carry the same team's signature, and an ad-hoc signed installed build accepts an ad-hoc signed payload. required refuses any payload without a team signature, whatever the installed build carries."
+                      default: if-signed
                       enum:
-                        - required
                         - if-signed
+                        - required
                 allowDowngrade:
                   type: boolean
                   description: AllowDowngrade permits a version older than the release a node runs.
                   default: false
                 cancel:
                   type: boolean
-                  description: Cancel stops the roll before the next node; nodes already moved stay on the new release.
+                  description: Cancel stops the roll before the next node; nodes already moved stay on the new release. One-way, it cannot be set back to false.
                   default: false
+                  x-kubernetes-validations:
+                    - rule: '!oldSelf || self'
+                      message: spec.cancel cannot be set back to false
             status:
               type: object
               properties:
                 phase:
                   type: string
-                  description: Phase is the overall state of the update.
-                  enum:
-                    - Pending
-                    - Rolling
-                    - Succeeded
-                    - Failed
-                    - Cancelled
+                  description: Phase is the overall state of the update. Display only, derived from conditions; readers tolerate values they do not know.
+                  maxLength: 64
+                resolved:
+                  type: object
+                  description: Resolved is the release that was verified.
+                  properties:
+                    version:
+                      type: string
+                      description: Version is the release tag that was resolved.
+                      maxLength: 128
+                    digest:
+                      type: string
+                      description: Digest is the digest of the verified payload, in the algorithm:hex form.
+                      maxLength: 256
                 nodes:
                   type: array
                   description: Nodes is the progress of each node, one entry per node name.
+                  maxItems: 64
                   items:
                     type: object
                     required:
@@ -140,17 +153,8 @@ spec:
                         description: To is the release the node is moving to.
                       phase:
                         type: string
-                        description: Phase is the step the node is on.
-                        enum:
-                          - Pending
-                          - Cordoning
-                          - Draining
-                          - Downloading
-                          - Verifying
-                          - Installing
-                          - Restarting
-                          - Done
-                          - Failed
+                        description: Phase is the step the node is on. Display only, derived from conditions; readers tolerate values they do not know.
+                        maxLength: 64
                       message:
                         type: string
                         description: Message is a human-readable detail of the current step, or the reason it failed.
@@ -168,7 +172,8 @@ spec:
                     - name
                 conditions:
                   type: array
-                  description: Conditions are the standard Kubernetes conditions for the update.
+                  description: Conditions are the standard Kubernetes conditions for the update, the source of truth the phases are derived from.
+                  maxItems: 16
                   items:
                     type: object
                     required:

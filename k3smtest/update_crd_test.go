@@ -40,12 +40,19 @@ import (
 // decodes back to the same object, its wire form validates against the
 // manifest's openAPIV3Schema (every field declared, every enum, bound, pattern
 // and required field honoured), a minimal object picks up the schema defaults
-// the Go doc comments promise, and objects that break the schema are refused.
+// the Go doc comments promise, the open phase fields admit values this release
+// does not write, objects that break the schema are refused, and the two CEL
+// transition rules refuse a changed version and an un-cancel.
 //
 // This module carries no apiextensions machinery, so the schema check is the
 // small structural validator below. It covers exactly the keywords the Update
-// manifest uses, and the refusal table proves it is not vacuous: a validator
-// that admitted everything would fail every row of it.
+// manifest uses, and the refusal tables prove it is not vacuous: a validator
+// that admitted everything would fail every row of them. It evaluates no CEL:
+// each x-kubernetes-validations rule is looked up by its exact text in
+// celTranscriptions, a Go transcription of that rule, and a rule with no
+// transcription is itself an error, so a changed rule text cannot pass
+// unevaluated. The live-apiserver proof of the rules belongs to the consumer
+// that carries apiextensions.
 func TestUpdateCRDRoundTrip(t *testing.T) {
 	t.Parallel()
 	root := updateSchema(t)
@@ -113,9 +120,7 @@ func TestUpdateCRDRoundTrip(t *testing.T) {
 			{"strategy.order", u.Spec.Strategy.Order, updatesv1alpha1.UpdateOrderWorkersThenServer},
 			{"strategy.maxUnavailable", u.Spec.Strategy.MaxUnavailable, int32(1)},
 			{"strategy.drain", u.Spec.Strategy.Drain, false},
-			{"verify.checksums", u.Spec.Verify.ChecksumsEnabled(), true},
-			{"verify.checksums set", u.Spec.Verify.Checksums != nil, true},
-			{"verify.signature", u.Spec.Verify.Signature, updatesv1alpha1.UpdateSignatureRequired},
+			{"verify.signature", u.Spec.Verify.Signature, updatesv1alpha1.UpdateSignatureIfSigned},
 			{"allowDowngrade", u.Spec.AllowDowngrade, false},
 			{"cancel", u.Spec.Cancel, false},
 		} {
@@ -125,26 +130,23 @@ func TestUpdateCRDRoundTrip(t *testing.T) {
 		}
 	})
 
-	t.Run("an explicit false survives defaulting", func(t *testing.T) {
-		f := false
-		u := sampleUpdate()
-		u.Spec.Verify.Checksums = &f
-		b, err := json.Marshal(u)
+	t.Run("tolerates phases this release does not write", func(t *testing.T) {
+		m := sampleWire(t)
+		status(m)["phase"] = "Paused"
+		node(m)["phase"] = "Rebooting"
+		if errs := validate("", m, root); len(errs) > 0 {
+			t.Fatalf("the open phase fields refused an unknown value:\n%s", strings.Join(errs, "\n"))
+		}
+		b, err := json.Marshal(m)
 		if err != nil {
 			t.Fatalf("marshal: %v", err)
 		}
-		var m map[string]any
-		if err := json.Unmarshal(b, &m); err != nil {
-			t.Fatalf("unmarshal: %v", err)
+		var u updatesv1alpha1.Update
+		if err := json.Unmarshal(b, &u); err != nil {
+			t.Fatalf("a reader could not decode an unknown phase: %v", err)
 		}
-		applyDefaults(m, root)
-		var back updatesv1alpha1.Update
-		b, _ = json.Marshal(m)
-		if err := json.Unmarshal(b, &back); err != nil {
-			t.Fatalf("unmarshal into Update: %v", err)
-		}
-		if back.Spec.Verify.ChecksumsEnabled() {
-			t.Error("checksums: false was defaulted back to true")
+		if u.Status.Phase != "Paused" || u.Status.Nodes[0].Phase != "Rebooting" {
+			t.Errorf("unknown phases did not survive decoding: %q, %q", u.Status.Phase, u.Status.Nodes[0].Phase)
 		}
 	})
 
@@ -161,8 +163,9 @@ func TestUpdateCRDRoundTrip(t *testing.T) {
 		{"drain not a bool", func(m map[string]any) { sub(m, "strategy")["drain"] = "yes" }, "spec.strategy.drain: want boolean"},
 		{"unknown signature", func(m map[string]any) { sub(m, "verify")["signature"] = "optional" }, "spec.verify.signature: not in enum"},
 		{"undeclared spec field", func(m map[string]any) { spec(m)["channel"] = "stable" }, "spec.channel: not declared"},
-		{"unknown phase", func(m map[string]any) { status(m)["phase"] = "Paused" }, "status.phase: not in enum"},
-		{"unknown node phase", func(m map[string]any) { node(m)["phase"] = "Rebooting" }, "status.nodes[0].phase: not in enum"},
+		{"checksums field", func(m map[string]any) { sub(m, "verify")["checksums"] = false }, "spec.verify.checksums: not declared"},
+		{"too many nodes", func(m map[string]any) { status(m)["nodes"] = repeatNodes(65) }, "status.nodes: more than maxItems 64"},
+		{"too many conditions", func(m map[string]any) { status(m)["conditions"] = repeatConditions(m, 17) }, "status.conditions: more than maxItems 16"},
 		{"node without name", func(m map[string]any) { delete(node(m), "name") }, "status.nodes[0].name: required"},
 		{"duplicate node name", func(m map[string]any) {
 			ns := status(m)["nodes"].([]any)
@@ -183,16 +186,132 @@ func TestUpdateCRDRoundTrip(t *testing.T) {
 			t.Errorf("want an error containing %q, got %q", tc.want, errs)
 		})
 	}
+
+	for _, tc := range []struct {
+		name   string
+		old    func(m map[string]any)
+		mutate func(m map[string]any)
+		want   string // empty: the update is admitted
+	}{
+		{"admits an unchanged object", nil, func(map[string]any) {}, ""},
+		{"admits a strategy change", nil, func(m map[string]any) { sub(m, "strategy")["maxUnavailable"] = 3 }, ""},
+		{"refuses a changed version", nil, func(m map[string]any) { spec(m)["version"] = "v0.3.0" }, "spec.version: spec.version is immutable after create"},
+		{"admits cancel false to true", func(m map[string]any) { spec(m)["cancel"] = false }, func(m map[string]any) { spec(m)["cancel"] = true }, ""},
+		{"admits cancel false to false", func(m map[string]any) { spec(m)["cancel"] = false }, func(m map[string]any) { spec(m)["cancel"] = false }, ""},
+		{"admits cancel true to true", nil, func(map[string]any) {}, ""},
+		{"refuses cancel true to false", nil, func(m map[string]any) { spec(m)["cancel"] = false }, "spec.cancel: spec.cancel cannot be set back to false"},
+		// A removed cancel is defaulted to false before validation, so
+		// dropping the field is an un-cancel too.
+		{"refuses dropping a true cancel", nil, func(m map[string]any) { delete(spec(m), "cancel") }, "spec.cancel: spec.cancel cannot be set back to false"},
+	} {
+		t.Run("transition "+tc.name, func(t *testing.T) {
+			oldObj := sampleWire(t)
+			if tc.old != nil {
+				tc.old(oldObj)
+			}
+			newObj := normalizeNumbers(oldObj)
+			tc.mutate(newObj)
+			newObj = normalizeNumbers(newObj)
+			applyDefaults(newObj, root)
+			errs := validate("", newObj, root)
+			errs = append(errs, validateTransition("", oldObj, newObj, root)...)
+			if tc.want == "" {
+				if len(errs) > 0 {
+					t.Fatalf("want the update admitted, got %q", errs)
+				}
+				return
+			}
+			for _, e := range errs {
+				if strings.Contains(e, tc.want) {
+					return
+				}
+			}
+			t.Errorf("want an error containing %q, got %q", tc.want, errs)
+		})
+	}
+}
+
+// celTranscriptions maps each x-kubernetes-validations rule text in the Update
+// manifest to a Go transcription of it. A transition rule (one that reads
+// oldSelf) runs only on update, and only where the field exists in both the
+// old and the new object, as the apiserver does.
+var celTranscriptions = map[string]func(self, oldSelf any) bool{
+	"self == oldSelf":  func(self, oldSelf any) bool { return reflect.DeepEqual(self, oldSelf) },
+	"!oldSelf || self": func(self, oldSelf any) bool { return !oldSelf.(bool) || self.(bool) },
+}
+
+// rulesAt returns the rule/message pairs on one schema node.
+func rulesAt(sch map[string]any) [][2]string {
+	var out [][2]string
+	for _, r := range asList(sch["x-kubernetes-validations"]) {
+		rm, _ := r.(map[string]any)
+		rule, _ := rm["rule"].(string)
+		msg, _ := rm["message"].(string)
+		out = append(out, [2]string{rule, msg})
+	}
+	return out
+}
+
+// validateTransition evaluates the transition rules under sch for an update
+// from oldV to newV, walking the two objects in parallel.
+func validateTransition(path string, oldV, newV any, sch map[string]any) []string {
+	var errs []string
+	p := strings.TrimPrefix(path, ".")
+	for _, r := range rulesAt(sch) {
+		eval, ok := celTranscriptions[r[0]]
+		if !ok {
+			errs = append(errs, fmt.Sprintf("%s: rule %q has no transcription in this test", p, r[0]))
+			continue
+		}
+		if !eval(newV, oldV) {
+			errs = append(errs, p+": "+r[1])
+		}
+	}
+	oldObj, ok1 := oldV.(map[string]any)
+	newObj, ok2 := newV.(map[string]any)
+	props, _ := sch["properties"].(map[string]any)
+	if !ok1 || !ok2 || props == nil {
+		return errs
+	}
+	for k, cs := range props {
+		o, inOld := oldObj[k]
+		n, inNew := newObj[k]
+		if inOld && inNew {
+			errs = append(errs, validateTransition(path+"."+k, o, n, cs.(map[string]any))...)
+		}
+	}
+	return errs
+}
+
+func repeatNodes(n int) []any {
+	out := make([]any, n)
+	for i := range out {
+		out[i] = map[string]any{"name": fmt.Sprintf("node-%d", i)}
+	}
+	return out
+}
+
+func repeatConditions(m map[string]any, n int) []any {
+	first := status(m)["conditions"].([]any)[0].(map[string]any)
+	out := make([]any, n)
+	for i := range out {
+		c := map[string]any{}
+		for k, v := range first {
+			c[k] = v
+		}
+		c["type"] = fmt.Sprintf("Type%d", i)
+		out[i] = c
+	}
+	return out
 }
 
 // sampleUpdate is a fully populated Update in UTC.
 func sampleUpdate() *updatesv1alpha1.Update {
 	at := metav1.NewTime(time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC))
 	done := metav1.NewTime(at.Add(90 * time.Second))
-	yes := true
 	return &updatesv1alpha1.Update{
 		TypeMeta:   metav1.TypeMeta{APIVersion: "updates.k3sm.io/v1alpha1", Kind: "Update"},
-		ObjectMeta: metav1.ObjectMeta{Name: "to-v0.2.0", Generation: 2},
+		ObjectMeta: metav1.ObjectMeta{Name: updatesv1alpha1.UpdateName, Generation: 2},
 		Spec: updatesv1alpha1.UpdateSpec{
 			Version: "v0.2.0-rc.1",
 			Strategy: updatesv1alpha1.UpdateStrategy{
@@ -201,18 +320,21 @@ func sampleUpdate() *updatesv1alpha1.Update {
 				Drain:          true,
 			},
 			Verify: updatesv1alpha1.UpdateVerify{
-				Checksums: &yes,
-				Signature: updatesv1alpha1.UpdateSignatureIfSigned,
+				Signature: updatesv1alpha1.UpdateSignatureRequired,
 			},
 			AllowDowngrade: true,
 			Cancel:         true,
 		},
 		Status: updatesv1alpha1.UpdateStatus{
 			Phase: updatesv1alpha1.UpdatePhaseCancelled,
+			Resolved: &updatesv1alpha1.UpdateResolved{
+				Version: "v0.2.0-rc.1",
+				Digest:  "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			},
 			Nodes: []updatesv1alpha1.UpdateNodeStatus{
 				{Name: "worker-1", From: "v0.1.7", To: "v0.2.0-rc.1", Phase: updatesv1alpha1.UpdateNodePhaseDone,
 					Message: "running v0.2.0-rc.1", StartedAt: &at, FinishedAt: &done},
-				{Name: "server-1", From: "v0.1.7", To: "v0.2.0-rc.1", Phase: updatesv1alpha1.UpdateNodePhasePending},
+				{Name: "server-1", From: "v0.1.7", To: "v0.2.0-rc.1", Phase: updatesv1alpha1.UpdateNodePhaseCancelled},
 			},
 			Conditions: []metav1.Condition{{
 				Type: "Progressing", Status: metav1.ConditionFalse, ObservedGeneration: 2,
@@ -298,8 +420,9 @@ func updateSchema(t *testing.T) map[string]any {
 }
 
 // validate checks v against the structural-schema subset the Update manifest
-// uses (type, properties, required, items, enum, minimum, minLength,
-// maxLength, pattern, format date-time, and x-kubernetes-list-type map keys)
+// uses (type, properties, required, items, maxItems, enum, minimum,
+// minLength, maxLength, pattern, format date-time, and x-kubernetes-list-type
+// map keys)
 // and returns one message per violation. An object property the schema does
 // not declare is a violation: the apiserver would prune it, so a Go field
 // that writes it would be silently lost. metadata is the apiserver's own
@@ -347,6 +470,9 @@ func validate(path string, v any, sch map[string]any) []string {
 		if !ok {
 			at("want array, got %T", v)
 			return errs
+		}
+		if n, ok := sch["maxItems"].(float64); ok && float64(len(list)) > n {
+			at("more than maxItems %v", n)
 		}
 		items, _ := sch["items"].(map[string]any)
 		for i, e := range list {
@@ -402,6 +528,13 @@ func validate(path string, v any, sch map[string]any) []string {
 		}
 	default:
 		at("schema type %v is outside the validator's subset", sch["type"])
+	}
+	// On create only rules that do not read oldSelf apply; the manifest has
+	// none, so any such rule is outside the transcriptions and an error.
+	for _, r := range rulesAt(sch) {
+		if !strings.Contains(r[0], "oldSelf") {
+			at("rule %q has no transcription in this test", r[0])
+		}
 	}
 	if enum, ok := sch["enum"].([]any); ok {
 		found := false
