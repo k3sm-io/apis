@@ -596,6 +596,7 @@ func TestNoGlobEmbed(t *testing.T) {
 		"net.k3sm.io_interconnects.yaml":     false,
 		"helm.k3sm.io_helmcharts.yaml":       false,
 		"helm.k3sm.io_helmchartconfigs.yaml": false,
+		"updates.k3sm.io_updates.yaml":       false,
 	}
 
 	var directives []string
@@ -679,6 +680,9 @@ func TestNoGlobEmbed(t *testing.T) {
 	}
 	if strings.Contains(string(HelmChartConfigCRD()), HelmChartCRDName) {
 		t.Error("HelmChartConfigCRD returns the HelmChart CRD")
+	}
+	if !strings.Contains(string(UpdateCRD()), UpdateCRDName) {
+		t.Error("UpdateCRD does not return the Update CRD")
 	}
 }
 
@@ -823,6 +827,7 @@ func TestEmbeddedCRDSetHasNoDirectLink(t *testing.T) {
 		"InterconnectCRD":    InterconnectCRD(),
 		"HelmChartCRD":       HelmChartCRD(),
 		"HelmChartConfigCRD": HelmChartConfigCRD(),
+		"UpdateCRD":          UpdateCRD(),
 	} {
 		if strings.Contains(string(b), name) {
 			t.Errorf("%s returns the removed DirectLink CRD", acc)
