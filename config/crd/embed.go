@@ -41,6 +41,10 @@ limitations under the License.
 //
 // The two helm.k3sm.io manifests (HelmChart and HelmChartConfig) are the k3s
 // helm.cattle.io/v1 contract mirrored; k3sm's helm controller applies both.
+//
+// The Update manifest (updates.k3sm.io_updates.yaml) is the alpha
+// updates.k3sm.io/v1alpha1 request to move the whole cluster to one release;
+// k3sm's update controller ensures it through its accessor.
 package crd
 
 import (
@@ -138,4 +142,20 @@ var helmChartConfigCRDYAML string
 // It returns a fresh copy on every call, for the same reason as MLXModelCRD.
 func HelmChartConfigCRD() []byte {
 	return []byte(helmChartConfigCRDYAML)
+}
+
+// UpdateCRDName is the metadata.name of the Update CustomResourceDefinition
+// (the <plural>.<group> form the API server addresses it by). Published so a
+// consumer waiting on or reading back the CRD does not spell the string.
+const UpdateCRDName = "updates.updates.k3sm.io"
+
+//go:embed updates.k3sm.io_updates.yaml
+var updateCRDYAML string
+
+// UpdateCRD returns the updates.k3sm.io/v1alpha1 Update
+// CustomResourceDefinition manifest as YAML bytes, ready to apply.
+//
+// It returns a fresh copy on every call, for the same reason as MLXModelCRD.
+func UpdateCRD() []byte {
+	return []byte(updateCRDYAML)
 }

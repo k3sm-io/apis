@@ -1,0 +1,51 @@
+{
+  "kind": "Update",
+  "apiVersion": "updates.k3sm.io/v1alpha1",
+  "metadata": {
+    "name": "to-v0.2.0",
+    "generation": 2
+  },
+  "spec": {
+    "version": "v0.2.0",
+    "strategy": {
+      "order": "workers-then-server",
+      "maxUnavailable": 1,
+      "drain": true
+    },
+    "verify": {
+      "checksums": true,
+      "signature": "required"
+    }
+  },
+  "status": {
+    "phase": "Rolling",
+    "nodes": [
+      {
+        "name": "worker-1",
+        "from": "v0.1.7",
+        "to": "v0.2.0",
+        "phase": "Done",
+        "message": "running v0.2.0",
+        "startedAt": "2026-10-15T12:00:00Z",
+        "finishedAt": "2026-10-15T12:01:30Z"
+      },
+      {
+        "name": "server-1",
+        "from": "v0.1.7",
+        "to": "v0.2.0",
+        "phase": "Pending"
+      }
+    ],
+    "conditions": [
+      {
+        "type": "Progressing",
+        "status": "True",
+        "observedGeneration": 2,
+        "lastTransitionTime": "2026-10-15T12:00:00Z",
+        "reason": "Rolling",
+        "message": "1 of 2 nodes updated"
+      }
+    ],
+    "observedGeneration": 2
+  }
+}
