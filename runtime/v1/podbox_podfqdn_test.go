@@ -138,13 +138,6 @@ func TestPodBoxPodFQDNField(t *testing.T) {
 		if rr.Has(podBoxPodFQDNNumber) {
 			t.Errorf("PodBox reserves number %d, which pod_fqdn uses", podBoxPodFQDNNumber)
 		}
-		for n := protoreflect.FieldNumber(104); n <= 199; n++ {
-			if !rr.Has(n) {
-				t.Fatalf("PodBox no longer reserves %d; the 104..199 band must stay intact", n)
-			}
-		}
-		if rr.Has(103) || rr.Has(200) {
-			t.Errorf("PodBox reserved band grew past 104..199")
-		}
+		assertPodBoxHeadroomBand(t, md)
 	})
 }

@@ -302,14 +302,59 @@ message PodBox {
   // an entry that sets it rather than sending it without that field.
   //
   // It is a deliberate carve from the 100..199 band for the pod's ephemeral
-  // (debug) container list, the one non-resource field in that band.
+  // (debug) container list, the first non-resource field in that band.
   repeated Container ephemeral_containers = 103;
 
-  // 100..103 are now allocated above; 104..199 stay reserved for future
-  // resource/metrics inputs (103 is the one non-resource carve, made
-  // deliberately for the pod's ephemeral (debug) container list). The band's
-  // 199 ceiling is preserved (additive).
-  reserved 104 to 199;
+  // wasm_signature is the pod-level module-signature check for a pod whose
+  // RuntimeClass handler is "wasm" (every container of a wasm pod is wasm, so
+  // the check is per pod, not per container). The k3sm provider derives it from
+  // the k3sm.io/wasm-signature and k3sm.io/wasm-signature-key annotations: it
+  // parses the PEM key once at pod create, fails closed on a malformed one, and
+  // stamps the DER form here, so the runtime never parses PEM. See
+  // WasmSignature for the accepted states.
+  //
+  // It is the second deliberate non-resource carve from the 100..199 band,
+  // after 103 (ephemeral_containers).
+  WasmSignature wasm_signature = 104;
+
+  // 100..104 are now allocated above; 105..199 stay reserved for future
+  // resource/metrics inputs. 103 (ephemeral_containers) and 104
+  // (wasm_signature) are the two non-resource carves, each made deliberately.
+  // The band's 199 ceiling is preserved (additive).
+  reserved 105 to 199;
+}
+
+// WasmSignature is the opt-in signature check on a wasm pod's modules,
+// carried on PodBox.wasm_signature. Its state matrix is closed:
+//
+//   - absent (PodBox.wasm_signature unset): no signature check; the modules run
+//     as pulled.
+//   - {required: true, public_key_spki_der: <non-empty DER>}: the only state a
+//     producer stamps. The runtime verifies every module of the pod against the
+//     key and refuses the pod on any failure.
+//   - any other present state (required false, or an empty key): never stamped
+//     by a producer, and refused by the runtime rather than read as "no check".
+//
+// Go consumers classify the message with ClassifyWasmSignature, never with
+// GetRequired alone: proto3 getters cannot tell "absent" from "present with
+// required false", and the second is a refusal, not "no check".
+//
+// A producer stamps this message only for a node that reports the
+// WasmBackendAvailable runtime condition as true. When a pod requests the
+// check and the node does not report that condition, the provider refuses the
+// pod; it never drops the stamp and runs the pod unverified. A runtime that
+// receives a SANDBOX_BACKEND_WASM pod with this message present but has no
+// module verifier refuses the pod; it never skips the check.
+message WasmSignature {
+  // required is true when the pod's modules must verify against
+  // public_key_spki_der before they run. It is the only accepted value when
+  // the message is present.
+  bool required = 1;
+
+  // public_key_spki_der is the verification public key as a DER-encoded
+  // SubjectPublicKeyInfo (never PEM: the provider decodes the annotation's PEM
+  // once and fails closed on a malformed key).
+  bytes public_key_spki_der = 2;
 }
 
 // Volume is a named pod-level volume with exactly one source set. Mirrors a
@@ -1135,6 +1180,11 @@ enum SandboxBackend {
   SANDBOX_BACKEND_UIDJAIL = 3;
   // VM runs the pod in a Virtualization.framework micro-VM (untrusted tenancy).
   SANDBOX_BACKEND_VM = 4;
+  // WASM runs the pod's WebAssembly modules in the k3sm wasm host (the "wasm"
+  // RuntimeClass handler). The value is 5 and container-vm takes 6: the number
+  // is the only thing that crosses the provider-to-runtime boundary, so a swap
+  // of the two would be wire-silent. Never renumber either.
+  SANDBOX_BACKEND_WASM = 5;
 }
 
 // ---------------------------------------------------------------------------
