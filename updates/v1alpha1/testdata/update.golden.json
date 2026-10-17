@@ -40,6 +40,7 @@
         "to": "v0.2.0",
         "phase": "Cancelled",
         "message": "cancelled before this node started",
+        "adminTokenRotated": true,
         "startedAt": "2026-10-15T12:00:00Z",
         "finishedAt": "2026-10-15T12:01:30Z"
       }
