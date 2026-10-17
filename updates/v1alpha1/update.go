@@ -203,6 +203,11 @@ type UpdateNodeStatus struct {
 	// Message is a human-readable detail of the current step, or the reason
 	// it failed.
 	Message string `json:"message,omitempty"`
+	// AdminTokenRotated is set when the node's in-place install could not keep
+	// the installed admin token and minted a new one, so every kubeconfig
+	// copied from this control plane before the update is now refused. The
+	// remedy is to copy the admin kubeconfig again. Never set on a worker.
+	AdminTokenRotated bool `json:"adminTokenRotated,omitempty"`
 	// StartedAt is when the node left Pending.
 	StartedAt *metav1.Time `json:"startedAt,omitempty"`
 	// FinishedAt is when the node reached Done or Failed.

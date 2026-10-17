@@ -159,6 +159,9 @@ spec:
                         type: string
                         description: Message is a human-readable detail of the current step, or the reason it failed.
                         maxLength: 32768
+                      adminTokenRotated:
+                        type: boolean
+                        description: AdminTokenRotated is set when the node's in-place install could not keep the installed admin token and minted a new one, so every kubeconfig copied from this control plane before the update is now refused. The remedy is to copy the admin kubeconfig again. Never set on a worker.
                       startedAt:
                         type: string
                         format: date-time

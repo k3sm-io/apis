@@ -72,7 +72,8 @@ func sampleUpdate() *Update {
 				},
 				{
 					Name: "server-1", From: "v0.1.7", To: "v0.2.0", Phase: UpdateNodePhaseCancelled,
-					Message: "cancelled before this node started", StartedAt: &started, FinishedAt: &finished,
+					Message: "cancelled before this node started", AdminTokenRotated: true,
+					StartedAt: &started, FinishedAt: &finished,
 				},
 			},
 			Conditions: []metav1.Condition{{

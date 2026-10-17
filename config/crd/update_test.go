@@ -192,10 +192,13 @@ func TestUpdateCRDMatchesTheGoTypes(t *testing.T) {
 		}
 	}
 	np := mapAt(t, stp, "nodes", "items", "properties")
-	for _, f := range []string{"name", "from", "to", "phase", "message", "startedAt", "finishedAt"} {
+	for _, f := range []string{"name", "from", "to", "phase", "message", "adminTokenRotated", "startedAt", "finishedAt"} {
 		if _, ok := np[f]; !ok {
 			t.Errorf("status.nodes[].%s is not declared", f)
 		}
+	}
+	if got := mapAt(t, np, "adminTokenRotated")["type"]; got != "boolean" {
+		t.Errorf("status.nodes[].adminTokenRotated type = %v, want boolean", got)
 	}
 	// The phases are display only and open: a closed enum would make an older
 	// apiserver schema refuse a phase a newer controller writes.
