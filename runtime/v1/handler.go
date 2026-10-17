@@ -38,6 +38,14 @@ const (
 	// operator opts a workload in by creating a RuntimeClass with handler "vm" and
 	// setting the pod's runtimeClassName to it.
 	HandlerVM HandlerName = "vm"
+
+	// HandlerWasm is the RuntimeClass handler that selects the WebAssembly
+	// backend (SandboxBackend_SANDBOX_BACKEND_WASM): the pod's containers are
+	// WASI modules run by the k3sm wasm host rather than native processes. The
+	// match is exact on the DNS label "wasm", with no case folding or trimming:
+	// "Wasm" or "wasm " is an unknown handler and fails closed with
+	// ErrUnknownHandler.
+	HandlerWasm HandlerName = "wasm"
 )
 
 // ErrUnknownHandler is returned by HandlerConfig.Backend when a non-empty
@@ -80,14 +88,16 @@ type HandlerConfig struct {
 
 // DefaultHandlerConfig returns the built-in handler→backend table: the "vm"
 // handler (HandlerVM) maps to the Virtualization.framework micro-VM backend
-// (SANDBOX_BACKEND_VM), and the empty/default handler maps to
+// (SANDBOX_BACKEND_VM), the "wasm" handler (HandlerWasm) maps to the
+// WebAssembly backend (SANDBOX_BACKEND_WASM), and the empty/default handler maps to
 // SANDBOX_BACKEND_UNSPECIFIED, deferring to runtimed's host-OS-version-gated
 // choice of host-process backend. It returns a fresh map on every call, so a
 // caller may mutate the result without affecting later calls.
 func DefaultHandlerConfig() HandlerConfig {
 	return HandlerConfig{
 		Handlers: map[HandlerName]SandboxBackend{
-			HandlerVM: SandboxBackend_SANDBOX_BACKEND_VM,
+			HandlerVM:   SandboxBackend_SANDBOX_BACKEND_VM,
+			HandlerWasm: SandboxBackend_SANDBOX_BACKEND_WASM,
 		},
 		DefaultBackend: SandboxBackend_SANDBOX_BACKEND_UNSPECIFIED,
 	}
