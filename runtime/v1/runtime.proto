@@ -1618,7 +1618,28 @@ message PodStats {
   // containers are the per-container samples.
   repeated ContainerStats containers = 7;
 
-  reserved 100 to 149; // headroom for network / ephemeral-storage / process stats.
+  // --- Process stats (allocated from PodStats' reserved 100..149 band). ---
+
+  // process reports how many processes the pod holds. Absent (nil) means this
+  // daemon does not report process stats at all, an older daemon; a present
+  // ProcessStats whose process_count is 0 is a real count. A consumer MUST
+  // treat the two differently: the first is "unknown", the second is "known
+  // to be zero".
+  ProcessStats process = 100;
+
+  // 100 allocated above; 101..149 stay reserved (149 ceiling preserved).
+  reserved 101 to 149; // headroom for network / ephemeral-storage stats.
+}
+
+// ProcessStats is a pod's process usage at an instant, the numerator the node
+// compares against the per-user process limit for PID pressure.
+message ProcessStats {
+  // process_count is the number of live members of the pod's process group(s)
+  // as recorded in the daemon's process ledger. It is a lower bound: a process
+  // that leaves its group (setsid) is not counted.
+  uint64 process_count = 1;
+
+  reserved 100 to 149; // headroom for further process stats.
 }
 
 // ContainerStats is a per-container resource-usage snapshot within PodStats.
