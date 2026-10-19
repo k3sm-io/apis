@@ -591,12 +591,14 @@ func TestNoGlobEmbed(t *testing.T) {
 
 	// The manifests deliberately embedded, each by its own named directive.
 	embedded := map[string]bool{
-		"mlx.k3sm.io_mlxmodels.yaml":         false,
-		"net.k3sm.io_meshpeers.yaml":         false,
-		"net.k3sm.io_interconnects.yaml":     false,
-		"helm.k3sm.io_helmcharts.yaml":       false,
-		"helm.k3sm.io_helmchartconfigs.yaml": false,
-		"updates.k3sm.io_updates.yaml":       false,
+		"mlx.k3sm.io_mlxmodels.yaml":             false,
+		"net.k3sm.io_meshpeers.yaml":             false,
+		"net.k3sm.io_interconnects.yaml":         false,
+		"helm.k3sm.io_helmcharts.yaml":           false,
+		"helm.k3sm.io_helmchartconfigs.yaml":     false,
+		"updates.k3sm.io_updates.yaml":           false,
+		"budget.k3sm.io_nodebudgets.yaml":        false,
+		"budget.k3sm.io_nodebudgetpolicies.yaml": false,
 	}
 
 	var directives []string
@@ -683,6 +685,18 @@ func TestNoGlobEmbed(t *testing.T) {
 	}
 	if !strings.Contains(string(UpdateCRD()), UpdateCRDName) {
 		t.Error("UpdateCRD does not return the Update CRD")
+	}
+	if !strings.Contains(string(NodeBudgetCRD()), NodeBudgetCRDName) {
+		t.Error("NodeBudgetCRD does not return the NodeBudget CRD")
+	}
+	if strings.Contains(string(NodeBudgetCRD()), NodeBudgetPolicyCRDName) {
+		t.Error("NodeBudgetCRD returns the NodeBudgetPolicy CRD")
+	}
+	if !strings.Contains(string(NodeBudgetPolicyCRD()), NodeBudgetPolicyCRDName) {
+		t.Error("NodeBudgetPolicyCRD does not return the NodeBudgetPolicy CRD")
+	}
+	if strings.Contains(string(NodeBudgetPolicyCRD()), NodeBudgetCRDName) {
+		t.Error("NodeBudgetPolicyCRD returns the NodeBudget CRD")
 	}
 }
 
@@ -822,12 +836,14 @@ func TestEmbeddedCRDSetHasNoDirectLink(t *testing.T) {
 	t.Parallel()
 	const name = "directlinks.net.k3sm.io"
 	for acc, b := range map[string][]byte{
-		"MLXModelCRD":        MLXModelCRD(),
-		"MeshPeerCRD":        MeshPeerCRD(),
-		"InterconnectCRD":    InterconnectCRD(),
-		"HelmChartCRD":       HelmChartCRD(),
-		"HelmChartConfigCRD": HelmChartConfigCRD(),
-		"UpdateCRD":          UpdateCRD(),
+		"MLXModelCRD":         MLXModelCRD(),
+		"MeshPeerCRD":         MeshPeerCRD(),
+		"InterconnectCRD":     InterconnectCRD(),
+		"HelmChartCRD":        HelmChartCRD(),
+		"HelmChartConfigCRD":  HelmChartConfigCRD(),
+		"UpdateCRD":           UpdateCRD(),
+		"NodeBudgetCRD":       NodeBudgetCRD(),
+		"NodeBudgetPolicyCRD": NodeBudgetPolicyCRD(),
 	} {
 		if strings.Contains(string(b), name) {
 			t.Errorf("%s returns the removed DirectLink CRD", acc)

@@ -1,0 +1,695 @@
+# NodeBudget CRD (budget.k3sm.io/v1alpha1): the budget of one node, the
+# source of truth of the node budget contract.
+#
+# Hand-authored (apis runs no controller-gen) to match the Go type in
+# k3sm.io/apis/budget/v1alpha1 (nodebudget.go). ALPHA: a SINGLE version
+# v1alpha1 is both served and stored, and its shape may change incompatibly
+# until it graduates.
+#
+# Scope is Cluster, the object is named for its node, and it is status only:
+# the status subresource is written by the relay (from the node's
+# budget.k3sm.io/status annotation) or by an own-node producer. It carries
+# node-level data only, never a pod, namespace, container or UID. One schema
+# serves every platform: generic signal records plus exactly one platform
+# block, darwin or linux, whenever the node reports (a CEL rule).
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: nodebudgets.budget.k3sm.io
+spec:
+  group: budget.k3sm.io
+  scope: Cluster
+  names:
+    kind: NodeBudget
+    listKind: NodeBudgetList
+    plural: nodebudgets
+    singular: nodebudget
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      additionalPrinterColumns:
+        - name: Level
+          type: string
+          jsonPath: .status.level
+        - name: Admit
+          type: boolean
+          jsonPath: .status.admit
+        - name: Mode
+          type: string
+          jsonPath: .status.killMode.mode
+        - name: Armed
+          type: boolean
+          jsonPath: .status.killMode.armed
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: NodeBudget is the budget of one node, named for the node and status only.
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            status:
+              type: object
+              description: Status is the node's published budget, written by the relay or by an own-node producer.
+              x-kubernetes-validations:
+                - rule: "!has(self.level) || (has(self.darwin) != has(self.linux))"
+                  message: "a reporting status carries exactly one of darwin and linux"
+              properties:
+                observedAt:
+                  type: string
+                  format: date-time
+                  description: ObservedAt is when the node took the observation.
+                generation:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                  description: Generation bumps on a producer restart and on a policy change.
+                platform:
+                  type: string
+                  description: Platform names the platform block the producer fills.
+                  enum:
+                    - darwin
+                    - linux
+                level:
+                  type: string
+                  description: Level is the derived pressure level, the most severe over the signals.
+                  enum:
+                    - ok
+                    - warn
+                    - critical
+                    - evicting
+                admit:
+                  type: boolean
+                  description: Admit is true while every signal is below its admit-stop rung; absent reads as false.
+                admitReasonSignal:
+                  type: string
+                  description: AdmitReasonSignal names the signal that blocks admission.
+                  enum:
+                    - memory.available
+                    - memory.compressor
+                    - memory.swap
+                    - swapfs.available
+                    - nodefs.available
+                    - imagefs.available
+                    - pid.available
+                evictDeadlineNs:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                  description: EvictDeadlineNs is when the evict-soft grace runs out, in Unix nanoseconds; set only at level evicting.
+                capacity:
+                  type: object
+                  description: Capacity is the node's capacity and the reserves held back from pods.
+                  properties:
+                    cpuCapacityMilli:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      description: CPUCapacityMilli is the node's CPU capacity in millicores.
+                    cpuSystemReserveMilli:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      description: CPUSystemReserveMilli is the CPU held back for the system.
+                    memCapacityBytes:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      description: MemCapacityBytes is the node's physical memory.
+                    memSystemReserveBytes:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      description: MemSystemReserveBytes is the memory held back for the system.
+                    memEvictionReserveBytes:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      description: MemEvictionReserveBytes is the memory held back as the eviction margin.
+                    memAllocatableBytes:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      description: MemAllocatableBytes is the memory left for pods after the reserves.
+                    swapTotalBytes:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      description: SwapTotalBytes is the swap in use plus the swap still free.
+                    swapUsedBytes:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      description: SwapUsedBytes is the swap in use.
+                signals:
+                  type: array
+                  description: Signals are the generic signal records, one per signal.
+                  maxItems: 8
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - id
+                  items:
+                    type: object
+                    required:
+                      - id
+                      - unit
+                    properties:
+                      id:
+                        type: string
+                        description: ID names the signal.
+                        enum:
+                          - memory.available
+                          - memory.compressor
+                          - memory.swap
+                          - swapfs.available
+                          - nodefs.available
+                          - imagefs.available
+                          - pid.available
+                      unit:
+                        type: string
+                        description: Unit is the unit of the value and of every rung and release.
+                        enum:
+                          - bytes
+                          - permille
+                          - count
+                      value:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: Value is the current reading.
+                      warnAt:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: WarnAt is the warn rung.
+                      admitStopAt:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: AdmitStopAt is the rung at which the node stops admitting work.
+                      criticalAt:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: CriticalAt is the critical rung.
+                      evictSoftAt:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: EvictSoftAt is the rung that starts the evict-soft grace (tier 1).
+                      evictHardAt:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: EvictHardAt is the hard trip (tier 2); for nodefs.available and pid.available a node condition trip, not an eviction.
+                      warnReleaseAt:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: WarnReleaseAt is the value at which the warn rung releases.
+                      admitStopReleaseAt:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: AdmitStopReleaseAt is the value at which admission resumes.
+                      criticalReleaseAt:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: CriticalReleaseAt is the value at which the critical rung releases.
+                      evictSoftReleaseAt:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: EvictSoftReleaseAt is the value at which the evict-soft rung releases.
+                      evictHardReleaseAt:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: EvictHardReleaseAt is the value at which the hard trip releases.
+                      graceNs:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: GraceNs is the evict-soft grace, in nanoseconds.
+                      minReclaimBytes:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: MinReclaimBytes is the least an eviction on this signal reclaims.
+                      windowNs:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: WindowNs is the window a growth signal (memory.swap) measures its value over, in nanoseconds.
+                      etaToNextRungNs:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: EtaToNextRungNs is the estimated time to the next rung, in nanoseconds; set only while the value moves toward it and the fit is good.
+                      trend:
+                        type: string
+                        description: Trend is the recent direction of the value itself, not of pressure.
+                        enum:
+                          - falling
+                          - steady
+                          - rising
+                      limitingResource:
+                        type: string
+                        description: LimitingResource is the resource that actually limits this signal.
+                        enum:
+                          - memory
+                          - swapfs
+                          - nodefs
+                          - imagefs
+                          - pid
+                          - cpu
+                      sharedWith:
+                        type: string
+                        description: SharedWith names a signal that measures the same volume.
+                        enum:
+                          - memory.available
+                          - memory.compressor
+                          - memory.swap
+                          - swapfs.available
+                          - nodefs.available
+                          - imagefs.available
+                          - pid.available
+                recommendation:
+                  type: object
+                  description: Recommendation is how much more the node can safely take.
+                  properties:
+                    safeAdditionalBytes:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      description: SafeAdditionalBytes is the memory a new workload can take before the first admit-stop rung, less the history margin; 0 while admit is false.
+                    basis:
+                      type: string
+                      description: Basis names the signal safeAdditionalBytes was computed from.
+                      enum:
+                        - memory.available
+                        - memory.compressor
+                        - memory.swap
+                        - swapfs.available
+                        - nodefs.available
+                        - imagefs.available
+                        - pid.available
+                killMode:
+                  type: object
+                  description: KillMode is the published tier-1 kill mode.
+                  properties:
+                    mode:
+                      type: string
+                      description: Mode is the tier-1 kill mode the node runs.
+                      enum:
+                        - auto
+                        - "on"
+                        - "off"
+                    armed:
+                      type: boolean
+                      description: Armed is true while tier 1 may deliver.
+                    armingEpisodes:
+                      type: integer
+                      format: int32
+                      minimum: 0
+                      description: ArmingEpisodes is the matched pressure episodes recorded since the last reset.
+                    reason:
+                      type: string
+                      description: Reason says why tier 1 is armed or not.
+                      enum:
+                        - cold-start
+                        - observing
+                        - armed
+                        - policy-off
+                        - disarm-file
+                wouldKill:
+                  type: object
+                  description: WouldKill is the last tier-1 decision, the band and the trigger only; the victim appears only in a namespaced Event.
+                  required:
+                    - band
+                    - reason
+                    - at
+                  properties:
+                    band:
+                      type: string
+                      enum:
+                        - critical
+                        - standard
+                        - batch
+                    reason:
+                      type: string
+                      enum:
+                        - held-pressure
+                        - memory-floor
+                    at:
+                      type: string
+                      format: date-time
+                counters:
+                  type: array
+                  description: Counters are the per-band persisted monotonic totals and windowed counts.
+                  maxItems: 3
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - band
+                  items:
+                    type: object
+                    required:
+                      - band
+                      - evictionsTotal
+                      - oomKillsTotal
+                      - kernelKillsTotal
+                      - restartsTotal
+                      - memHighEventsTotal
+                      - tier1RefusedTotal
+                    properties:
+                      band:
+                        type: string
+                        enum:
+                          - critical
+                          - standard
+                          - batch
+                      evictionsTotal:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      oomKillsTotal:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      kernelKillsTotal:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      restartsTotal:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      memHighEventsTotal:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      tier1RefusedTotal:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      windows:
+                        type: array
+                        description: Windows are the windowed counts, one per window and reason.
+                        maxItems: 12
+                        x-kubernetes-list-type: map
+                        x-kubernetes-list-map-keys:
+                          - window
+                          - reason
+                        items:
+                          type: object
+                          required:
+                            - window
+                            - reason
+                            - count
+                          properties:
+                            window:
+                              type: string
+                              enum:
+                                - 1h
+                                - 24h
+                            reason:
+                              type: string
+                              enum:
+                                - eviction
+                                - oom-kill
+                                - kernel-kill
+                                - restart
+                                - mem-high
+                                - tier1-refused
+                            count:
+                              type: integer
+                              format: int64
+                              minimum: 0
+                policy:
+                  type: object
+                  description: Policy is the NodeBudgetPolicy the node applied, clamped or refused.
+                  required:
+                    - name
+                    - outcome
+                  properties:
+                    name:
+                      type: string
+                      maxLength: 253
+                      pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$'
+                    resourceVersion:
+                      type: string
+                      maxLength: 64
+                    outcome:
+                      type: string
+                      enum:
+                        - applied
+                        - rejected
+                        - clamped
+                    clampedFields:
+                      type: array
+                      maxItems: 8
+                      items:
+                        type: string
+                        maxLength: 64
+                        pattern: '^[a-zA-Z][a-zA-Z0-9]*(\[[0-9]+\])?(\.[a-zA-Z][a-zA-Z0-9]*(\[[0-9]+\])?)*$'
+                    message:
+                      type: string
+                      maxLength: 256
+                writer:
+                  type: object
+                  description: Writer is how this status reaches the API server.
+                  required:
+                    - shape
+                  properties:
+                    shape:
+                      type: string
+                      enum:
+                        - annotation-relay
+                        - own-node
+                    nodeNameExtra:
+                      type: boolean
+                      description: NodeNameExtra is true when an own-node producer verified its token's node-name claim at start.
+                conditions:
+                  type: array
+                  description: Conditions are the standard conditions (Reporting, PolicyRejected, PolicyClamped, PolicyConflict), owned by the status writer.
+                  maxItems: 8
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - type
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                      - lastTransitionTime
+                      - reason
+                    properties:
+                      type:
+                        type: string
+                        maxLength: 316
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                        maxLength: 1024
+                      message:
+                        type: string
+                        maxLength: 32768
+                darwin:
+                  type: object
+                  description: Darwin is the macOS platform block. None of it is a ladder rung or a kill trigger.
+                  properties:
+                    vmPressureLevel:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      description: VMPressureLevel is the kernel's memory pressure level (1, 2 or 4).
+                    memorystatusLevelPermille:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      maximum: 1000
+                      description: MemorystatusLevelPermille is the kernel's memorystatus level, in permille.
+                    compressor:
+                      type: object
+                      properties:
+                        bytesUsed:
+                          type: integer
+                          format: int64
+                          minimum: 0
+                        bytesStored:
+                          type: integer
+                          format: int64
+                          minimum: 0
+                        segmentLimitBytes:
+                          type: integer
+                          format: int64
+                          minimum: 0
+                    swapinsTotal:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                    swapoutsTotal:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                linux:
+                  type: object
+                  description: Linux is the Linux platform block.
+                  properties:
+                    psi:
+                      type: object
+                      description: PSI is the pressure stall information per resource.
+                      properties:
+                        cpu:
+                          type: object
+                          properties:
+                            some:
+                              type: object
+                              properties:
+                                avg10Permille:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                                  maximum: 1000
+                                avg60Permille:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                                  maximum: 1000
+                                totalUs:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                            full:
+                              type: object
+                              properties:
+                                avg10Permille:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                                  maximum: 1000
+                                avg60Permille:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                                  maximum: 1000
+                                totalUs:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                        memory:
+                          type: object
+                          properties:
+                            some:
+                              type: object
+                              properties:
+                                avg10Permille:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                                  maximum: 1000
+                                avg60Permille:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                                  maximum: 1000
+                                totalUs:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                            full:
+                              type: object
+                              properties:
+                                avg10Permille:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                                  maximum: 1000
+                                avg60Permille:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                                  maximum: 1000
+                                totalUs:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                        io:
+                          type: object
+                          properties:
+                            some:
+                              type: object
+                              properties:
+                                avg10Permille:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                                  maximum: 1000
+                                avg60Permille:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                                  maximum: 1000
+                                totalUs:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                            full:
+                              type: object
+                              properties:
+                                avg10Permille:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                                  maximum: 1000
+                                avg60Permille:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                                  maximum: 1000
+                                totalUs:
+                                  type: integer
+                                  format: int64
+                                  minimum: 0
+                    memoryEvents:
+                      type: object
+                      description: MemoryEvents are the root cgroup's memory.events totals.
+                      properties:
+                        high:
+                          type: integer
+                          format: int64
+                          minimum: 0
+                        max:
+                          type: integer
+                          format: int64
+                          minimum: 0
+                        oom:
+                          type: integer
+                          format: int64
+                          minimum: 0
+                        oomKill:
+                          type: integer
+                          format: int64
+                          minimum: 0

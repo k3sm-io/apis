@@ -419,10 +419,11 @@ func updateSchema(t *testing.T) map[string]any {
 	return v["schema"].(map[string]any)["openAPIV3Schema"].(map[string]any)
 }
 
-// validate checks v against the structural-schema subset the Update manifest
-// uses (type, properties, required, items, maxItems, enum, minimum,
-// minLength, maxLength, pattern, format date-time, and x-kubernetes-list-type
-// map keys)
+// validate checks v against the structural-schema subset the Update and
+// budget manifests use (type, properties, additionalProperties,
+// maxProperties, required, items, maxItems, enum, minimum, maximum,
+// minLength, maxLength, pattern, format date-time, x-kubernetes-list-type map
+// keys, and the create-time CEL rules through celSelfTranscriptions)
 // and returns one message per violation. An object property the schema does
 // not declare is a violation: the apiserver would prune it, so a Go field
 // that writes it would be silently lost. metadata is the apiserver's own
@@ -448,9 +449,25 @@ func validate(path string, v any, sch map[string]any) []string {
 				errs = append(errs, strings.TrimPrefix(path+"."+r.(string), ".")+": required")
 			}
 		}
+		if n, ok := sch["maxProperties"].(float64); ok && float64(len(obj)) > n {
+			at("more than maxProperties %v", n)
+		}
 		props, declared := sch["properties"].(map[string]any)
 		if !declared {
-			return errs
+			// A map-shaped object (additionalProperties) validates every
+			// value against one schema; an object with neither is opaque
+			// (metadata).
+			if ap, ok := sch["additionalProperties"].(map[string]any); ok {
+				keys := make([]string, 0, len(obj))
+				for k := range obj {
+					keys = append(keys, k)
+				}
+				sort.Strings(keys)
+				for _, k := range keys {
+					errs = append(errs, validate(path+"."+k, obj[k], ap)...)
+				}
+			}
+			break
 		}
 		keys := make([]string, 0, len(obj))
 		for k := range obj {
@@ -522,6 +539,9 @@ func validate(path string, v any, sch map[string]any) []string {
 		if min, ok := sch["minimum"].(float64); ok && n < min {
 			at("below minimum %v", min)
 		}
+		if max, ok := sch["maximum"].(float64); ok && n > max {
+			at("above maximum %v", max)
+		}
 	case "boolean":
 		if _, ok := v.(bool); !ok {
 			at("want boolean, got %T", v)
@@ -529,11 +549,21 @@ func validate(path string, v any, sch map[string]any) []string {
 	default:
 		at("schema type %v is outside the validator's subset", sch["type"])
 	}
-	// On create only rules that do not read oldSelf apply; the manifest has
-	// none, so any such rule is outside the transcriptions and an error.
+	// Rules that do not read oldSelf apply on every write. Each is looked up
+	// by its exact text in celSelfTranscriptions (the budget manifests' rules,
+	// budget_crd_test.go); a rule with no transcription is an error, so a
+	// changed rule text cannot pass unevaluated.
 	for _, r := range rulesAt(sch) {
-		if !strings.Contains(r[0], "oldSelf") {
+		if strings.Contains(r[0], "oldSelf") {
+			continue
+		}
+		eval, ok := celSelfTranscriptions[r[0]]
+		if !ok {
 			at("rule %q has no transcription in this test", r[0])
+			continue
+		}
+		if !eval(v) {
+			at("%s", r[1])
 		}
 	}
 	if enum, ok := sch["enum"].([]any); ok {

@@ -1,0 +1,191 @@
+{
+  "kind": "NodeBudget",
+  "apiVersion": "budget.k3sm.io/v1alpha1",
+  "metadata": {
+    "name": "mac-worker-1"
+  },
+  "status": {
+    "observedAt": "2026-10-19T12:00:00Z",
+    "generation": 4,
+    "platform": "darwin",
+    "level": "ok",
+    "admit": true,
+    "capacity": {
+      "cpuCapacityMilli": 8000,
+      "cpuSystemReserveMilli": 500,
+      "memCapacityBytes": 17179869184,
+      "memSystemReserveBytes": 2147483648,
+      "memEvictionReserveBytes": 536870912,
+      "memAllocatableBytes": 14495514624,
+      "swapTotalBytes": 4294967296,
+      "swapUsedBytes": 1073741824
+    },
+    "signals": [
+      {
+        "id": "memory.available",
+        "unit": "bytes",
+        "value": 6442450944,
+        "warnAt": 2147483648,
+        "admitStopAt": 1610612736,
+        "criticalAt": 1073741824,
+        "evictSoftAt": 536870912,
+        "evictHardAt": 104857600,
+        "warnReleaseAt": 2684354560,
+        "admitStopReleaseAt": 2147483648,
+        "criticalReleaseAt": 1610612736,
+        "evictSoftReleaseAt": 805306368,
+        "evictHardReleaseAt": 268435456,
+        "graceNs": 90000000000,
+        "minReclaimBytes": 268435456,
+        "trend": "steady",
+        "limitingResource": "memory"
+      },
+      {
+        "id": "memory.compressor",
+        "unit": "permille",
+        "value": 210,
+        "warnAt": 500,
+        "admitStopAt": 600,
+        "criticalAt": 700,
+        "evictSoftAt": 750,
+        "evictHardAt": 800,
+        "warnReleaseAt": 450,
+        "admitStopReleaseAt": 550,
+        "criticalReleaseAt": 650,
+        "evictSoftReleaseAt": 720,
+        "evictHardReleaseAt": 780,
+        "graceNs": 60000000000,
+        "trend": "rising",
+        "limitingResource": "memory"
+      },
+      {
+        "id": "memory.swap",
+        "unit": "bytes",
+        "value": 0,
+        "warnAt": 268435456,
+        "admitStopAt": 536870912,
+        "criticalAt": 1073741824,
+        "windowNs": 60000000000,
+        "trend": "steady",
+        "limitingResource": "memory"
+      },
+      {
+        "id": "swapfs.available",
+        "unit": "bytes",
+        "value": 128849018880,
+        "warnAt": 25769803776,
+        "admitStopAt": 17179869184,
+        "criticalAt": 12884901888,
+        "evictHardAt": 8589934592,
+        "limitingResource": "swapfs"
+      },
+      {
+        "id": "nodefs.available",
+        "unit": "bytes",
+        "value": 128849018880,
+        "warnAt": 21474836480,
+        "admitStopAt": 16106127360,
+        "criticalAt": 10737418240,
+        "evictHardAt": 2147483648,
+        "evictHardReleaseAt": 10737418241,
+        "limitingResource": "nodefs"
+      },
+      {
+        "id": "imagefs.available",
+        "unit": "bytes",
+        "value": 128849018880,
+        "limitingResource": "nodefs",
+        "sharedWith": "nodefs.available"
+      },
+      {
+        "id": "pid.available",
+        "unit": "count",
+        "value": 9000,
+        "warnAt": 3000,
+        "admitStopAt": 2500,
+        "criticalAt": 1500,
+        "evictHardAt": 1000,
+        "limitingResource": "pid"
+      }
+    ],
+    "recommendation": {
+      "safeAdditionalBytes": 3221225472,
+      "basis": "memory.available"
+    },
+    "killMode": {
+      "mode": "auto",
+      "armingEpisodes": 2,
+      "reason": "observing"
+    },
+    "counters": [
+      {
+        "band": "critical",
+        "evictionsTotal": 0,
+        "oomKillsTotal": 0,
+        "kernelKillsTotal": 0,
+        "restartsTotal": 0,
+        "memHighEventsTotal": 0,
+        "tier1RefusedTotal": 0
+      },
+      {
+        "band": "standard",
+        "evictionsTotal": 0,
+        "oomKillsTotal": 0,
+        "kernelKillsTotal": 0,
+        "restartsTotal": 3,
+        "memHighEventsTotal": 0,
+        "tier1RefusedTotal": 0
+      },
+      {
+        "band": "batch",
+        "evictionsTotal": 5,
+        "oomKillsTotal": 1,
+        "kernelKillsTotal": 1,
+        "restartsTotal": 7,
+        "memHighEventsTotal": 0,
+        "tier1RefusedTotal": 0,
+        "windows": [
+          {
+            "window": "1h",
+            "reason": "eviction",
+            "count": 1
+          },
+          {
+            "window": "24h",
+            "reason": "eviction",
+            "count": 5
+          }
+        ]
+      }
+    ],
+    "policy": {
+      "name": "default",
+      "resourceVersion": "4711",
+      "outcome": "applied"
+    },
+    "darwin": {
+      "vmPressureLevel": 1,
+      "memorystatusLevelPermille": 640,
+      "compressor": {
+        "bytesUsed": 1073741824,
+        "bytesStored": 3221225472,
+        "segmentLimitBytes": 8589934592
+      },
+      "swapinsTotal": 1200,
+      "swapoutsTotal": 3400
+    },
+    "writer": {
+      "shape": "annotation-relay"
+    },
+    "conditions": [
+      {
+        "type": "Reporting",
+        "status": "True",
+        "observedGeneration": 1,
+        "lastTransitionTime": "2026-10-19T12:00:00Z",
+        "reason": "Reporting",
+        "message": "the node's budget is current"
+      }
+    ]
+  }
+}
