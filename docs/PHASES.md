@@ -2,8 +2,8 @@
 repo: apis
 schema: phases/v1
 current_phase: M7
-updated: 2026-10-10
-updated_by: M19 Amendment A (docs/m19-plan.md R3 — the opt-in module signature check; apis slice)
+updated: 2026-10-18
+updated_by: M21 encode (docs/m21-plan.md, the cooperative node budget; apis slice)
 
 phases:
   - id: M0
@@ -584,6 +584,72 @@ phases:
             check: "buf lint + generate-diff + breaking all green; TestHandlerTable pins the wasm row, the numeric pin and the unknown-handler refusal"
             method: unit
 
+  - id: M21
+    title: the cooperative node budget (apis slice: the NodeBudget contract, the page ABI, the guest/v1 fields)
+    status: todo
+    strategy: hard cut
+    depends_on: []
+    note: "Authoritative input: docs/m21-plan.md (workspace); its BINDING block governs. apis is Wave 1 of each M21 phase. Every change is additive: a new CRD group budget.k3sm.io/v1alpha1, a new page ABI package, and new guest/v1 fields and one RPC with stable field numbers, so no named exception applies. The contract is platform-neutral: generic signal records with optional Darwin and Linux platform blocks, one schema, so an independent Linux producer can implement the same CRD and page. Hard cut; ships as the last item of the next release after v0.1.7."
+    subphases:
+      - id: M21.2
+        title: the NodeBudget and NodeBudgetPolicy contract
+        status: todo
+        strategy: hard cut
+        depends_on: []
+        note: "Payload from a node is untrusted: a schema version, a byte bound and a strict decoder, the precedent of the interconnect annotation."
+        deliverables:
+          - id: M21.2-d1
+            done: false
+            desc: "budget/v1alpha1: NodeBudget (cluster-scoped, name = node, status only) with generic signal records, the derived level, admit, the evict deadline, the recommendation, per-band counters including tier1RefusedTotal, armingEpisodes, observedAt, Reporting, status.writer {shape: annotation-relay | own-node, nodeNameExtra}, and optional darwin and linux platform blocks in one schema; NodeBudgetPolicy with node classes, threshold overrides, reserves, dwells, half-lives and the tier-1 mode auto|on|off and tier1CooloffSeconds (default 1800); CEL for the threshold ladder order and compiled minimums for the tier-1 grace, hold and kill-rate cap."
+          - id: M21.2-d2
+            done: false
+            desc: "The budget.k3sm.io/status and budget.k3sm.io/policy annotation keys and the annotation payload type with a schema version, a byte bound and a strict decoder; no aggregation labels on either CRD."
+          - id: M21.2-d3
+            done: false
+            desc: "Golden NodeBudget status documents (one Darwin, one Linux) that a validating apply must accept, for other producers' conformance runs."
+        acceptance:
+          - id: M21.2-a1
+            met: false
+            check: "go test ./budget/v1alpha1 -run TestNodeBudgetAnnotationStrictDecode passes; the CRD YAML is regenerated and committed; go mod tidy shows no diff"
+            method: unit
+      - id: M21.4
+        title: the budget page ABI
+        status: todo
+        strategy: hard cut
+        depends_on:
+          - apis:M21.2
+        note: "One encoder for both Go writers (the node agent and the vm guest init); readers in other languages check against committed fixture bytes, never by importing this module."
+        deliverables:
+          - id: M21.4-d1
+            done: false
+            desc: "budget/v1alpha1/page.go: the fixed little-endian page layout (arm64 and x86_64), every field 8-byte aligned, the INT64_MIN absent sentinel, the seqlock word, a notifyEpoch word bumped only on a level, admit, threshold or generation change, generic signal records with Darwin and Linux sub-structs, this node's per-band running totals (tier1RefusedTotal among them), armingEpisodes, and the ABI major constant carried in the file name budget.v<major>.page."
+          - id: M21.4-d2
+            done: false
+            desc: "A byte-budget table with at least 25% headroom; the two in-pod path constants (Linux /run/k3sm/budget/budget.v1.page, native Darwin /var/lib/k3sm/budget/budget.v1.page)."
+          - id: M21.4-d3
+            done: false
+            desc: "Golden page fixtures committed as bytes with their sha256 for the SDK and other producers."
+        acceptance:
+          - id: M21.4-a1
+            met: false
+            check: "go test ./budget/v1alpha1 -run TestPageLayoutGoldenFixture passes on the committed fixtures"
+            method: unit
+      - id: M21.8
+        title: guest/v1: vm container memory limits and the budget push
+        status: todo
+        strategy: hard cut
+        depends_on:
+          - apis:M21.4
+        note: "Additive fields and one unary RPC; the caller is the runtime daemon, so the provider to runtime contract does not change."
+        deliverables:
+          - id: M21.8-d1
+            done: false
+            desc: "GuestContainer memory_limit_bytes and memory_high_bytes; the oom_killed report on ContainerExited; a unary PublishBudget RPC carrying the page bytes, gated by a Health capability string."
+        acceptance:
+          - id: M21.8-a1
+            met: false
+            check: "go test ./guest/v1 -run TestGuestContainerMemoryLimitFields passes; buf lint and breaking are green"
+            method: unit
 ---
 
 # apis — Phase roadmap
@@ -927,3 +993,20 @@ unknown handler or backend. `SANDBOX_BACKEND_WASM` takes 5; M15's `container-vm`
 - ✅ `M19.1-d1` **`runtime/v1`**: `HandlerWasm = "wasm"` + a `DefaultHandlerConfig` row → `SANDBOX_BACKEND_WASM = 5`.
 - ✅ `M19.1-d2` **`runtime/v1`**: the canonical wasm platform tuple and its aliases, `ConditionWasmBackendAvailable`, the two `k3sm.io/wasm-signature*` annotation constants and the additive `PodBox.wasm_signature` message (Amendment A), as exported contracts.
 - ✅ `M19.1-d3` `TestHandlerTable` pins the row, the unknown-handler refusal and `SandboxBackend_name[5] == WASM`; goldens and the buf baseline refreshed.
+
+## M21: the cooperative node budget (apis slice) ⬜
+`apis` is **Wave 1** of each M21 phase (`docs/m21-plan.md`, workspace, is authoritative). The node
+publishes its budget, its pressure and the exact thresholds it acts on; `apis` owns that contract.
+It is platform-neutral: generic signal records with optional Darwin and Linux blocks, so a Linux
+producer can implement the same CRD and page. Every change is additive. **Hard cut.**
+
+### M21.2 NodeBudget and NodeBudgetPolicy ⬜
+The `budget.k3sm.io/v1alpha1` CRDs, the annotation keys and a strictly decoded, bounded payload
+type, and golden status documents for other producers.
+
+### M21.4 the budget page ABI ⬜
+The fixed little-endian page layout, one encoder, the ABI major, `notifyEpoch`, the in-pod path
+constants, a byte budget with headroom and golden fixture bytes with their digest.
+
+### M21.8 guest/v1 memory limits and the budget push ⬜
+`GuestContainer` memory limit and high fields, `oom_killed`, and the `PublishBudget` RPC.
