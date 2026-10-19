@@ -22,7 +22,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
+	"strconv"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -50,6 +52,11 @@ var (
 	// case-folded key, trailing data, or a value that fails validation. The
 	// relay reports it as Reporting False with ReasonAnnotationMalformed.
 	ErrInvalidBudgetAnnotation = errors.New("budgetv1alpha1: invalid budget annotation")
+	// ErrBudgetAnnotationTooLarge is wrapped, beside
+	// ErrInvalidBudgetAnnotation, by a payload over MaxBudgetAnnotationBytes,
+	// which is refused unparsed. The relay reports it as Reporting False
+	// with ReasonAnnotationTooLarge.
+	ErrBudgetAnnotationTooLarge = errors.New("budgetv1alpha1: budget annotation too large")
 )
 
 // NodeBudgetReport is the payload of the AnnotationStatus annotation, the
@@ -98,11 +105,16 @@ func (r *NodeBudgetReport) Encode() (string, error) {
 // ParseNodeBudgetReport decodes and validates an AnnotationStatus value with
 // the strict decoder (see decodeBudgetAnnotation). A missing or unknown
 // schema returns ErrUnknownBudgetSchema; every other failure wraps
-// ErrInvalidBudgetAnnotation.
+// ErrInvalidBudgetAnnotation. Producer-vocabulary values this release does
+// not know decode to their "unknown" constants, and windowed counts of an
+// unknown reason are summed into one entry per window.
 func ParseNodeBudgetReport(value string) (NodeBudgetReport, error) {
 	var r NodeBudgetReport
 	if err := decodeBudgetAnnotation(value, &r); err != nil {
 		return NodeBudgetReport{}, err
+	}
+	for i := range r.Counters {
+		r.Counters[i].Windows = mergeUnknownWindows(r.Counters[i].Windows)
 	}
 	if err := r.Validate(); err != nil {
 		return NodeBudgetReport{}, err
@@ -176,6 +188,33 @@ func ParseNodeBudgetDesiredPolicy(value string) (NodeBudgetDesiredPolicy, error)
 	return d, nil
 }
 
+// mergeUnknownWindows sums the windowed counts whose reason decoded to
+// CounterUnknown into one entry per window, so several reasons a newer
+// producer added do not collide on the (window, reason) key. A sum that would
+// overflow saturates at the largest int64.
+func mergeUnknownWindows(ws []WindowCount) []WindowCount {
+	var out []WindowCount
+	at := map[CounterWindow]int{}
+	for _, w := range ws {
+		if w.Reason != CounterUnknown {
+			out = append(out, w)
+			continue
+		}
+		i, ok := at[w.Window]
+		if !ok {
+			at[w.Window] = len(out)
+			out = append(out, w)
+			continue
+		}
+		if w.Count > 0 && out[i].Count > math.MaxInt64-w.Count {
+			out[i].Count = math.MaxInt64
+		} else {
+			out[i].Count += w.Count
+		}
+	}
+	return out
+}
+
 // encodeBudgetAnnotation marshals v and enforces the size bound.
 func encodeBudgetAnnotation(v any) (string, error) {
 	b, err := json.Marshal(v)
@@ -183,16 +222,18 @@ func encodeBudgetAnnotation(v any) (string, error) {
 		return "", fmt.Errorf("%w: %w", ErrInvalidBudgetAnnotation, err)
 	}
 	if len(b) > MaxBudgetAnnotationBytes {
-		return "", fmt.Errorf("%w: payload is %d bytes, at most %d", ErrInvalidBudgetAnnotation, len(b), MaxBudgetAnnotationBytes)
+		return "", fmt.Errorf("%w: %w: payload is %d bytes, at most %d", ErrInvalidBudgetAnnotation, ErrBudgetAnnotationTooLarge, len(b), MaxBudgetAnnotationBytes)
 	}
 	return string(b), nil
 }
 
 // decodeBudgetAnnotation is the strict decoder. In order, it:
 //
-//  1. refuses a value over MaxBudgetAnnotationBytes before any parsing;
-//  2. reads the schema on its own, so a future schema whose fields changed
-//     type is reported as ErrUnknownBudgetSchema, not as malformed;
+//  1. refuses a value over MaxBudgetAnnotationBytes before any parsing
+//     (ErrBudgetAnnotationTooLarge);
+//  2. reads the schema on its own as raw JSON: absent, or anything but
+//     exactly 1 (a string, 1.0, 2), is ErrUnknownBudgetSchema, so a future
+//     schema whose fields changed type is never reported as malformed;
 //  3. decodes with unknown fields disallowed;
 //  4. refuses any data after the one JSON value;
 //  5. refuses a key repeated within one object; and
@@ -202,19 +243,19 @@ func encodeBudgetAnnotation(v any) (string, error) {
 // Validation of the decoded value is the caller's next step.
 func decodeBudgetAnnotation(value string, v any) error {
 	if len(value) > MaxBudgetAnnotationBytes {
-		return fmt.Errorf("%w: payload is %d bytes, at most %d", ErrInvalidBudgetAnnotation, len(value), MaxBudgetAnnotationBytes)
+		return fmt.Errorf("%w: %w: payload is %d bytes, at most %d", ErrInvalidBudgetAnnotation, ErrBudgetAnnotationTooLarge, len(value), MaxBudgetAnnotationBytes)
 	}
 	var probe struct {
-		Schema *int `json:"schema"`
+		Schema json.RawMessage `json:"schema"`
 	}
 	if err := json.Unmarshal([]byte(value), &probe); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidBudgetAnnotation, err)
 	}
-	if probe.Schema == nil {
+	if probe.Schema == nil || string(probe.Schema) == "null" {
 		return fmt.Errorf("%w: payload has no schema", ErrUnknownBudgetSchema)
 	}
-	if *probe.Schema != BudgetAnnotationSchema {
-		return fmt.Errorf("%w: schema %d, want %d", ErrUnknownBudgetSchema, *probe.Schema, BudgetAnnotationSchema)
+	if want := strconv.Itoa(BudgetAnnotationSchema); string(probe.Schema) != want {
+		return fmt.Errorf("%w: schema %.32s, want %s", ErrUnknownBudgetSchema, probe.Schema, want)
 	}
 	dec := json.NewDecoder(strings.NewReader(value))
 	dec.DisallowUnknownFields()

@@ -35,15 +35,22 @@ const (
 	// AnnotationPolicy is the Node annotation the server relay writes: a
 	// NodeBudgetDesiredPolicy payload (Encode, ParseNodeBudgetDesiredPolicy).
 	AnnotationPolicy = "budget.k3sm.io/policy"
-	// AnnotationBand is the Pod annotation that lowers a pod's band; its
-	// value is a Band. Only "batch" makes a pod tier-1 eligible, and it can
-	// never raise a pod above the band its priority gives.
+	// AnnotationBand is the Pod annotation that lowers a pod's band. "batch"
+	// is the only meaningful value: it makes the pod tier-1 eligible (unless
+	// its priority makes it critical, which the annotation never overrides).
+	// Any other value leaves the pod in the band its priority gives.
 	AnnotationBand = "budget.k3sm.io/band"
 	// AnnotationPage is the Pod annotation that opts a pod into reading the
 	// budget page; its value is "true".
 	AnnotationPage = "budget.k3sm.io/page"
 	// TaintAdmitStop is the node taint key the relay applies while a node's
-	// admit is false. It is a scheduler hint added beside, never instead of,
-	// the platform's own pressure conditions and taints.
+	// admit is false, always with effect TaintAdmitStopEffect. It is a
+	// scheduler hint added beside, never instead of, the platform's own
+	// pressure conditions and taints.
 	TaintAdmitStop = "budget.k3sm.io/admit-stop"
+	// TaintAdmitStopEffect is the only effect TaintAdmitStop carries:
+	// PreferNoSchedule, a hint to place new pods elsewhere. It is never
+	// NoSchedule and never NoExecute; evicting running pods is the eviction
+	// tiers' job, not a taint's.
+	TaintAdmitStopEffect = "PreferNoSchedule"
 )

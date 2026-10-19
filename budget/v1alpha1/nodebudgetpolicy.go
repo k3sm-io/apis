@@ -51,15 +51,18 @@ type NodeBudgetPolicy struct {
 	Spec NodeBudgetPolicySpec `json:"spec"`
 }
 
-// NodeBudgetPolicySpec is a policy. Every field is optional; an unset field
-// keeps the producer's shipped default. The ladder fields follow the rules of
+// NodeBudgetPolicySpec is a policy. Every field is optional, and the CRD
+// defaults none of them: an unset field means the producer's shipped default,
+// which for the fields below is the pinned Default* constant, so each
+// default has one owner. The ladder fields follow the rules of
 // BudgetSignal; the tier-1 timers are bounded by the floors in floors.go.
 type NodeBudgetPolicySpec struct {
 	// NodeSelector selects the nodes the policy applies to by exact label
 	// match; empty selects every node.
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 	// Priority orders policies that select the same node: the highest wins,
-	// and a tie goes to the lexically smallest name (SelectPolicy).
+	// and a tie goes to the lexically smallest name (SelectPolicy). Unset is
+	// 0.
 	Priority int32 `json:"priority,omitempty"`
 	// Thresholds override the ladder of individual signals, one entry per
 	// signal.
@@ -69,22 +72,22 @@ type NodeBudgetPolicySpec struct {
 	Reserves *BudgetReserves `json:"reserves,omitempty"`
 	// History overrides the recommendation's peak history.
 	History *BudgetHistory `json:"history,omitempty"`
-	// Mode is the tier-1 kill mode. Empty means KillModeAuto (the CRD
-	// defaults it).
+	// Mode is the tier-1 kill mode. Unset means KillModeAuto. In YAML the
+	// value must be quoted ("on", "off"): unquoted, YAML 1.1 reads on and off
+	// as booleans and the object is refused.
 	Mode KillModeName `json:"mode,omitempty"`
 	// Tier1GraceSeconds is the SIGTERM grace of a tier-1 eviction, at least
 	// MinTier1GraceSeconds.
 	Tier1GraceSeconds *int32 `json:"tier1GraceSeconds,omitempty"`
 	// Tier1HeldSeconds is how long the held-pressure condition must hold, at
-	// least MinTier1HeldSeconds (the CRD defaults it to
-	// DefaultTier1HeldSeconds).
+	// least MinTier1HeldSeconds. Unset means DefaultTier1HeldSeconds.
 	Tier1HeldSeconds *int32 `json:"tier1HeldSeconds,omitempty"`
 	// Tier1MaxDeliveriesPerHour caps tier-1 deliveries per node per hour,
 	// from MinTier1DeliveriesPerHour to MaxTier1DeliveriesPerHour.
 	Tier1MaxDeliveriesPerHour *int32 `json:"tier1MaxDeliveriesPerHour,omitempty"`
 	// Tier1CooloffSeconds is the least time between two tier-1 deliveries on
-	// one node, at least MinTier1CooloffSeconds (the CRD defaults it to
-	// DefaultTier1CooloffSeconds).
+	// one node, at least MinTier1CooloffSeconds. Unset means
+	// DefaultTier1CooloffSeconds.
 	Tier1CooloffSeconds *int32 `json:"tier1CooloffSeconds,omitempty"`
 	// PSIHeldPermille is the PSI memory level, in permille, that counts as
 	// held pressure where PSI exists.
@@ -92,41 +95,45 @@ type NodeBudgetPolicySpec struct {
 }
 
 // SignalThresholds overrides one signal's ladder. Rungs and releases are in
-// the unit the node publishes for the signal (BudgetSignal.Unit).
+// the signal's one canonical unit (SignalID.Unit: bytes, permille for
+// memory.compressor, a count for pid.available), so a threshold means the
+// same thing on every node. Each threshold is a value of the signal itself,
+// and each release is the value at which that rung clears.
 type SignalThresholds struct {
 	// Signal names the signal.
 	Signal SignalID `json:"signal"`
 
-	// WarnAt is the warn rung.
-	WarnAt *int64 `json:"warnAt,omitempty"`
-	// AdmitStopAt is the admit-stop rung.
-	AdmitStopAt *int64 `json:"admitStopAt,omitempty"`
-	// CriticalAt is the critical rung.
-	CriticalAt *int64 `json:"criticalAt,omitempty"`
-	// EvictSoftAt is the evict-soft rung (not for memory.swap).
-	EvictSoftAt *int64 `json:"evictSoftAt,omitempty"`
-	// EvictHardAt is the hard trip.
-	EvictHardAt *int64 `json:"evictHardAt,omitempty"`
+	// WarnThreshold is the warn rung.
+	WarnThreshold *int64 `json:"warnThreshold,omitempty"`
+	// AdmitStopThreshold is the admit-stop rung.
+	AdmitStopThreshold *int64 `json:"admitStopThreshold,omitempty"`
+	// CriticalThreshold is the critical rung.
+	CriticalThreshold *int64 `json:"criticalThreshold,omitempty"`
+	// EvictSoftThreshold is the evict-soft rung (not for memory.swap).
+	EvictSoftThreshold *int64 `json:"evictSoftThreshold,omitempty"`
+	// EvictHardThreshold is the hard trip.
+	EvictHardThreshold *int64 `json:"evictHardThreshold,omitempty"`
 
-	// WarnReleaseAt is the warn release.
-	WarnReleaseAt *int64 `json:"warnReleaseAt,omitempty"`
-	// AdmitStopReleaseAt is the admit-stop release.
-	AdmitStopReleaseAt *int64 `json:"admitStopReleaseAt,omitempty"`
-	// CriticalReleaseAt is the critical release.
-	CriticalReleaseAt *int64 `json:"criticalReleaseAt,omitempty"`
-	// EvictSoftReleaseAt is the evict-soft release.
-	EvictSoftReleaseAt *int64 `json:"evictSoftReleaseAt,omitempty"`
-	// EvictHardReleaseAt is the hard-trip release.
-	EvictHardReleaseAt *int64 `json:"evictHardReleaseAt,omitempty"`
+	// WarnRelease is the warn release.
+	WarnRelease *int64 `json:"warnRelease,omitempty"`
+	// AdmitStopRelease is the admit-stop release.
+	AdmitStopRelease *int64 `json:"admitStopRelease,omitempty"`
+	// CriticalRelease is the critical release.
+	CriticalRelease *int64 `json:"criticalRelease,omitempty"`
+	// EvictSoftRelease is the evict-soft release.
+	EvictSoftRelease *int64 `json:"evictSoftRelease,omitempty"`
+	// EvictHardRelease is the hard-trip release.
+	EvictHardRelease *int64 `json:"evictHardRelease,omitempty"`
 
-	// GraceSeconds is the evict-soft grace.
+	// GraceSeconds is the evict-soft grace, in seconds.
 	GraceSeconds *int32 `json:"graceSeconds,omitempty"`
 	// MinReclaimBytes is the least an eviction on this signal reclaims.
 	MinReclaimBytes *int64 `json:"minReclaimBytes,omitempty"`
 	// DwellSeconds is how long a level must hold before it is published.
 	// Optional, with no default: unset keeps the producer's behaviour.
 	DwellSeconds *int32 `json:"dwellSeconds,omitempty"`
-	// WindowSeconds is the window of a growth signal (memory.swap).
+	// WindowSeconds is the window, in seconds, of a growth signal
+	// (memory.swap).
 	WindowSeconds *int32 `json:"windowSeconds,omitempty"`
 }
 
@@ -143,14 +150,14 @@ type BudgetReserves struct {
 
 // BudgetHistory overrides the recommendation's decayed peak history.
 type BudgetHistory struct {
-	// MemoryHalfLifeSeconds is the memory history half-life (the CRD
-	// defaults it to DefaultMemoryHalfLifeSeconds).
+	// MemoryHalfLifeSeconds is the memory history half-life. Unset means
+	// DefaultMemoryHalfLifeSeconds.
 	MemoryHalfLifeSeconds *int32 `json:"memoryHalfLifeSeconds,omitempty"`
-	// CPUHalfLifeSeconds is the CPU history half-life (the CRD defaults it
-	// to DefaultCPUHalfLifeSeconds).
+	// CPUHalfLifeSeconds is the CPU history half-life. Unset means
+	// DefaultCPUHalfLifeSeconds.
 	CPUHalfLifeSeconds *int32 `json:"cpuHalfLifeSeconds,omitempty"`
-	// MarginPermille is the margin taken off the recommendation (the CRD
-	// defaults it to DefaultMarginPermille).
+	// MarginPermille is the margin taken off the recommendation. Unset
+	// means DefaultMarginPermille.
 	MarginPermille *int32 `json:"marginPermille,omitempty"`
 }
 
@@ -165,19 +172,19 @@ type NodeBudgetPolicyList struct {
 
 // rungs returns the entry's rungs in ladder order.
 func (t *SignalThresholds) rungs() [5]*int64 {
-	return [5]*int64{t.WarnAt, t.AdmitStopAt, t.CriticalAt, t.EvictSoftAt, t.EvictHardAt}
+	return [5]*int64{t.WarnThreshold, t.AdmitStopThreshold, t.CriticalThreshold, t.EvictSoftThreshold, t.EvictHardThreshold}
 }
 
 // releases returns the entry's releases in ladder order.
 func (t *SignalThresholds) releases() [5]*int64 {
-	return [5]*int64{t.WarnReleaseAt, t.AdmitStopReleaseAt, t.CriticalReleaseAt, t.EvictSoftReleaseAt, t.EvictHardReleaseAt}
+	return [5]*int64{t.WarnRelease, t.AdmitStopRelease, t.CriticalRelease, t.EvictSoftRelease, t.EvictHardRelease}
 }
 
 // rungNames and releaseNames are the JSON names of the ladder fields, in
 // ladder order.
 var (
-	rungNames    = [5]string{"warnAt", "admitStopAt", "criticalAt", "evictSoftAt", "evictHardAt"}
-	releaseNames = [5]string{"warnReleaseAt", "admitStopReleaseAt", "criticalReleaseAt", "evictSoftReleaseAt", "evictHardReleaseAt"}
+	rungNames    = [5]string{"warnThreshold", "admitStopThreshold", "criticalThreshold", "evictSoftThreshold", "evictHardThreshold"}
+	releaseNames = [5]string{"warnRelease", "admitStopRelease", "criticalRelease", "evictSoftRelease", "evictHardRelease"}
 )
 
 // checkLadder applies the ladder rules to one signal: every pair of set
@@ -223,7 +230,7 @@ func checkLadder(sig SignalID, rungs, releases [5]*int64) error {
 		}
 	}
 	if sig == SignalMemorySwap && rungs[3] != nil {
-		return errors.New("memory.swap has no evictSoftAt rung")
+		return errors.New("memory.swap has no evictSoftThreshold rung")
 	}
 	return nil
 }
@@ -311,26 +318,28 @@ func (s *NodeBudgetPolicySpec) validate() error {
 }
 
 // ApplyFloors returns a copy of s with every tier-1 timer raised (or, for
-// the hourly cap, lowered) to its compiled floor, and the JSON paths of the
-// fields it changed, in a fixed order. Unset fields stay unset: the
-// producer's own defaults already respect the floors. s is not modified. A
-// node that clamps anything reports PolicyClamped with these paths.
-func ApplyFloors(s NodeBudgetPolicySpec) (NodeBudgetPolicySpec, []string) {
+// the hourly cap, lowered) to its compiled floor, and the PolicyFields it
+// changed, in a fixed order. Unset fields stay unset: the producer's own
+// defaults already respect the floors. s is not modified. A node that clamps
+// anything reports outcome clamped with these fields in
+// AppliedPolicy.ClampedFields. (Reserve clamping against the measured
+// capacity is the producer's, since only it knows the capacity.)
+func ApplyFloors(s NodeBudgetPolicySpec) (NodeBudgetPolicySpec, []PolicyField) {
 	out := *s.DeepCopy()
-	var clamped []string
-	raise := func(name string, p *int32, floor int32) {
+	var clamped []PolicyField
+	raise := func(name PolicyField, p *int32, floor int32) {
 		if p != nil && *p < floor {
 			*p = floor
 			clamped = append(clamped, name)
 		}
 	}
-	raise("tier1GraceSeconds", out.Tier1GraceSeconds, MinTier1GraceSeconds)
-	raise("tier1HeldSeconds", out.Tier1HeldSeconds, MinTier1HeldSeconds)
+	raise(FieldTier1GraceSeconds, out.Tier1GraceSeconds, MinTier1GraceSeconds)
+	raise(FieldTier1HeldSeconds, out.Tier1HeldSeconds, MinTier1HeldSeconds)
 	if p := out.Tier1MaxDeliveriesPerHour; p != nil && *p > MaxTier1DeliveriesPerHour {
 		*p = MaxTier1DeliveriesPerHour
-		clamped = append(clamped, "tier1MaxDeliveriesPerHour")
+		clamped = append(clamped, FieldTier1MaxDeliveriesPerHour)
 	}
-	raise("tier1CooloffSeconds", out.Tier1CooloffSeconds, MinTier1CooloffSeconds)
+	raise(FieldTier1CooloffSeconds, out.Tier1CooloffSeconds, MinTier1CooloffSeconds)
 	return out, clamped
 }
 
@@ -378,11 +387,11 @@ func SelectPolicy(policies []NodeBudgetPolicy, nodeLabels map[string]string) (*N
 // DeepCopyInto copies the receiver into out.
 func (in *SignalThresholds) DeepCopyInto(out *SignalThresholds) {
 	*out = *in
-	out.WarnAt, out.AdmitStopAt, out.CriticalAt = clonePtr(in.WarnAt), clonePtr(in.AdmitStopAt), clonePtr(in.CriticalAt)
-	out.EvictSoftAt, out.EvictHardAt = clonePtr(in.EvictSoftAt), clonePtr(in.EvictHardAt)
-	out.WarnReleaseAt, out.AdmitStopReleaseAt = clonePtr(in.WarnReleaseAt), clonePtr(in.AdmitStopReleaseAt)
-	out.CriticalReleaseAt, out.EvictSoftReleaseAt = clonePtr(in.CriticalReleaseAt), clonePtr(in.EvictSoftReleaseAt)
-	out.EvictHardReleaseAt = clonePtr(in.EvictHardReleaseAt)
+	out.WarnThreshold, out.AdmitStopThreshold, out.CriticalThreshold = clonePtr(in.WarnThreshold), clonePtr(in.AdmitStopThreshold), clonePtr(in.CriticalThreshold)
+	out.EvictSoftThreshold, out.EvictHardThreshold = clonePtr(in.EvictSoftThreshold), clonePtr(in.EvictHardThreshold)
+	out.WarnRelease, out.AdmitStopRelease = clonePtr(in.WarnRelease), clonePtr(in.AdmitStopRelease)
+	out.CriticalRelease, out.EvictSoftRelease = clonePtr(in.CriticalRelease), clonePtr(in.EvictSoftRelease)
+	out.EvictHardRelease = clonePtr(in.EvictHardRelease)
 	out.GraceSeconds, out.MinReclaimBytes = clonePtr(in.GraceSeconds), clonePtr(in.MinReclaimBytes)
 	out.DwellSeconds, out.WindowSeconds = clonePtr(in.DwellSeconds), clonePtr(in.WindowSeconds)
 }

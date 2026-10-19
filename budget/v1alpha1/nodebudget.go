@@ -31,16 +31,12 @@ const (
 	MaxBudgetSignals = 8
 	// MaxBudgetConditions is the most conditions a NodeBudget status carries.
 	MaxBudgetConditions = 8
-	// MaxClampedFields is the most field paths AppliedPolicy.ClampedFields
-	// lists.
+	// MaxClampedFields is the most entries AppliedPolicy.ClampedFields
+	// lists: one per PolicyField.
 	MaxClampedFields = 8
-	// MaxClampedFieldBytes is the longest field path in ClampedFields.
-	MaxClampedFieldBytes = 64
 	// MaxPolicyResourceVersionBytes is the longest policy resourceVersion an
 	// observation or a desired-policy payload carries.
 	MaxPolicyResourceVersionBytes = 64
-	// MaxPolicyMessageBytes is the longest AppliedPolicy.Message.
-	MaxPolicyMessageBytes = 256
 )
 
 // ErrInvalidNodeBudget is wrapped by every NodeBudget validation error.
@@ -67,7 +63,9 @@ type NodeBudgetStatus struct {
 	// Writer is how this status reaches the API server.
 	Writer *BudgetWriter `json:"writer,omitempty"`
 	// Conditions are the standard conditions (ConditionReporting and the
-	// policy conditions), at most MaxBudgetConditions.
+	// policy conditions), at most MaxBudgetConditions. They are owned by the
+	// status writer (the relay, or an own-node producer); a node's
+	// annotation payload never carries them.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
@@ -78,8 +76,10 @@ type NodeBudgetStatus struct {
 type NodeBudgetObservation struct {
 	// ObservedAt is when the node took the observation.
 	ObservedAt metav1.Time `json:"observedAt,omitzero"`
-	// Generation bumps on a producer restart and on a policy change.
-	Generation int64 `json:"generation,omitempty"`
+	// ProducerGeneration is the producer's own generation, not the
+	// object's metadata.generation: it bumps on a producer restart and on a
+	// policy change.
+	ProducerGeneration int64 `json:"producerGeneration,omitempty"`
 	// Platform names the platform block the producer fills.
 	Platform Platform `json:"platform,omitempty"`
 
@@ -92,10 +92,9 @@ type NodeBudgetObservation struct {
 	// AdmitReasonSignal names the signal that blocks admission. Empty while
 	// Admit is true.
 	AdmitReasonSignal SignalID `json:"admitReasonSignal,omitempty"`
-	// EvictDeadlineNs is the wall-clock time, in Unix nanoseconds, at which
-	// the evict-soft grace runs out: the time the soft rung was first met
-	// plus its grace. Set only at level evicting.
-	EvictDeadlineNs *int64 `json:"evictDeadlineNs,omitempty"`
+	// EvictDeadline is when the evict-soft grace runs out: the time the soft
+	// rung was first met plus its grace. Set only at level evicting.
+	EvictDeadline *metav1.Time `json:"evictDeadline,omitempty"`
 
 	// Capacity is the node's capacity and reserves.
 	Capacity BudgetCapacity `json:"capacity,omitzero"`
@@ -112,8 +111,14 @@ type NodeBudgetObservation struct {
 	// Counters are the per-band monotonic totals, at most one entry per
 	// band.
 	Counters []BandCounters `json:"counters,omitempty"`
-	// Policy is the policy the node applied, or refused.
+	// Policy is the policy the node was last sent and what it did with it.
 	Policy *AppliedPolicy `json:"policy,omitempty"`
+	// InForce names the policy the node actually runs. It equals Policy's
+	// name and resourceVersion when Policy was applied or clamped; when
+	// Policy was rejected it names the last valid policy the node kept.
+	// Absent while the producer's shipped defaults are in force (no policy
+	// selects the node, or none was ever valid).
+	InForce *PolicyRef `json:"inForce,omitempty"`
 
 	// Darwin is the macOS platform block.
 	Darwin *DarwinSignals `json:"darwin,omitempty"`
@@ -144,8 +149,9 @@ type BudgetCapacity struct {
 }
 
 // BudgetSignal is one generic signal record. Values, rungs and releases are
-// in Unit; durations are nanoseconds. A nil field is unset or could not be
-// sampled.
+// in Unit, which must be the signal's canonical unit (SignalID.Unit);
+// durations are whole seconds. A nil field is unset or could not be sampled.
+// (The budget page carries the same durations in nanoseconds.)
 //
 // The five rungs are strictly ordered in the direction of rising pressure
 // (descending for an "*.available" signal, see IsDescending), and each
@@ -155,44 +161,46 @@ type BudgetCapacity struct {
 type BudgetSignal struct {
 	// ID names the signal.
 	ID SignalID `json:"id"`
-	// Unit is the unit of Value and of every rung and release.
+	// Unit is the unit of Value and of every rung and release; always
+	// ID.Unit().
 	Unit SignalUnit `json:"unit"`
 	// Value is the current reading.
 	Value *int64 `json:"value,omitempty"`
 
-	// WarnAt is the warn rung.
-	WarnAt *int64 `json:"warnAt,omitempty"`
-	// AdmitStopAt is the rung at which the node stops admitting work.
-	AdmitStopAt *int64 `json:"admitStopAt,omitempty"`
-	// CriticalAt is the critical rung.
-	CriticalAt *int64 `json:"criticalAt,omitempty"`
-	// EvictSoftAt is the rung that starts the evict-soft grace (tier 1).
-	EvictSoftAt *int64 `json:"evictSoftAt,omitempty"`
-	// EvictHardAt is the hard trip (tier 2).
-	EvictHardAt *int64 `json:"evictHardAt,omitempty"`
+	// WarnThreshold is the warn rung.
+	WarnThreshold *int64 `json:"warnThreshold,omitempty"`
+	// AdmitStopThreshold is the rung at which the node stops admitting work.
+	AdmitStopThreshold *int64 `json:"admitStopThreshold,omitempty"`
+	// CriticalThreshold is the critical rung.
+	CriticalThreshold *int64 `json:"criticalThreshold,omitempty"`
+	// EvictSoftThreshold is the rung that starts the evict-soft grace (tier 1).
+	EvictSoftThreshold *int64 `json:"evictSoftThreshold,omitempty"`
+	// EvictHardThreshold is the hard trip (tier 2).
+	EvictHardThreshold *int64 `json:"evictHardThreshold,omitempty"`
 
-	// WarnReleaseAt is the value at which the warn rung releases.
-	WarnReleaseAt *int64 `json:"warnReleaseAt,omitempty"`
-	// AdmitStopReleaseAt is the value at which admission resumes.
-	AdmitStopReleaseAt *int64 `json:"admitStopReleaseAt,omitempty"`
-	// CriticalReleaseAt is the value at which the critical rung releases.
-	CriticalReleaseAt *int64 `json:"criticalReleaseAt,omitempty"`
-	// EvictSoftReleaseAt is the value at which the evict-soft rung releases.
-	EvictSoftReleaseAt *int64 `json:"evictSoftReleaseAt,omitempty"`
-	// EvictHardReleaseAt is the value at which the hard trip releases.
-	EvictHardReleaseAt *int64 `json:"evictHardReleaseAt,omitempty"`
+	// WarnRelease is the value at which the warn rung releases.
+	WarnRelease *int64 `json:"warnRelease,omitempty"`
+	// AdmitStopRelease is the value at which admission resumes.
+	AdmitStopRelease *int64 `json:"admitStopRelease,omitempty"`
+	// CriticalRelease is the value at which the critical rung releases.
+	CriticalRelease *int64 `json:"criticalRelease,omitempty"`
+	// EvictSoftRelease is the value at which the evict-soft rung releases.
+	EvictSoftRelease *int64 `json:"evictSoftRelease,omitempty"`
+	// EvictHardRelease is the value at which the hard trip releases.
+	EvictHardRelease *int64 `json:"evictHardRelease,omitempty"`
 
-	// GraceNs is the evict-soft grace.
-	GraceNs *int64 `json:"graceNs,omitempty"`
+	// GraceSeconds is the evict-soft grace, in seconds.
+	GraceSeconds *int64 `json:"graceSeconds,omitempty"`
 	// MinReclaimBytes is the least an eviction on this signal reclaims.
 	MinReclaimBytes *int64 `json:"minReclaimBytes,omitempty"`
-	// WindowNs is the window a growth signal (memory.swap) measures its
-	// value over.
-	WindowNs *int64 `json:"windowNs,omitempty"`
-	// EtaToNextRungNs is the estimated time to the next rung, set only while
+	// WindowSeconds is the window, in seconds, a growth signal (memory.swap)
+	// measures its value over.
+	WindowSeconds *int64 `json:"windowSeconds,omitempty"`
+	// EtaToNextRungSeconds is the estimated time to the next rung, in
+	// seconds, set only while
 	// the value moves toward that rung (falling, for an "*.available"
 	// signal) and the fit is good.
-	EtaToNextRungNs *int64 `json:"etaToNextRungNs,omitempty"`
+	EtaToNextRungSeconds *int64 `json:"etaToNextRungSeconds,omitempty"`
 
 	// Trend is the recent direction of Value itself, not of pressure: an
 	// "*.available" signal under rising pressure is falling.
@@ -206,12 +214,12 @@ type BudgetSignal struct {
 
 // rungs returns the record's rungs in ladder order.
 func (s *BudgetSignal) rungs() [5]*int64 {
-	return [5]*int64{s.WarnAt, s.AdmitStopAt, s.CriticalAt, s.EvictSoftAt, s.EvictHardAt}
+	return [5]*int64{s.WarnThreshold, s.AdmitStopThreshold, s.CriticalThreshold, s.EvictSoftThreshold, s.EvictHardThreshold}
 }
 
 // releases returns the record's releases in ladder order.
 func (s *BudgetSignal) releases() [5]*int64 {
-	return [5]*int64{s.WarnReleaseAt, s.AdmitStopReleaseAt, s.CriticalReleaseAt, s.EvictSoftReleaseAt, s.EvictHardReleaseAt}
+	return [5]*int64{s.WarnRelease, s.AdmitStopRelease, s.CriticalRelease, s.EvictSoftRelease, s.EvictHardRelease}
 }
 
 // BudgetRecommendation is how much more the node can safely take. It is a
@@ -285,7 +293,8 @@ type WindowCount struct {
 const MaxWindowCounts = 12
 
 // AppliedPolicy is the NodeBudgetPolicy the node applied, clamped or
-// refused.
+// refused. It carries no free text: the status writer composes the
+// human-readable condition message from Outcome and ClampedFields.
 type AppliedPolicy struct {
 	// Name is the policy's name.
 	Name string `json:"name"`
@@ -293,11 +302,17 @@ type AppliedPolicy struct {
 	ResourceVersion string `json:"resourceVersion,omitempty"`
 	// Outcome is what the node did with it.
 	Outcome PolicyOutcome `json:"outcome"`
-	// ClampedFields are the policy field paths raised to a floor.
-	ClampedFields []string `json:"clampedFields,omitempty"`
-	// Message is a short human-readable detail, for example why a policy was
-	// refused. Printable ASCII, at most MaxPolicyMessageBytes.
-	Message string `json:"message,omitempty"`
+	// ClampedFields are the policy fields the node clamped, each listed
+	// once.
+	ClampedFields []PolicyField `json:"clampedFields,omitempty"`
+}
+
+// PolicyRef names one version of a NodeBudgetPolicy.
+type PolicyRef struct {
+	// Name is the policy's name.
+	Name string `json:"name"`
+	// ResourceVersion is the policy's resourceVersion as relayed.
+	ResourceVersion string `json:"resourceVersion,omitempty"`
 }
 
 // BudgetWriter is how a NodeBudget's status reaches the API server.
@@ -416,6 +431,12 @@ func (s *NodeBudgetStatus) Validate() error {
 	if n := len(s.Conditions); n > MaxBudgetConditions {
 		return fmt.Errorf("%w: %d conditions, at most %d", ErrInvalidNodeBudget, n, MaxBudgetConditions)
 	}
+	for i, c := range s.Conditions {
+		reasons := ConditionReasons(c.Type, string(c.Status))
+		if reasons != nil && !oneOf(c.Reason, reasons...) {
+			return fmt.Errorf("%w: conditions[%d] %s=%s reason %q, want one of %v", ErrInvalidNodeBudget, i, c.Type, c.Status, c.Reason, reasons)
+		}
+	}
 	if reflect.ValueOf(s.NodeBudgetObservation).IsZero() {
 		return nil
 	}
@@ -426,8 +447,8 @@ func (o *NodeBudgetObservation) validate() error {
 	if o.ObservedAt.IsZero() {
 		return errors.New("observedAt is not set")
 	}
-	if o.Generation < 0 {
-		return fmt.Errorf("generation %d is negative", o.Generation)
+	if o.ProducerGeneration < 0 {
+		return fmt.Errorf("producerGeneration %d is negative", o.ProducerGeneration)
 	}
 	if !o.Platform.Valid() {
 		return fmt.Errorf("platform %q is not a known platform", o.Platform)
@@ -449,8 +470,8 @@ func (o *NodeBudgetObservation) validate() error {
 			return errors.New("admitReasonSignal is set while admit is true")
 		}
 	}
-	if err := nonNegative("evictDeadlineNs", o.EvictDeadlineNs); err != nil {
-		return err
+	if o.EvictDeadline != nil && o.EvictDeadline.IsZero() {
+		return errors.New("evictDeadline is set but zero")
 	}
 	if err := o.Capacity.validate(); err != nil {
 		return err
@@ -508,6 +529,19 @@ func (o *NodeBudgetObservation) validate() error {
 			return fmt.Errorf("policy: %w", err)
 		}
 	}
+	if r := o.InForce; r != nil {
+		if !isObjectName(r.Name) {
+			return fmt.Errorf("inForce.name %q is not an object name", r.Name)
+		}
+		if r.ResourceVersion != "" && !isPrintableASCII(r.ResourceVersion, MaxPolicyResourceVersionBytes) {
+			return fmt.Errorf("inForce.resourceVersion is not 1..%d printable ASCII bytes", MaxPolicyResourceVersionBytes)
+		}
+	}
+	if p := o.Policy; p != nil && p.Outcome != PolicyRejected {
+		if r := o.InForce; r == nil || r.Name != p.Name || r.ResourceVersion != p.ResourceVersion {
+			return fmt.Errorf("policy %s was %s, so inForce must name the same name and resourceVersion", p.Name, p.Outcome)
+		}
+	}
 	if o.Darwin != nil {
 		if err := o.Darwin.validate(); err != nil {
 			return fmt.Errorf("darwin: %w", err)
@@ -546,18 +580,18 @@ func (s *BudgetSignal) validate() error {
 	if !s.ID.Valid() {
 		return fmt.Errorf("id %q is not a known signal", s.ID)
 	}
-	if !s.Unit.Valid() {
-		return fmt.Errorf("%s: unit %q is not a known unit", s.ID, s.Unit)
+	if s.Unit != s.ID.Unit() {
+		return fmt.Errorf("%s: unit %q, want %q", s.ID, s.Unit, s.ID.Unit())
 	}
 	for _, f := range []struct {
 		name string
 		v    *int64
 	}{
 		{"value", s.Value},
-		{"graceNs", s.GraceNs},
+		{"graceSeconds", s.GraceSeconds},
 		{"minReclaimBytes", s.MinReclaimBytes},
-		{"windowNs", s.WindowNs},
-		{"etaToNextRungNs", s.EtaToNextRungNs},
+		{"windowSeconds", s.WindowSeconds},
+		{"etaToNextRungSeconds", s.EtaToNextRungSeconds},
 	} {
 		if err := nonNegative(f.name, f.v); err != nil {
 			return fmt.Errorf("%s: %w", s.ID, err)
@@ -646,13 +680,15 @@ func (p *AppliedPolicy) validate() error {
 	if n := len(p.ClampedFields); n > MaxClampedFields {
 		return fmt.Errorf("%d clampedFields, at most %d", n, MaxClampedFields)
 	}
+	seen := make(map[PolicyField]bool, len(p.ClampedFields))
 	for i, f := range p.ClampedFields {
-		if !fieldPathRE.MatchString(f) || len(f) > MaxClampedFieldBytes {
-			return fmt.Errorf("clampedFields[%d] %q is not a field path", i, f)
+		if !f.Valid() {
+			return fmt.Errorf("clampedFields[%d] %q is not a known policy field", i, f)
 		}
-	}
-	if p.Message != "" && !isPrintableASCII(p.Message, MaxPolicyMessageBytes) {
-		return fmt.Errorf("message is not 1..%d printable ASCII bytes", MaxPolicyMessageBytes)
+		if seen[f] {
+			return fmt.Errorf("clampedFields[%d] %q is repeated", i, f)
+		}
+		seen[f] = true
 	}
 	return nil
 }
@@ -754,13 +790,13 @@ func (in *BudgetCapacity) DeepCopyInto(out *BudgetCapacity) {
 func (in *BudgetSignal) DeepCopyInto(out *BudgetSignal) {
 	*out = *in
 	out.Value = clonePtr(in.Value)
-	out.WarnAt, out.AdmitStopAt, out.CriticalAt = clonePtr(in.WarnAt), clonePtr(in.AdmitStopAt), clonePtr(in.CriticalAt)
-	out.EvictSoftAt, out.EvictHardAt = clonePtr(in.EvictSoftAt), clonePtr(in.EvictHardAt)
-	out.WarnReleaseAt, out.AdmitStopReleaseAt = clonePtr(in.WarnReleaseAt), clonePtr(in.AdmitStopReleaseAt)
-	out.CriticalReleaseAt, out.EvictSoftReleaseAt = clonePtr(in.CriticalReleaseAt), clonePtr(in.EvictSoftReleaseAt)
-	out.EvictHardReleaseAt = clonePtr(in.EvictHardReleaseAt)
-	out.GraceNs, out.MinReclaimBytes = clonePtr(in.GraceNs), clonePtr(in.MinReclaimBytes)
-	out.WindowNs, out.EtaToNextRungNs = clonePtr(in.WindowNs), clonePtr(in.EtaToNextRungNs)
+	out.WarnThreshold, out.AdmitStopThreshold, out.CriticalThreshold = clonePtr(in.WarnThreshold), clonePtr(in.AdmitStopThreshold), clonePtr(in.CriticalThreshold)
+	out.EvictSoftThreshold, out.EvictHardThreshold = clonePtr(in.EvictSoftThreshold), clonePtr(in.EvictHardThreshold)
+	out.WarnRelease, out.AdmitStopRelease = clonePtr(in.WarnRelease), clonePtr(in.AdmitStopRelease)
+	out.CriticalRelease, out.EvictSoftRelease = clonePtr(in.CriticalRelease), clonePtr(in.EvictSoftRelease)
+	out.EvictHardRelease = clonePtr(in.EvictHardRelease)
+	out.GraceSeconds, out.MinReclaimBytes = clonePtr(in.GraceSeconds), clonePtr(in.MinReclaimBytes)
+	out.WindowSeconds, out.EtaToNextRungSeconds = clonePtr(in.WindowSeconds), clonePtr(in.EtaToNextRungSeconds)
 }
 
 // DeepCopyInto copies the receiver into out.
@@ -821,7 +857,9 @@ func (in *PSILine) deepCopy() *PSILine {
 func (in *NodeBudgetObservation) DeepCopyInto(out *NodeBudgetObservation) {
 	*out = *in
 	in.ObservedAt.DeepCopyInto(&out.ObservedAt)
-	out.EvictDeadlineNs = clonePtr(in.EvictDeadlineNs)
+	if in.EvictDeadline != nil {
+		out.EvictDeadline = in.EvictDeadline.DeepCopy()
+	}
 	in.Capacity.DeepCopyInto(&out.Capacity)
 	if in.Signals != nil {
 		out.Signals = make([]BudgetSignal, len(in.Signals))
@@ -846,6 +884,7 @@ func (in *NodeBudgetObservation) DeepCopyInto(out *NodeBudgetObservation) {
 		p.ClampedFields = cloneSlice(in.Policy.ClampedFields)
 		out.Policy = &p
 	}
+	out.InForce = clonePtr(in.InForce)
 	if in.Darwin != nil {
 		out.Darwin = new(DarwinSignals)
 		in.Darwin.DeepCopyInto(out.Darwin)

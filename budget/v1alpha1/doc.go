@@ -26,8 +26,9 @@ limitations under the License.
 // node-produced NodeBudgetObservation (generic signal records, the derived
 // level, the admit verdict, the eviction deadline, the recommendation, the
 // published kill mode, the per-band counters, and exactly one platform
-// block, darwin or linux) plus the writer shape and the conditions, which
-// belong to whoever writes the object, never to the node's payload.
+// block, darwin or linux) plus the writer shape and the conditions. The
+// conditions are owned by the status writer (k3sm's relay, or an own-node
+// producer), never carried in the node's payload.
 //
 // NodeBudgetPolicy is cluster-scoped, spec only, and the one configuration
 // object of the group: it selects node classes by nodeSelector and overrides
@@ -35,7 +36,16 @@ limitations under the License.
 // kill mode and its timers. When several policies select one node, the
 // highest spec.priority wins and a tie goes to the lexically smallest name;
 // the losers are reported on the NodeBudget through the PolicyConflict
-// condition (SelectPolicy).
+// condition (SelectPolicy). status.policy says what the node did with the
+// policy it was last sent; status.inForce names the policy it actually runs,
+// so a rejected policy and the last valid one kept in its place are both
+// visible. The conditions use the closed reason sets of ConditionReasons.
+//
+// The policy CRD defaults no field. An unset field means the producer's
+// shipped default, the pinned Default* constant in floors.go, so each
+// default has one owner; an unset mode means auto. Mode values must be
+// quoted in YAML ("on", "off"): YAML 1.1, which the Kubernetes YAML decoders
+// follow, reads bare on and off as booleans, and the object is then refused.
 //
 // # Signals and the ladder
 //
@@ -44,8 +54,12 @@ limitations under the License.
 // in the direction of rising pressure: ascending for a signal whose value
 // grows under pressure, descending for an "*.available" signal
 // (IsDescending). Each release value sits on the calm side of its rung.
-// memory.swap has no evict-soft rung. The same rules are CEL on the
-// NodeBudgetPolicy CRD and Go in NodeBudgetPolicySpec.Validate and
+// memory.swap has no evict-soft rung. Every signal has one canonical unit
+// (SignalID.Unit), so a threshold means the same on every node. Durations
+// on both objects are whole seconds and times are metav1.Time; only the
+// budget page uses nanoseconds. The same rules are CEL on both CRDs (the
+// NodeBudget status has no relay in front of it when an own-node producer
+// writes it) and Go in NodeBudgetPolicySpec.Validate and
 // NodeBudgetObservation.Validate.
 //
 // # The node annotation payloads
@@ -60,20 +74,38 @@ limitations under the License.
 // never carry the writer or the conditions. Encode refuses anything the
 // matching Parse function would refuse.
 //
-// # No pod identity
+// Skew within one schema: a new field, or a new value of a structural enum
+// (a signal, a unit, a level, a band, a platform, a policy outcome or field),
+// bumps BudgetAnnotationSchema, because an older reader would misread it. A
+// new value of a producer-vocabulary enum (a trend, a limiting resource, a
+// kill-mode reason, a would-kill reason, a counter reason) does not: an
+// older reader decodes it to that type's "unknown" constant and keeps the
+// rest of the report.
 //
-// Nothing in a NodeBudget names a pod, a namespace, a container or a UID.
-// Victim identity stays in namespaced Events, which RBAC already governs; the
-// object carries only node-level data, enum values and the name of the
-// policy applied.
+// # No free text, so no pod identity
+//
+// The exact guarantee: apart from metadata and the writer-owned conditions,
+// every string in a NodeBudget is a value of one of this package's enums,
+// except the name and resourceVersion in status.policy and status.inForce
+// (the object name an admin chose for a cluster-scoped NodeBudgetPolicy, and
+// the API server's version of it). There is no map and no free-text field, so the
+// node payload has nowhere to put a pod, namespace, container or UID. Victim
+// identity stays in namespaced Events, which RBAC already governs.
 //
 // # Floors
 //
 // The tier-1 grace, the held-pressure duration, the hourly delivery cap and
 // the cool-off have compiled-in floors (floors.go) that no policy can lower.
 // The CRD schema enforces them on apply, and ApplyFloors clamps any relayed
-// value that reaches a node below them (the node then reports
-// PolicyClamped).
+// value that reaches a node below them (the node then reports outcome
+// clamped).
+//
+// The asymmetry is deliberate. A value past a floor is clamped, because the
+// operator's intent (more aggressive tier 1) is clear and the floor is the
+// nearest safe reading of it. A value that makes the policy meaningless (an
+// unknown enum, a misordered ladder, a negative size, a zero delivery cap) is
+// refused: the node keeps its last valid policy and reports outcome
+// rejected, because no reading of it is safe.
 //
 // # Conformance
 //

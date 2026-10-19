@@ -24,11 +24,6 @@ import (
 // dns1123SubdomainRE is the shape of a Kubernetes object name.
 var dns1123SubdomainRE = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
 
-// fieldPathRE is the shape of a policy field path in
-// AppliedPolicy.ClampedFields (for example "tier1GraceSeconds" or
-// "thresholds[2].graceSeconds").
-var fieldPathRE = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9]*(\[[0-9]+\])?(\.[a-zA-Z][a-zA-Z0-9]*(\[[0-9]+\])?)*$`)
-
 // isObjectName reports whether s has the shape of a Kubernetes object name.
 func isObjectName(s string) bool {
 	return len(s) <= 253 && dns1123SubdomainRE.MatchString(s)

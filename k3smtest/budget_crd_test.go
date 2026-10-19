@@ -19,12 +19,15 @@ package k3smtest_test
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -42,57 +45,105 @@ var celSelfTranscriptions = budgetSelfRules()
 // budgetLadder is the ladder field order of a NodeBudgetPolicy thresholds
 // item.
 var (
-	budgetRungs    = []string{"warnAt", "admitStopAt", "criticalAt", "evictSoftAt", "evictHardAt"}
-	budgetReleases = []string{"warnReleaseAt", "admitStopReleaseAt", "criticalReleaseAt", "evictSoftReleaseAt", "evictHardReleaseAt"}
+	budgetRungs    = []string{"warnThreshold", "admitStopThreshold", "criticalThreshold", "evictSoftThreshold", "evictHardThreshold"}
+	budgetReleases = []string{"warnRelease", "admitStopRelease", "criticalRelease", "evictSoftRelease", "evictHardRelease"}
 )
 
-// budgetSelfRules transcribes the budget manifests' rules: the NodeBudget
-// status platform rule, and on each NodeBudgetPolicy thresholds item the ten
-// pairwise rung orderings, the five release sides (both direction-aware: an
-// .available signal falls under pressure) and the memory.swap rule. has(x)
-// is key presence; numbers arrive as float64.
+// budgetSelfRules transcribes the budget manifests' rules: on NodeBudget
+// status the three platform rules and the policy-in-force rule; on each NodeBudget signal record the unit
+// rule; and on both that record and a NodeBudgetPolicy thresholds item (whose
+// signal key is "id" and "signal" respectively) the ten pairwise rung
+// orderings, the five release sides (both direction-aware: an .available
+// signal falls under pressure) and the memory.swap rule. has(x) is key
+// presence, so a value of 0 is present; numbers arrive as float64.
 func budgetSelfRules() map[string]func(self any) bool {
-	num := func(o map[string]any, k string) (float64, bool) { f, ok := o[k].(float64); return f, ok }
-	falling := func(o map[string]any) bool { s, _ := o["signal"].(string); return strings.HasSuffix(s, ".available") }
-	// calmSide reports whether a sits on the calm side of b: above it on a
-	// falling signal, below it on a rising one; true when either is absent.
-	calmSide := func(a, b string) func(any) bool {
-		return func(self any) bool {
-			o, _ := self.(map[string]any)
-			av, aok := num(o, a)
-			bv, bok := num(o, b)
-			if !aok || !bok {
-				return true
-			}
-			if falling(o) {
-				return av > bv
-			}
-			return av < bv
-		}
-	}
+	obj := func(self any) map[string]any { o, _ := self.(map[string]any); return o }
+	has := func(o map[string]any, k string) bool { _, ok := o[k]; return ok }
 	m := map[string]func(any) bool{
 		"!has(self.level) || (has(self.darwin) != has(self.linux))": func(self any) bool {
-			o, _ := self.(map[string]any)
-			_, level := o["level"]
-			_, d := o["darwin"]
-			_, l := o["linux"]
-			return !level || d != l
+			o := obj(self)
+			return !has(o, "level") || has(o, "darwin") != has(o, "linux")
 		},
-		"self.signal != 'memory.swap' || !has(self.evictSoftAt)": func(self any) bool {
-			o, _ := self.(map[string]any)
-			_, soft := o["evictSoftAt"]
-			return o["signal"] != "memory.swap" || !soft
+		"!has(self.level) || has(self.platform)": func(self any) bool {
+			o := obj(self)
+			return !has(o, "level") || has(o, "platform")
+		},
+		"!has(self.platform) || (self.platform == 'darwin' ? !has(self.linux) : !has(self.darwin))": func(self any) bool {
+			o := obj(self)
+			if !has(o, "platform") {
+				return true
+			}
+			if o["platform"] == "darwin" {
+				return !has(o, "linux")
+			}
+			return !has(o, "darwin")
+		},
+		"!has(self.policy) || self.policy.outcome == 'rejected' || (has(self.inForce) && self.inForce.name == self.policy.name && (has(self.inForce.resourceVersion) ? has(self.policy.resourceVersion) && self.inForce.resourceVersion == self.policy.resourceVersion : !has(self.policy.resourceVersion)))": func(self any) bool {
+			o := obj(self)
+			if !has(o, "policy") {
+				return true
+			}
+			p := obj(o["policy"])
+			if p["outcome"] == "rejected" {
+				return true
+			}
+			if !has(o, "inForce") {
+				return false
+			}
+			f := obj(o["inForce"])
+			if f["name"] != p["name"] {
+				return false
+			}
+			if has(f, "resourceVersion") {
+				return has(p, "resourceVersion") && f["resourceVersion"] == p["resourceVersion"]
+			}
+			return !has(p, "resourceVersion")
+		},
+		"self.unit == (self.id == 'memory.compressor' ? 'permille' : self.id == 'pid.available' ? 'count' : 'bytes')": func(self any) bool {
+			o := obj(self)
+			want := "bytes"
+			switch o["id"] {
+			case "memory.compressor":
+				want = "permille"
+			case "pid.available":
+				want = "count"
+			}
+			return o["unit"] == want
 		},
 	}
-	for i := range budgetRungs {
-		for j := i + 1; j < len(budgetRungs); j++ {
-			a, b := budgetRungs[i], budgetRungs[j]
-			m[fmt.Sprintf("!has(self.%[1]s) || !has(self.%[2]s) || (self.signal.endsWith('.available') ? self.%[1]s > self.%[2]s : self.%[1]s < self.%[2]s)", a, b)] = calmSide(a, b)
+	for _, key := range []string{"signal", "id"} {
+		key := key
+		// calmSide reports whether a sits on the calm side of b: above it on
+		// a falling signal, below it on a rising one; true when either is
+		// absent.
+		calmSide := func(a, b string) func(any) bool {
+			return func(self any) bool {
+				o := obj(self)
+				av, aok := o[a].(float64)
+				bv, bok := o[b].(float64)
+				if !aok || !bok {
+					return true
+				}
+				if sig, _ := o[key].(string); strings.HasSuffix(sig, ".available") {
+					return av > bv
+				}
+				return av < bv
+			}
 		}
-	}
-	for i := range budgetRungs {
-		r, rel := budgetRungs[i], budgetReleases[i]
-		m[fmt.Sprintf("!has(self.%[1]s) || !has(self.%[2]s) || (self.signal.endsWith('.available') ? self.%[2]s > self.%[1]s : self.%[2]s < self.%[1]s)", r, rel)] = calmSide(rel, r)
+		m["self."+key+" != 'memory.swap' || !has(self.evictSoftThreshold)"] = func(self any) bool {
+			o := obj(self)
+			return o[key] != "memory.swap" || !has(o, "evictSoftThreshold")
+		}
+		for i := range budgetRungs {
+			for j := i + 1; j < len(budgetRungs); j++ {
+				a, b := budgetRungs[i], budgetRungs[j]
+				m[fmt.Sprintf("!has(self.%[1]s) || !has(self.%[2]s) || (self.%[3]s.endsWith('.available') ? self.%[1]s > self.%[2]s : self.%[1]s < self.%[2]s)", a, b, key)] = calmSide(a, b)
+			}
+		}
+		for i := range budgetRungs {
+			r, rel := budgetRungs[i], budgetReleases[i]
+			m[fmt.Sprintf("!has(self.%[1]s) || !has(self.%[2]s) || (self.%[3]s.endsWith('.available') ? self.%[2]s > self.%[1]s : self.%[2]s < self.%[1]s)", r, rel, key)] = calmSide(rel, r)
+		}
 	}
 	return m
 }
@@ -207,6 +258,21 @@ func TestNodeBudgetCRDRoundTrip(t *testing.T) {
 			st["wouldKill"] = map[string]any{"band": "batch", "reason": "held-pressure", "at": "2026-10-19T12:00:00Z", "victim": "web-0"}
 		}, "status.wouldKill.victim: not declared"},
 		{"unknown writer shape", func(st map[string]any) { st["writer"].(map[string]any)["shape"] = "sidecar" }, "status.writer.shape: not in enum"},
+		{"a bytes signal in permille", func(st map[string]any) { sigAt(st, 0)["unit"] = "permille" }, "unit must be the signal's canonical unit"},
+		{"a misordered falling ladder", func(st map[string]any) { sigAt(st, 0)["warnThreshold"] = 1.0 }, "warnThreshold must be on the calm side of admitStopThreshold"},
+		{"a release on the pressure side", func(st map[string]any) { sigAt(st, 1)["warnRelease"] = 501.0 }, "warnRelease must be on the calm side of warnThreshold"},
+		{"a memory.swap evict-soft rung", func(st map[string]any) { sigAt(st, 2)["evictSoftThreshold"] = 2e9 }, "memory.swap has no evictSoftThreshold rung"},
+		{"no platform", func(st map[string]any) { delete(st, "platform") }, "status: a reporting status names its platform"},
+		{"the wrong platform block", func(st map[string]any) { st["platform"] = "linux" }, "status: the platform block set must be the one platform names"},
+		{"an applied policy with no policy in force", func(st map[string]any) { delete(st, "inForce") }, "status: an applied or clamped policy is the policy in force"},
+		{"an applied policy with another version in force", func(st map[string]any) {
+			st["inForce"].(map[string]any)["resourceVersion"] = "1"
+		}, "status: an applied or clamped policy is the policy in force"},
+		{"an in-force field outside the schema", func(st map[string]any) { st["inForce"].(map[string]any)["uid"] = "x" }, "status.inForce.uid: not declared"},
+		{"a policy message", func(st map[string]any) { st["policy"].(map[string]any)["message"] = "free text" }, "status.policy.message: not declared"},
+		{"an unknown clamped field", func(st map[string]any) {
+			st["policy"].(map[string]any)["clampedFields"] = []any{"spec.thresholds"}
+		}, "status.policy.clampedFields[0]: not in enum"},
 	} {
 		t.Run("refuses a status with "+tc.name, func(t *testing.T) {
 			m := goldenStatus(t, "darwin")
@@ -223,6 +289,19 @@ func TestNodeBudgetCRDRoundTrip(t *testing.T) {
 			t.Errorf("want spec refused, got %q", errs)
 		}
 	})
+	t.Run("admits a rejected policy with the last valid one in force", func(t *testing.T) {
+		m := goldenStatus(t, "darwin")
+		st := m["status"].(map[string]any)
+		st["policy"].(map[string]any)["outcome"] = "rejected"
+		st["inForce"] = map[string]any{"name": "default", "resourceVersion": "4700"}
+		if errs := validate("", m, nbRoot); len(errs) > 0 {
+			t.Fatalf("a rejected policy with an older one in force is refused: %q", errs)
+		}
+		delete(st, "inForce")
+		if errs := validate("", m, nbRoot); len(errs) > 0 {
+			t.Fatalf("a rejected policy with the defaults in force is refused: %q", errs)
+		}
+	})
 	t.Run("admits a status of a node that has not reported", func(t *testing.T) {
 		m := map[string]any{"apiVersion": "budget.k3sm.io/v1alpha1", "kind": "NodeBudget", "metadata": map[string]any{"name": "n"},
 			"status": map[string]any{"conditions": []any{map[string]any{"type": "Reporting", "status": "False", "reason": "NodeNotReporting", "lastTransitionTime": "2026-10-19T12:00:00Z"}}}}
@@ -236,32 +315,23 @@ func TestNodeBudgetCRDRoundTrip(t *testing.T) {
 			t.Fatalf("the sample policy does not validate:\n%s", strings.Join(errs, "\n"))
 		}
 	})
-	t.Run("defaults", func(t *testing.T) {
+	t.Run("no defaults", func(t *testing.T) {
+		// The CRD defaults nothing: an unset field means the producer's
+		// shipped default (the Default* constants), so a minimal policy is
+		// stored exactly as written.
 		m := map[string]any{
 			"apiVersion": "budget.k3sm.io/v1alpha1", "kind": "NodeBudgetPolicy",
 			"metadata": map[string]any{"name": "minimal"},
 			"spec":     map[string]any{"history": map[string]any{}},
 		}
+		before, _ := json.Marshal(m)
 		applyDefaults(m, polRoot)
+		after, _ := json.Marshal(m)
+		if string(before) != string(after) {
+			t.Fatalf("the schema defaulted a field:\nbefore = %s\nafter  = %s", before, after)
+		}
 		if errs := validate("", m, polRoot); len(errs) > 0 {
-			t.Fatalf("the defaulted minimal policy does not validate: %q", errs)
-		}
-		b, _ := json.Marshal(m)
-		var p budgetv1alpha1.NodeBudgetPolicy
-		if err := json.Unmarshal(b, &p); err != nil {
-			t.Fatalf("unmarshal: %v", err)
-		}
-		s := p.Spec
-		if s.Mode != budgetv1alpha1.KillModeAuto || s.Priority != 0 ||
-			*s.Tier1HeldSeconds != budgetv1alpha1.DefaultTier1HeldSeconds ||
-			*s.Tier1CooloffSeconds != budgetv1alpha1.DefaultTier1CooloffSeconds ||
-			*s.History.MemoryHalfLifeSeconds != budgetv1alpha1.DefaultMemoryHalfLifeSeconds ||
-			*s.History.CPUHalfLifeSeconds != budgetv1alpha1.DefaultCPUHalfLifeSeconds ||
-			*s.History.MarginPermille != budgetv1alpha1.DefaultMarginPermille {
-			t.Fatalf("defaulted spec = %s, want the Go defaults", b)
-		}
-		if s.Tier1GraceSeconds != nil || s.Tier1MaxDeliveriesPerHour != nil {
-			t.Fatalf("a field with no default was defaulted: %s", b)
+			t.Fatalf("the minimal policy does not validate: %q", errs)
 		}
 	})
 
@@ -287,13 +357,13 @@ func TestNodeBudgetCRDRoundTrip(t *testing.T) {
 		}, "spec.nodeSelector: more than maxProperties 32"},
 		{"an unknown signal", func(sp map[string]any) { thAt(sp, 0)["signal"] = "cpu.pressure" }, "spec.thresholds[0].signal: not in enum"},
 		{"a repeated signal", func(sp map[string]any) { thAt(sp, 1)["signal"] = thAt(sp, 0)["signal"] }, "spec.thresholds: duplicate key"},
-		{"a misordered rising ladder", func(sp map[string]any) { thAt(sp, 0)["criticalAt"] = 550.0 }, "admitStopAt must be on the calm side of criticalAt"},
+		{"a misordered rising ladder", func(sp map[string]any) { thAt(sp, 0)["criticalThreshold"] = 550.0 }, "admitStopThreshold must be on the calm side of criticalThreshold"},
 		{"a misordered falling ladder", func(sp map[string]any) {
-			sp["thresholds"] = append(sp["thresholds"].([]any), map[string]any{"signal": "memory.available", "warnAt": 1.0, "admitStopAt": 2.0})
-		}, "warnAt must be on the calm side of admitStopAt"},
-		{"a release on the pressure side", func(sp map[string]any) { thAt(sp, 0)["warnReleaseAt"] = 501.0 }, "warnReleaseAt must be on the calm side of warnAt"},
-		{"a memory.swap evict-soft rung", func(sp map[string]any) { thAt(sp, 1)["evictSoftAt"] = 2e9 }, "memory.swap has no evictSoftAt rung"},
-		{"a negative rung", func(sp map[string]any) { thAt(sp, 1)["warnAt"] = -1.0 }, "spec.thresholds[1].warnAt: below minimum 0"},
+			sp["thresholds"] = append(sp["thresholds"].([]any), map[string]any{"signal": "memory.available", "warnThreshold": 1.0, "admitStopThreshold": 2.0})
+		}, "warnThreshold must be on the calm side of admitStopThreshold"},
+		{"a release on the pressure side", func(sp map[string]any) { thAt(sp, 0)["warnRelease"] = 501.0 }, "warnRelease must be on the calm side of warnThreshold"},
+		{"a memory.swap evict-soft rung", func(sp map[string]any) { thAt(sp, 1)["evictSoftThreshold"] = 2e9 }, "memory.swap has no evictSoftThreshold rung"},
+		{"a negative rung", func(sp map[string]any) { thAt(sp, 1)["warnThreshold"] = -1.0 }, "spec.thresholds[1].warnThreshold: below minimum 0"},
 		{"a status", func(sp map[string]any) {}, ""},
 	} {
 		t.Run("refuses a policy with "+tc.name, func(t *testing.T) {
@@ -320,11 +390,9 @@ func TestNodeBudgetCRDRoundTrip(t *testing.T) {
 		}{
 			{"tier1GraceSeconds", "minimum", budgetv1alpha1.MinTier1GraceSeconds},
 			{"tier1HeldSeconds", "minimum", budgetv1alpha1.MinTier1HeldSeconds},
-			{"tier1HeldSeconds", "default", budgetv1alpha1.DefaultTier1HeldSeconds},
 			{"tier1MaxDeliveriesPerHour", "minimum", budgetv1alpha1.MinTier1DeliveriesPerHour},
 			{"tier1MaxDeliveriesPerHour", "maximum", budgetv1alpha1.MaxTier1DeliveriesPerHour},
 			{"tier1CooloffSeconds", "minimum", budgetv1alpha1.MinTier1CooloffSeconds},
-			{"tier1CooloffSeconds", "default", budgetv1alpha1.DefaultTier1CooloffSeconds},
 		} {
 			if got := bound(tc.field, tc.key); got != float64(tc.want) {
 				t.Errorf("spec.%s %s = %v, want the Go constant %d", tc.field, tc.key, got, tc.want)
@@ -340,25 +408,43 @@ func TestNodeBudgetCRDRoundTrip(t *testing.T) {
 	})
 }
 
-// TestNodeBudgetPolicyValidateMirrorsCEL asserts NodeBudgetPolicySpec.Validate
-// and the manifest's ladder rules agree on every ladder: each of the three
-// ladder shapes (a falling signal, a rising one, memory.swap), every
-// assignment of the five rungs from {unset, 10, 20, 30, 40, 50}, and every
-// release position (unset, the pressure side, equal, the calm side) on an
-// ordered ladder. The rules are read from the embedded manifest, so a rule
-// text that drifts loses its transcription and fails here.
+// TestNodeBudgetPolicyValidateMirrorsCEL asserts the Go Validate and the
+// manifests' ladder rules (with the schema's minimum of 0) agree on every
+// ladder, on both sides of the contract: a NodeBudgetPolicy thresholds item
+// against NodeBudgetPolicySpec.Validate, and a NodeBudget signal record
+// against NodeBudgetStatus.Validate. It walks the three ladder shapes (a
+// falling signal, a rising one, memory.swap), every assignment of the five
+// rungs from {unset, 0, 10, 20, 30, 40}, every release position (unset, the
+// pressure side, equal, the calm side) around an ordered ladder that starts
+// at 0, and every signal against every unit. The rules are read from the
+// embedded manifests, so a rule text that drifts loses its transcription and
+// fails here.
 func TestNodeBudgetPolicyValidateMirrorsCEL(t *testing.T) {
 	t.Parallel()
 	polRoot := crdSchema(t, crd.NodeBudgetPolicyCRD())
-	item := polRoot["properties"].(map[string]any)["spec"].(map[string]any)["properties"].(map[string]any)["thresholds"].(map[string]any)["items"].(map[string]any)
-	rules := rulesAt(item)
-	if len(rules) != 16 {
-		t.Fatalf("the thresholds item carries %d rules, want 16", len(rules))
+	nbRoot := crdSchema(t, crd.NodeBudgetCRD())
+	field := func(sch map[string]any, path ...string) map[string]any {
+		for _, k := range path {
+			sch = sch[k].(map[string]any)
+		}
+		return sch
 	}
-	celOK := func(th budgetv1alpha1.SignalThresholds) bool {
-		b, _ := json.Marshal(th)
+	polItem := field(polRoot, "properties", "spec", "properties", "thresholds", "items")
+	sigItem := field(nbRoot, "properties", "status", "properties", "signals", "items")
+	polRules, sigRules := rulesAt(polItem), rulesAt(sigItem)
+	if len(polRules) != 16 || len(sigRules) != 17 {
+		t.Fatalf("rules: %d on the policy item, %d on the signal record; want 16 and 17", len(polRules), len(sigRules))
+	}
+	// celOK evaluates the rules and the schema minimum of 0 on every number.
+	celOK := func(v any, rules [][2]string) bool {
+		b, _ := json.Marshal(v)
 		var self map[string]any
 		_ = json.Unmarshal(b, &self) // round trip of a value json.Marshal just produced
+		for _, x := range self {
+			if f, ok := x.(float64); ok && f < 0 {
+				return false
+			}
+		}
 		for _, r := range rules {
 			eval, ok := celSelfTranscriptions[r[0]]
 			if !ok {
@@ -370,76 +456,77 @@ func TestNodeBudgetPolicyValidateMirrorsCEL(t *testing.T) {
 		}
 		return true
 	}
-	set := func(th *budgetv1alpha1.SignalThresholds, names []string, vals []int64) {
-		ptrs := map[string]**int64{
-			"warnAt": &th.WarnAt, "admitStopAt": &th.AdmitStopAt, "criticalAt": &th.CriticalAt,
-			"evictSoftAt": &th.EvictSoftAt, "evictHardAt": &th.EvictHardAt,
-			"warnReleaseAt": &th.WarnReleaseAt, "admitStopReleaseAt": &th.AdmitStopReleaseAt,
-			"criticalReleaseAt": &th.CriticalReleaseAt, "evictSoftReleaseAt": &th.EvictSoftReleaseAt,
-			"evictHardReleaseAt": &th.EvictHardReleaseAt,
+	const unset = math.MinInt64
+	ptr := func(v int64) *int64 {
+		if v == unset {
+			return nil
 		}
-		for i, n := range names {
-			if vals[i] != 0 {
-				v := vals[i]
-				*ptrs[n] = &v
-			}
-		}
+		return &v
 	}
-	check := func(th budgetv1alpha1.SignalThresholds) (bool, bool) {
-		spec := budgetv1alpha1.NodeBudgetPolicySpec{Thresholds: []budgetv1alpha1.SignalThresholds{th}}
-		return celOK(th), spec.Validate() == nil
+	statusOK := func(s budgetv1alpha1.BudgetSignal) bool {
+		st := budgetv1alpha1.NodeBudgetStatus{NodeBudgetObservation: budgetv1alpha1.NodeBudgetObservation{
+			ObservedAt: metav1.NewTime(time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)),
+			Platform:   budgetv1alpha1.PlatformDarwin, Level: budgetv1alpha1.LevelOK,
+			Darwin: &budgetv1alpha1.DarwinSignals{}, Signals: []budgetv1alpha1.BudgetSignal{s},
+		}}
+		return st.Validate() == nil
 	}
 	var cases, valid, invalid int
+	check := func(what string, sig budgetv1alpha1.SignalID, unit budgetv1alpha1.SignalUnit, r, rel [5]int64) {
+		th := budgetv1alpha1.SignalThresholds{
+			Signal: sig, WarnThreshold: ptr(r[0]), AdmitStopThreshold: ptr(r[1]), CriticalThreshold: ptr(r[2]),
+			EvictSoftThreshold: ptr(r[3]), EvictHardThreshold: ptr(r[4]),
+			WarnRelease: ptr(rel[0]), AdmitStopRelease: ptr(rel[1]), CriticalRelease: ptr(rel[2]),
+			EvictSoftRelease: ptr(rel[3]), EvictHardRelease: ptr(rel[4]),
+		}
+		spec := budgetv1alpha1.NodeBudgetPolicySpec{Thresholds: []budgetv1alpha1.SignalThresholds{th}}
+		if cel, goV := celOK(th, polRules), spec.Validate() == nil; cel != goV {
+			t.Fatalf("policy %s %s %v %v: CEL admits %v, Validate admits %v", what, sig, r, rel, cel, goV)
+		}
+		bs := budgetv1alpha1.BudgetSignal{
+			ID: sig, Unit: unit, WarnThreshold: th.WarnThreshold, AdmitStopThreshold: th.AdmitStopThreshold,
+			CriticalThreshold: th.CriticalThreshold, EvictSoftThreshold: th.EvictSoftThreshold, EvictHardThreshold: th.EvictHardThreshold,
+			WarnRelease: th.WarnRelease, AdmitStopRelease: th.AdmitStopRelease, CriticalRelease: th.CriticalRelease,
+			EvictSoftRelease: th.EvictSoftRelease, EvictHardRelease: th.EvictHardRelease,
+		}
+		cel, goV := celOK(bs, sigRules), statusOK(bs)
+		if cel != goV {
+			t.Fatalf("status %s %s %s %v %v: CEL admits %v, Validate admits %v", what, sig, unit, r, rel, cel, goV)
+		}
+		cases++
+		if cel {
+			valid++
+		} else {
+			invalid++
+		}
+	}
+	none := [5]int64{unset, unset, unset, unset, unset}
 	for _, sig := range []budgetv1alpha1.SignalID{budgetv1alpha1.SignalMemoryAvailable, budgetv1alpha1.SignalMemoryCompressor, budgetv1alpha1.SignalMemorySwap} {
-		choices := []int64{0, 10, 20, 30, 40, 50}
-		idx := make([]int, 5)
+		choices := []int64{unset, 0, 10, 20, 30, 40}
+		var idx [5]int
 		for {
-			vals := make([]int64, 5)
+			var r [5]int64
 			for i := range idx {
-				vals[i] = choices[idx[i]]
+				r[i] = choices[idx[i]]
 			}
-			th := budgetv1alpha1.SignalThresholds{Signal: sig}
-			set(&th, budgetRungs, vals)
-			cel, goV := check(th)
-			if cel != goV {
-				t.Fatalf("%s rungs %v: CEL admits %v, Validate admits %v", sig, vals, cel, goV)
-			}
-			cases++
-			if cel {
-				valid++
-			} else {
-				invalid++
-			}
-			k := 0
-			for k < 5 {
-				idx[k]++
-				if idx[k] < len(choices) {
-					break
-				}
-				idx[k] = 0
-				k++
-			}
-			if k == 5 {
+			check("rungs", sig, sig.Unit(), r, none)
+			if !advance(idx[:], len(choices)) {
 				break
 			}
 		}
-		// Releases around an ordered ladder: 0 unset, then the pressure
-		// side, equal, the calm side of each rung.
-		ordered := []int64{100, 200, 300, 400, 500}
+		ordered := [5]int64{0, 10, 20, 30, 40}
 		calm := int64(-5)
 		if budgetv1alpha1.IsDescending(sig) {
-			ordered = []int64{500, 400, 300, 200, 100}
+			ordered = [5]int64{40, 30, 20, 10, 0}
 			calm = 5
 		}
-		pos := make([]int, 5)
+		rungs := ordered
+		if sig == budgetv1alpha1.SignalMemorySwap {
+			rungs[3] = unset
+		}
+		var pos [5]int
 		for {
-			th := budgetv1alpha1.SignalThresholds{Signal: sig}
-			rungs := append([]int64(nil), ordered...)
-			if sig == budgetv1alpha1.SignalMemorySwap {
-				rungs[3] = 0
-			}
-			set(&th, budgetRungs, rungs)
-			rel := make([]int64, 5)
+			rel := none
 			for i, p := range pos {
 				switch p {
 				case 1:
@@ -450,35 +537,34 @@ func TestNodeBudgetPolicyValidateMirrorsCEL(t *testing.T) {
 					rel[i] = ordered[i] + calm
 				}
 			}
-			set(&th, budgetReleases, rel)
-			cel, goV := check(th)
-			if cel != goV {
-				t.Fatalf("%s releases %v around %v: CEL admits %v, Validate admits %v", sig, rel, rungs, cel, goV)
-			}
-			cases++
-			if cel {
-				valid++
-			} else {
-				invalid++
-			}
-			k := 0
-			for k < 5 {
-				pos[k]++
-				if pos[k] < 4 {
-					break
-				}
-				pos[k] = 0
-				k++
-			}
-			if k == 5 {
+			check("releases", sig, sig.Unit(), rungs, rel)
+			if !advance(pos[:], 4) {
 				break
 			}
 		}
 	}
-	t.Logf("%d ladders: %d admitted, %d refused by both", cases, valid, invalid)
+	for _, sig := range budgetv1alpha1.Signals() {
+		for _, unit := range []budgetv1alpha1.SignalUnit{budgetv1alpha1.UnitBytes, budgetv1alpha1.UnitPermille, budgetv1alpha1.UnitCount} {
+			check("unit", sig, unit, none, none)
+		}
+	}
+	t.Logf("%d ladders on each side: %d admitted, %d refused by both", cases, valid, invalid)
 	if valid == 0 || invalid == 0 {
 		t.Fatal("the enumeration is vacuous: it must reach both verdicts")
 	}
+}
+
+// advance steps idx as a base-n counter and reports false after the last
+// combination.
+func advance(idx []int, n int) bool {
+	for k := range idx {
+		idx[k]++
+		if idx[k] < n {
+			return true
+		}
+		idx[k] = 0
+	}
+	return false
 }
 
 // policyWire is a policy setting every field, as decoded JSON.
@@ -487,10 +573,10 @@ func policyWire(t *testing.T) map[string]any {
 	p := `{"apiVersion":"budget.k3sm.io/v1alpha1","kind":"NodeBudgetPolicy","metadata":{"name":"linux-workers"},
 "spec":{"nodeSelector":{"kubernetes.io/os":"linux"},"priority":10,
 "thresholds":[
- {"signal":"memory.compressor","warnAt":500,"admitStopAt":600,"criticalAt":700,"evictSoftAt":750,"evictHardAt":800,
-  "warnReleaseAt":450,"admitStopReleaseAt":550,"criticalReleaseAt":650,"evictSoftReleaseAt":720,"evictHardReleaseAt":780,
+ {"signal":"memory.compressor","warnThreshold":500,"admitStopThreshold":600,"criticalThreshold":700,"evictSoftThreshold":750,"evictHardThreshold":800,
+  "warnRelease":450,"admitStopRelease":550,"criticalRelease":650,"evictSoftRelease":720,"evictHardRelease":780,
   "graceSeconds":60,"minReclaimBytes":268435456,"dwellSeconds":5},
- {"signal":"memory.swap","warnAt":268435456,"admitStopAt":536870912,"criticalAt":1073741824,"windowSeconds":60}],
+ {"signal":"memory.swap","warnThreshold":268435456,"admitStopThreshold":536870912,"criticalThreshold":1073741824,"windowSeconds":60}],
 "reserves":{"cpuSystemReserveMilli":500,"memSystemReserveBytes":2147483648,"memEvictionReserveBytes":536870912},
 "history":{"memoryHalfLifeSeconds":172800,"cpuHalfLifeSeconds":43200,"marginPermille":150},
 "mode":"on","tier1GraceSeconds":20,"tier1HeldSeconds":30,"tier1MaxDeliveriesPerHour":4,"tier1CooloffSeconds":1800,"psiHeldPermille":600}}`

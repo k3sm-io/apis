@@ -21,6 +21,7 @@ import (
 	"errors"
 	"math"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -115,17 +116,17 @@ func TestNodeBudgetAnnotationStrictDecode(t *testing.T) {
 		{"falling ladder misordered", func(r *NodeBudgetReport) {
 			// memory.available falls under pressure: warn must sit above
 			// admit-stop.
-			r.Signals[0].WarnAt, r.Signals[0].AdmitStopAt = i64(1*gib), i64(2*gib)
+			r.Signals[0].WarnThreshold, r.Signals[0].AdmitStopThreshold = i64(1*gib), i64(2*gib)
 		}, ErrInvalidBudgetAnnotation},
 		{"rising ladder misordered", func(r *NodeBudgetReport) {
 			// memory.compressor rises under pressure: warn must sit below
 			// admit-stop.
-			r.Signals[1].WarnAt, r.Signals[1].AdmitStopAt = i64(650), i64(600)
+			r.Signals[1].WarnThreshold, r.Signals[1].AdmitStopThreshold = i64(650), i64(600)
 		}, ErrInvalidBudgetAnnotation},
 		{"falling ladder written as rising", func(r *NodeBudgetReport) {
 			s := &r.Signals[0]
-			s.WarnAt, s.AdmitStopAt, s.CriticalAt, s.EvictSoftAt, s.EvictHardAt = i64(1), i64(2), i64(3), i64(4), i64(5)
-			s.WarnReleaseAt, s.AdmitStopReleaseAt, s.CriticalReleaseAt, s.EvictSoftReleaseAt, s.EvictHardReleaseAt = nil, nil, nil, nil, nil
+			s.WarnThreshold, s.AdmitStopThreshold, s.CriticalThreshold, s.EvictSoftThreshold, s.EvictHardThreshold = i64(1), i64(2), i64(3), i64(4), i64(5)
+			s.WarnRelease, s.AdmitStopRelease, s.CriticalRelease, s.EvictSoftRelease, s.EvictHardRelease = nil, nil, nil, nil, nil
 		}, ErrInvalidBudgetAnnotation},
 		{"negative counter", func(r *NodeBudgetReport) { r.Counters[2].EvictionsTotal = -1 }, ErrInvalidBudgetAnnotation},
 		{"unknown level", func(r *NodeBudgetReport) { r.Level = "red" }, ErrInvalidBudgetAnnotation},
@@ -154,9 +155,14 @@ func TestNodeBudgetAnnotationStrictDecode(t *testing.T) {
 	}{
 		{"bound+1 bytes, before parsing", func(string) string {
 			return `{"schema":1,` + strings.Repeat(" ", MaxBudgetAnnotationBytes+1-len(`{"schema":1,`))
-		}, ErrInvalidBudgetAnnotation, "16385 bytes"},
+		}, ErrBudgetAnnotationTooLarge, "16385 bytes"},
 		{"missing schema", func(v string) string { return strings.Replace(v, `"schema":1,`, "", 1) }, ErrUnknownBudgetSchema, "no schema"},
-		{"schema as a string", func(v string) string { return strings.Replace(v, `"schema":1`, `"schema":"1"`, 1) }, ErrInvalidBudgetAnnotation, ""},
+		{"schema as a string", func(v string) string { return strings.Replace(v, `"schema":1`, `"schema":"1"`, 1) }, ErrUnknownBudgetSchema, ""},
+		{"schema 1.0", func(v string) string { return strings.Replace(v, `"schema":1`, `"schema":1.0`, 1) }, ErrUnknownBudgetSchema, ""},
+		{"schema null", func(v string) string { return strings.Replace(v, `"schema":1`, `"schema":null`, 1) }, ErrUnknownBudgetSchema, "no schema"},
+		{"an unknown structural enum value", func(v string) string {
+			return strings.Replace(v, `"unit":"bytes"`, `"unit":"pages"`, 1)
+		}, ErrInvalidBudgetAnnotation, ""},
 		{"not JSON", func(string) string { return "level=ok" }, ErrInvalidBudgetAnnotation, ""},
 		{"unknown field", func(v string) string { return inject(v, `"extra":1`) }, ErrInvalidBudgetAnnotation, "unknown field"},
 		{"unknown nested field", func(v string) string {
@@ -223,8 +229,8 @@ func maximalReport() NodeBudgetReport {
 	var sigs []BudgetSignal
 	for _, id := range Signals() {
 		s := BudgetSignal{
-			ID: id, Unit: UnitPermille, Value: i64(m),
-			GraceNs: i64(m), MinReclaimBytes: i64(m), WindowNs: i64(m), EtaToNextRungNs: i64(m),
+			ID: id, Unit: id.Unit(), Value: i64(m),
+			GraceSeconds: i64(m), MinReclaimBytes: i64(m), WindowSeconds: i64(m), EtaToNextRungSeconds: i64(m),
 			Trend: TrendFalling, LimitingResource: ResourceImagefs, SharedWith: SignalImagefsAvailable,
 		}
 		if id == SignalImagefsAvailable {
@@ -236,10 +242,10 @@ func maximalReport() NodeBudgetReport {
 			r = []*int64{i64(m - 5), i64(m - 6), i64(m - 7), i64(m - 8), i64(m - 9)}
 			rel = []*int64{i64(m), i64(m - 1), i64(m - 2), i64(m - 3), i64(m - 4)}
 		}
-		s.WarnAt, s.AdmitStopAt, s.CriticalAt, s.EvictSoftAt, s.EvictHardAt = r[0], r[1], r[2], r[3], r[4]
-		s.WarnReleaseAt, s.AdmitStopReleaseAt, s.CriticalReleaseAt, s.EvictSoftReleaseAt, s.EvictHardReleaseAt = rel[0], rel[1], rel[2], rel[3], rel[4]
+		s.WarnThreshold, s.AdmitStopThreshold, s.CriticalThreshold, s.EvictSoftThreshold, s.EvictHardThreshold = r[0], r[1], r[2], r[3], r[4]
+		s.WarnRelease, s.AdmitStopRelease, s.CriticalRelease, s.EvictSoftRelease, s.EvictHardRelease = rel[0], rel[1], rel[2], rel[3], rel[4]
 		if id == SignalMemorySwap {
-			s.EvictSoftAt, s.EvictSoftReleaseAt = nil, nil
+			s.EvictSoftThreshold, s.EvictSoftRelease = nil, nil
 		}
 		sigs = append(sigs, s)
 	}
@@ -253,18 +259,15 @@ func maximalReport() NodeBudgetReport {
 		}
 		counters = append(counters, c)
 	}
-	var clamped []string
-	for i := 0; i < MaxClampedFields; i++ {
-		clamped = append(clamped, "f"+strings.Repeat("x", MaxClampedFieldBytes-1))
-	}
+	clamped := PolicyFields()
 	line := func() *PSILine { return &PSILine{Avg10Permille: i64(1000), Avg60Permille: i64(1000), TotalUs: i64(m)} }
 	res := func() *PSIResource { return &PSIResource{Some: line(), Full: line()} }
 	at := metav1.NewTime(time.Date(2026, 12, 31, 23, 59, 59, 0, time.UTC))
 	return NodeBudgetReport{
 		Schema: BudgetAnnotationSchema,
 		NodeBudgetObservation: NodeBudgetObservation{
-			ObservedAt: at, Generation: m, Platform: PlatformLinux, Level: LevelEvicting,
-			AdmitReasonSignal: SignalImagefsAvailable, EvictDeadlineNs: i64(m),
+			ObservedAt: at, ProducerGeneration: m, Platform: PlatformLinux, Level: LevelEvicting,
+			AdmitReasonSignal: SignalImagefsAvailable, EvictDeadline: &at,
 			Capacity: BudgetCapacity{
 				CPUCapacityMilli: i64(m), CPUSystemReserveMilli: i64(m), MemCapacityBytes: i64(m), MemSystemReserveBytes: i64(m),
 				MemEvictionReserveBytes: i64(m), MemAllocatableBytes: i64(m), SwapTotalBytes: i64(m), SwapUsedBytes: i64(m),
@@ -276,8 +279,9 @@ func maximalReport() NodeBudgetReport {
 			Counters:       counters,
 			Policy: &AppliedPolicy{
 				Name: strings.Repeat("a", 253), ResourceVersion: strings.Repeat("9", MaxPolicyResourceVersionBytes),
-				Outcome: PolicyRejected, ClampedFields: clamped, Message: strings.Repeat("m", MaxPolicyMessageBytes),
+				Outcome: PolicyRejected, ClampedFields: clamped,
 			},
+			InForce: &PolicyRef{Name: strings.Repeat("b", 253), ResourceVersion: strings.Repeat("8", MaxPolicyResourceVersionBytes)},
 			Linux: &LinuxSignals{
 				PSI:          &LinuxPSI{CPU: res(), Memory: res(), IO: res()},
 				MemoryEvents: &LinuxMemoryEvents{High: i64(m), Max: i64(m), OOM: i64(m), OOMKill: i64(m)},
@@ -351,7 +355,7 @@ func TestNodeBudgetDesiredPolicyStrictDecode(t *testing.T) {
 		{"case-folded key", func(v string) string { return strings.Replace(v, `"name":`, `"Name":`, 1) }, ErrInvalidBudgetAnnotation},
 		{"unknown mode", func(v string) string { return strings.Replace(v, `"mode":"on"`, `"mode":"always"`, 1) }, ErrInvalidBudgetAnnotation},
 		{"misordered ladder", func(v string) string {
-			return strings.Replace(v, `"warnAt":500`, `"warnAt":900`, 1)
+			return strings.Replace(v, `"warnThreshold":500`, `"warnThreshold":900`, 1)
 		}, ErrInvalidBudgetAnnotation},
 		{"name not an object name", func(v string) string {
 			return strings.Replace(v, `"name":"linux-workers"`, `"name":"Linux Workers"`, 1)
@@ -370,4 +374,110 @@ func TestNodeBudgetDesiredPolicyStrictDecode(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBudgetAnnotationSkewTolerance pins how a report from a newer producer
+// on the same schema is read. Producer-vocabulary values this release does
+// not know decode to their "unknown" constants (the original string is
+// dropped, so no free text reaches the status), and windowed counts of
+// unknown reasons are summed per window. Structural enum values this release
+// does not know still refuse the payload: adding one bumps the schema.
+func TestBudgetAnnotationSkewTolerance(t *testing.T) {
+	t.Parallel()
+	base := func(t *testing.T) map[string]any {
+		r := goldenReport(t, PlatformLinux)
+		s, err := r.Encode()
+		if err != nil {
+			t.Fatalf("Encode: %v", err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(s), &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	sig := func(m map[string]any) map[string]any { return m["signals"].([]any)[0].(map[string]any) }
+	batch := func(m map[string]any) map[string]any { return m["counters"].([]any)[0].(map[string]any) }
+
+	t.Run("tolerates new producer vocabulary", func(t *testing.T) {
+		m := base(t)
+		sig(m)["trend"] = "accelerating"
+		sig(m)["limitingResource"] = "gpu-memory"
+		m["killMode"].(map[string]any)["reason"] = "maintenance-window"
+		m["wouldKill"].(map[string]any)["reason"] = "psi-full"
+		batch(m)["windows"] = []any{
+			map[string]any{"window": "1h", "reason": "eviction", "count": 2},
+			map[string]any{"window": "1h", "reason": "swap-storm", "count": 3},
+			map[string]any{"window": "1h", "reason": "page-fault-storm", "count": 4},
+			map[string]any{"window": "24h", "reason": "swap-storm", "count": 5},
+		}
+		raw := marshalRaw(t, m)
+		r, err := ParseNodeBudgetReport(raw)
+		if err != nil {
+			t.Fatalf("a report with new producer vocabulary is refused: %v", err)
+		}
+		s := r.Signals[0]
+		if s.Trend != TrendUnknown || s.LimitingResource != ResourceUnknown ||
+			r.KillMode.Reason != KillReasonUnknown || r.WouldKill.Reason != WouldKillUnknown {
+			t.Fatalf("unknown values decoded to %q %q %q %q", s.Trend, s.LimitingResource, r.KillMode.Reason, r.WouldKill.Reason)
+		}
+		want := []WindowCount{
+			{Window: Window1h, Reason: CounterEviction, Count: 2},
+			{Window: Window1h, Reason: CounterUnknown, Count: 7},
+			{Window: Window24h, Reason: CounterUnknown, Count: 5},
+		}
+		if got := r.Counters[0].Windows; !reflect.DeepEqual(got, want) {
+			t.Fatalf("windows = %+v, want %+v", got, want)
+		}
+		out, err := r.Encode()
+		if err != nil {
+			t.Fatalf("the tolerated report does not re-encode: %v", err)
+		}
+		for _, leak := range []string{"accelerating", "gpu-memory", "maintenance-window", "psi-full", "swap-storm", "page-fault-storm"} {
+			if strings.Contains(out, leak) {
+				t.Errorf("the producer's string %q survived into the re-encoded report", leak)
+			}
+		}
+	})
+
+	t.Run("saturates a merged count", func(t *testing.T) {
+		got := mergeUnknownWindows([]WindowCount{
+			{Window: Window1h, Reason: CounterUnknown, Count: math.MaxInt64 - 1},
+			{Window: Window1h, Reason: CounterUnknown, Count: 5},
+		})
+		if len(got) != 1 || got[0].Count != math.MaxInt64 {
+			t.Fatalf("merged = %+v, want one entry saturated at MaxInt64", got)
+		}
+	})
+
+	for _, tc := range []struct {
+		name   string
+		mutate func(m map[string]any)
+	}{
+		{"signal", func(m map[string]any) { sig(m)["id"] = "gpu.available" }},
+		{"unit", func(m map[string]any) { sig(m)["unit"] = "pages" }},
+		{"level", func(m map[string]any) { m["level"] = "red" }},
+		{"band", func(m map[string]any) { batch(m)["band"] = "best-effort" }},
+		{"platform", func(m map[string]any) { m["platform"] = "windows" }},
+		{"policy outcome", func(m map[string]any) { m["policy"].(map[string]any)["outcome"] = "deferred" }},
+		{"clamped field", func(m map[string]any) { m["policy"].(map[string]any)["clampedFields"] = []any{"spec.thresholds"} }},
+		{"kill mode", func(m map[string]any) { m["killMode"].(map[string]any)["mode"] = "observe" }},
+		{"counter window", func(m map[string]any) { batch(m)["windows"].([]any)[0].(map[string]any)["window"] = "7d" }},
+	} {
+		t.Run("refuses an unknown structural "+tc.name, func(t *testing.T) {
+			m := base(t)
+			tc.mutate(m)
+			if _, err := ParseNodeBudgetReport(marshalRaw(t, m)); !errors.Is(err, ErrInvalidBudgetAnnotation) {
+				t.Fatalf("error = %v, want ErrInvalidBudgetAnnotation", err)
+			}
+		})
+	}
+
+	t.Run("an open enum still refuses a non-string", func(t *testing.T) {
+		m := base(t)
+		sig(m)["trend"] = 3
+		if _, err := ParseNodeBudgetReport(marshalRaw(t, m)); !errors.Is(err, ErrInvalidBudgetAnnotation) {
+			t.Fatalf("error = %v, want ErrInvalidBudgetAnnotation", err)
+		}
+	})
 }

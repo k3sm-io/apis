@@ -63,16 +63,22 @@ spec:
               x-kubernetes-validations:
                 - rule: "!has(self.level) || (has(self.darwin) != has(self.linux))"
                   message: "a reporting status carries exactly one of darwin and linux"
+                - rule: "!has(self.level) || has(self.platform)"
+                  message: "a reporting status names its platform"
+                - rule: "!has(self.platform) || (self.platform == 'darwin' ? !has(self.linux) : !has(self.darwin))"
+                  message: "the platform block set must be the one platform names"
+                - rule: "!has(self.policy) || self.policy.outcome == 'rejected' || (has(self.inForce) && self.inForce.name == self.policy.name && (has(self.inForce.resourceVersion) ? has(self.policy.resourceVersion) && self.inForce.resourceVersion == self.policy.resourceVersion : !has(self.policy.resourceVersion)))"
+                  message: "an applied or clamped policy is the policy in force: inForce must name the same name and resourceVersion"
               properties:
                 observedAt:
                   type: string
                   format: date-time
                   description: ObservedAt is when the node took the observation.
-                generation:
+                producerGeneration:
                   type: integer
                   format: int64
                   minimum: 0
-                  description: Generation bumps on a producer restart and on a policy change.
+                  description: ProducerGeneration is the producer's own generation (not metadata.generation); it bumps on a producer restart and on a policy change.
                 platform:
                   type: string
                   description: Platform names the platform block the producer fills.
@@ -101,11 +107,10 @@ spec:
                     - nodefs.available
                     - imagefs.available
                     - pid.available
-                evictDeadlineNs:
-                  type: integer
-                  format: int64
-                  minimum: 0
-                  description: EvictDeadlineNs is when the evict-soft grace runs out, in Unix nanoseconds; set only at level evicting.
+                evictDeadline:
+                  type: string
+                  format: date-time
+                  description: EvictDeadline is when the evict-soft grace runs out; set only at level evicting.
                 capacity:
                   type: object
                   description: Capacity is the node's capacity and the reserves held back from pods.
@@ -162,6 +167,41 @@ spec:
                     required:
                       - id
                       - unit
+                    x-kubernetes-validations:
+                      - rule: "self.unit == (self.id == 'memory.compressor' ? 'permille' : self.id == 'pid.available' ? 'count' : 'bytes')"
+                        message: "unit must be the signal's canonical unit (permille for memory.compressor, count for pid.available, bytes otherwise)"
+                      - rule: "!has(self.warnThreshold) || !has(self.admitStopThreshold) || (self.id.endsWith('.available') ? self.warnThreshold > self.admitStopThreshold : self.warnThreshold < self.admitStopThreshold)"
+                        message: "warnThreshold must be on the calm side of admitStopThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.warnThreshold) || !has(self.criticalThreshold) || (self.id.endsWith('.available') ? self.warnThreshold > self.criticalThreshold : self.warnThreshold < self.criticalThreshold)"
+                        message: "warnThreshold must be on the calm side of criticalThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.warnThreshold) || !has(self.evictSoftThreshold) || (self.id.endsWith('.available') ? self.warnThreshold > self.evictSoftThreshold : self.warnThreshold < self.evictSoftThreshold)"
+                        message: "warnThreshold must be on the calm side of evictSoftThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.warnThreshold) || !has(self.evictHardThreshold) || (self.id.endsWith('.available') ? self.warnThreshold > self.evictHardThreshold : self.warnThreshold < self.evictHardThreshold)"
+                        message: "warnThreshold must be on the calm side of evictHardThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.admitStopThreshold) || !has(self.criticalThreshold) || (self.id.endsWith('.available') ? self.admitStopThreshold > self.criticalThreshold : self.admitStopThreshold < self.criticalThreshold)"
+                        message: "admitStopThreshold must be on the calm side of criticalThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.admitStopThreshold) || !has(self.evictSoftThreshold) || (self.id.endsWith('.available') ? self.admitStopThreshold > self.evictSoftThreshold : self.admitStopThreshold < self.evictSoftThreshold)"
+                        message: "admitStopThreshold must be on the calm side of evictSoftThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.admitStopThreshold) || !has(self.evictHardThreshold) || (self.id.endsWith('.available') ? self.admitStopThreshold > self.evictHardThreshold : self.admitStopThreshold < self.evictHardThreshold)"
+                        message: "admitStopThreshold must be on the calm side of evictHardThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.criticalThreshold) || !has(self.evictSoftThreshold) || (self.id.endsWith('.available') ? self.criticalThreshold > self.evictSoftThreshold : self.criticalThreshold < self.evictSoftThreshold)"
+                        message: "criticalThreshold must be on the calm side of evictSoftThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.criticalThreshold) || !has(self.evictHardThreshold) || (self.id.endsWith('.available') ? self.criticalThreshold > self.evictHardThreshold : self.criticalThreshold < self.evictHardThreshold)"
+                        message: "criticalThreshold must be on the calm side of evictHardThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.evictSoftThreshold) || !has(self.evictHardThreshold) || (self.id.endsWith('.available') ? self.evictSoftThreshold > self.evictHardThreshold : self.evictSoftThreshold < self.evictHardThreshold)"
+                        message: "evictSoftThreshold must be on the calm side of evictHardThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.warnThreshold) || !has(self.warnRelease) || (self.id.endsWith('.available') ? self.warnRelease > self.warnThreshold : self.warnRelease < self.warnThreshold)"
+                        message: "warnRelease must be on the calm side of warnThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.admitStopThreshold) || !has(self.admitStopRelease) || (self.id.endsWith('.available') ? self.admitStopRelease > self.admitStopThreshold : self.admitStopRelease < self.admitStopThreshold)"
+                        message: "admitStopRelease must be on the calm side of admitStopThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.criticalThreshold) || !has(self.criticalRelease) || (self.id.endsWith('.available') ? self.criticalRelease > self.criticalThreshold : self.criticalRelease < self.criticalThreshold)"
+                        message: "criticalRelease must be on the calm side of criticalThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.evictSoftThreshold) || !has(self.evictSoftRelease) || (self.id.endsWith('.available') ? self.evictSoftRelease > self.evictSoftThreshold : self.evictSoftRelease < self.evictSoftThreshold)"
+                        message: "evictSoftRelease must be on the calm side of evictSoftThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.evictHardThreshold) || !has(self.evictHardRelease) || (self.id.endsWith('.available') ? self.evictHardRelease > self.evictHardThreshold : self.evictHardRelease < self.evictHardThreshold)"
+                        message: "evictHardRelease must be on the calm side of evictHardThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "self.id != 'memory.swap' || !has(self.evictSoftThreshold)"
+                        message: "memory.swap has no evictSoftThreshold rung (swap alone never causes a soft eviction)"
                     properties:
                       id:
                         type: string
@@ -176,7 +216,7 @@ spec:
                           - pid.available
                       unit:
                         type: string
-                        description: Unit is the unit of the value and of every rung and release.
+                        description: Unit is the unit of the value and of every rung and release, always the signal's canonical unit.
                         enum:
                           - bytes
                           - permille
@@ -186,76 +226,76 @@ spec:
                         format: int64
                         minimum: 0
                         description: Value is the current reading.
-                      warnAt:
+                      warnThreshold:
                         type: integer
                         format: int64
                         minimum: 0
-                        description: WarnAt is the warn rung.
-                      admitStopAt:
+                        description: WarnThreshold is the warn rung.
+                      admitStopThreshold:
                         type: integer
                         format: int64
                         minimum: 0
-                        description: AdmitStopAt is the rung at which the node stops admitting work.
-                      criticalAt:
+                        description: AdmitStopThreshold is the rung at which the node stops admitting work.
+                      criticalThreshold:
                         type: integer
                         format: int64
                         minimum: 0
-                        description: CriticalAt is the critical rung.
-                      evictSoftAt:
+                        description: CriticalThreshold is the critical rung.
+                      evictSoftThreshold:
                         type: integer
                         format: int64
                         minimum: 0
-                        description: EvictSoftAt is the rung that starts the evict-soft grace (tier 1).
-                      evictHardAt:
+                        description: EvictSoftThreshold is the rung that starts the evict-soft grace (tier 1); never set on memory.swap.
+                      evictHardThreshold:
                         type: integer
                         format: int64
                         minimum: 0
-                        description: EvictHardAt is the hard trip (tier 2); for nodefs.available and pid.available a node condition trip, not an eviction.
-                      warnReleaseAt:
+                        description: EvictHardThreshold is the hard trip (tier 2); for nodefs.available and pid.available a node condition trip, not an eviction.
+                      warnRelease:
                         type: integer
                         format: int64
                         minimum: 0
-                        description: WarnReleaseAt is the value at which the warn rung releases.
-                      admitStopReleaseAt:
+                        description: WarnRelease is the value at which the warn rung clears.
+                      admitStopRelease:
                         type: integer
                         format: int64
                         minimum: 0
-                        description: AdmitStopReleaseAt is the value at which admission resumes.
-                      criticalReleaseAt:
+                        description: AdmitStopRelease is the value at which admission resumes.
+                      criticalRelease:
                         type: integer
                         format: int64
                         minimum: 0
-                        description: CriticalReleaseAt is the value at which the critical rung releases.
-                      evictSoftReleaseAt:
+                        description: CriticalRelease is the value at which the critical rung clears.
+                      evictSoftRelease:
                         type: integer
                         format: int64
                         minimum: 0
-                        description: EvictSoftReleaseAt is the value at which the evict-soft rung releases.
-                      evictHardReleaseAt:
+                        description: EvictSoftRelease is the value at which the evict-soft rung clears.
+                      evictHardRelease:
                         type: integer
                         format: int64
                         minimum: 0
-                        description: EvictHardReleaseAt is the value at which the hard trip releases.
-                      graceNs:
+                        description: EvictHardRelease is the value at which the hard trip clears.
+                      graceSeconds:
                         type: integer
                         format: int64
                         minimum: 0
-                        description: GraceNs is the evict-soft grace, in nanoseconds.
+                        description: GraceSeconds is the evict-soft grace, in seconds.
                       minReclaimBytes:
                         type: integer
                         format: int64
                         minimum: 0
                         description: MinReclaimBytes is the least an eviction on this signal reclaims.
-                      windowNs:
+                      windowSeconds:
                         type: integer
                         format: int64
                         minimum: 0
-                        description: WindowNs is the window a growth signal (memory.swap) measures its value over, in nanoseconds.
-                      etaToNextRungNs:
+                        description: WindowSeconds is the window, in seconds, a growth signal (memory.swap) measures its value over.
+                      etaToNextRungSeconds:
                         type: integer
                         format: int64
                         minimum: 0
-                        description: EtaToNextRungNs is the estimated time to the next rung, in nanoseconds; set only while the value moves toward it and the fit is good.
+                        description: EtaToNextRungSeconds is the estimated time to the next rung, in seconds; set only while the value moves toward it and the fit is good.
                       trend:
                         type: string
                         description: Trend is the recent direction of the value itself, not of pressure.
@@ -263,6 +303,7 @@ spec:
                           - falling
                           - steady
                           - rising
+                          - unknown
                       limitingResource:
                         type: string
                         description: LimitingResource is the resource that actually limits this signal.
@@ -273,6 +314,7 @@ spec:
                           - imagefs
                           - pid
                           - cpu
+                          - unknown
                       sharedWith:
                         type: string
                         description: SharedWith names a signal that measures the same volume.
@@ -332,6 +374,7 @@ spec:
                         - armed
                         - policy-off
                         - disarm-file
+                        - unknown
                 wouldKill:
                   type: object
                   description: WouldKill is the last tier-1 decision, the band and the trigger only; the victim appears only in a namespaced Event.
@@ -351,6 +394,7 @@ spec:
                       enum:
                         - held-pressure
                         - memory-floor
+                        - unknown
                     at:
                       type: string
                       format: date-time
@@ -431,13 +475,14 @@ spec:
                                 - restart
                                 - mem-high
                                 - tier1-refused
+                                - unknown
                             count:
                               type: integer
                               format: int64
                               minimum: 0
                 policy:
                   type: object
-                  description: Policy is the NodeBudgetPolicy the node applied, clamped or refused.
+                  description: Policy is the NodeBudgetPolicy the node applied, clamped or refused. It carries no free text; the status writer composes the condition message from outcome and clampedFields.
                   required:
                     - name
                     - outcome
@@ -457,14 +502,32 @@ spec:
                         - clamped
                     clampedFields:
                       type: array
+                      description: ClampedFields are the policy fields the node clamped, each listed once.
                       maxItems: 8
+                      x-kubernetes-list-type: set
                       items:
                         type: string
-                        maxLength: 64
-                        pattern: '^[a-zA-Z][a-zA-Z0-9]*(\[[0-9]+\])?(\.[a-zA-Z][a-zA-Z0-9]*(\[[0-9]+\])?)*$'
-                    message:
+                        enum:
+                          - tier1GraceSeconds
+                          - tier1HeldSeconds
+                          - tier1MaxDeliveriesPerHour
+                          - tier1CooloffSeconds
+                          - reserves.cpuSystemReserveMilli
+                          - reserves.memSystemReserveBytes
+                          - reserves.memEvictionReserveBytes
+                inForce:
+                  type: object
+                  description: InForce names the policy the node actually runs; when policy was rejected, the last valid policy kept in its place. Absent while the producer's shipped defaults are in force.
+                  required:
+                    - name
+                  properties:
+                    name:
                       type: string
-                      maxLength: 256
+                      maxLength: 253
+                      pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$'
+                    resourceVersion:
+                      type: string
+                      maxLength: 64
                 writer:
                   type: object
                   description: Writer is how this status reaches the API server.
@@ -481,7 +544,7 @@ spec:
                       description: NodeNameExtra is true when an own-node producer verified its token's node-name claim at start.
                 conditions:
                   type: array
-                  description: Conditions are the standard conditions (Reporting, PolicyRejected, PolicyClamped, PolicyConflict), owned by the status writer.
+                  description: Conditions are the standard conditions (Reporting, PolicyRejected, PolicyClamped, PolicyConflict). They are owned by the status writer and never carried in a node's payload; each reason is from the closed set the Go package publishes per type and status.
                   maxItems: 8
                   x-kubernetes-list-type: map
                   x-kubernetes-list-map-keys:

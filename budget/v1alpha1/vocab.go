@@ -16,7 +16,10 @@ limitations under the License.
 
 package budgetv1alpha1
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // The shared vocabulary of the budget contract. Every value here is a wire
 // string (or, for a signal, also a page code) that the node, the server
@@ -24,6 +27,19 @@ import "strings"
 // consumer writes a literal. Enum values are kebab-case, as elsewhere in
 // this module. Each type's Valid method reports whether a value is one this
 // release knows.
+//
+// Two kinds of enum, and how a newer producer is tolerated within one
+// annotation schema:
+//
+//   - Structural enums (SignalID, SignalUnit, Level, Band, Platform,
+//     PolicyOutcome, PolicyField, KillModeName, WriterShape, CounterWindow)
+//     change what a reader computes. An unknown value is refused, so adding
+//     one bumps BudgetAnnotationSchema.
+//   - Producer-vocabulary enums (Trend, LimitingResource, KillModeReason,
+//     WouldKillReason, CounterReason) only describe. An unknown value decodes
+//     to that type's "unknown" constant instead of failing the payload, so a
+//     newer producer may add one without a schema bump. The string itself is
+//     never kept: no free text reaches the status.
 
 // SignalID names one pressure signal. The upstream eviction signal names are
 // kept as they are; memory.compressor, memory.swap and swapfs.available are
@@ -36,11 +52,17 @@ const (
 	// bytes. It falls under pressure.
 	SignalMemoryAvailable SignalID = "memory.available"
 	// SignalMemoryCompressor is how full the memory compressor is, in
-	// permille of its segment limit. It rises under pressure.
+	// permille: the larger of its page ratio (compressed pages against the
+	// page limit) and its segment ratio (segments in use against the segment
+	// limit), whichever is nearer its limit. It rises under pressure.
 	SignalMemoryCompressor SignalID = "memory.compressor"
-	// SignalMemorySwap is swap growth, in bytes over the record's WindowNs.
-	// It rises under pressure and has no evict-soft rung: swap alone never
-	// causes a soft eviction.
+	// SignalMemorySwap is swap growth, in bytes over the record's
+	// WindowSeconds. It rises under pressure and has no evict-soft rung: swap
+	// alone never causes a soft eviction. Its rungs also carry a
+	// producer-side gate that is not in the record: a rung counts only while
+	// the swap in use is at least max(1 GiB, a quarter of physical memory).
+	// A reader therefore cannot derive the level from Value and the rungs
+	// alone; the published Level is the producer's verdict.
 	SignalMemorySwap SignalID = "memory.swap"
 	// SignalSwapfsAvailable is the free space on the volume that holds swap,
 	// in bytes. It falls under pressure.
@@ -52,8 +74,9 @@ const (
 	// It falls under pressure. When the image store shares the data volume,
 	// the record says so with SharedWith.
 	SignalImagefsAvailable SignalID = "imagefs.available"
-	// SignalPIDAvailable is the process IDs still available. It falls under
-	// pressure.
+	// SignalPIDAvailable is the process IDs still available system-wide. It
+	// falls under pressure. A per-user process limit, where the producer
+	// enforces one, is a node condition only and is not in the record.
 	SignalPIDAvailable SignalID = "pid.available"
 )
 
@@ -102,9 +125,31 @@ func SignalForPageCode(c uint64) (SignalID, bool) {
 
 // IsDescending reports whether the signal's value falls as pressure rises:
 // true for every "*.available" signal. Its ladder rungs then descend
-// (warnAt > admitStopAt > ... > evictHardAt) and each release value sits
-// above its rung; for a rising signal both orders are reversed.
+// (warnThreshold > admitStopThreshold > ... > evictHardThreshold) and each
+// release sits above its rung; for a rising signal both orders are reversed.
+//
+// The rule is frozen and keyed on the name: every signal whose ID ends in
+// ".available" falls under pressure, and every other signal rises. The CEL
+// rules on both CRDs test the same suffix, so a new signal must be named to
+// match its direction.
 func IsDescending(s SignalID) bool { return strings.HasSuffix(string(s), ".available") }
+
+// Unit returns the signal's one canonical unit: bytes for memory.swap and
+// for every "*.available" signal except pid.available, permille for
+// memory.compressor, and a count for pid.available. A record in another unit
+// is refused, so a policy threshold for a signal is always in this unit. It
+// returns "" for an unknown signal.
+func (s SignalID) Unit() SignalUnit {
+	switch s {
+	case SignalMemoryCompressor:
+		return UnitPermille
+	case SignalPIDAvailable:
+		return UnitCount
+	case SignalMemoryAvailable, SignalMemorySwap, SignalSwapfsAvailable, SignalNodefsAvailable, SignalImagefsAvailable:
+		return UnitBytes
+	}
+	return ""
+}
 
 // SignalUnit is the unit of a signal's value, rungs and releases.
 type SignalUnit string
@@ -133,7 +178,7 @@ const (
 	// LevelCritical means a signal is at or past its critical rung.
 	LevelCritical Level = "critical"
 	// LevelEvicting means a signal is at or past its evict-soft rung; the
-	// observation then carries EvictDeadlineNs.
+	// observation then carries EvictDeadline.
 	LevelEvicting Level = "evicting"
 )
 
@@ -171,10 +216,16 @@ const (
 	TrendSteady Trend = "steady"
 	// TrendRising means the value is going up.
 	TrendRising Trend = "rising"
+	// TrendUnknown stands for a trend this release does not know.
+	TrendUnknown Trend = "unknown"
 )
 
 // Valid reports whether t is a trend this release knows.
-func (t Trend) Valid() bool { return oneOf(t, TrendFalling, TrendSteady, TrendRising) }
+func (t Trend) Valid() bool { return oneOf(t, TrendFalling, TrendSteady, TrendRising, TrendUnknown) }
+
+// UnmarshalJSON decodes a trend, mapping a value this release does not know
+// to TrendUnknown.
+func (t *Trend) UnmarshalJSON(b []byte) error { return decodeOpenEnum(b, t, TrendUnknown) }
 
 // LimitingResource names the resource that actually limits a signal, for
 // example swapfs when swap growth is bounded by disk space rather than by
@@ -194,11 +245,19 @@ const (
 	ResourcePID LimitingResource = "pid"
 	// ResourceCPU is processor time.
 	ResourceCPU LimitingResource = "cpu"
+	// ResourceUnknown stands for a resource this release does not know.
+	ResourceUnknown LimitingResource = "unknown"
 )
 
 // Valid reports whether r is a resource this release knows.
 func (r LimitingResource) Valid() bool {
-	return oneOf(r, ResourceMemory, ResourceSwapfs, ResourceNodefs, ResourceImagefs, ResourcePID, ResourceCPU)
+	return oneOf(r, ResourceMemory, ResourceSwapfs, ResourceNodefs, ResourceImagefs, ResourcePID, ResourceCPU, ResourceUnknown)
+}
+
+// UnmarshalJSON decodes a resource, mapping a value this release does not
+// know to ResourceUnknown.
+func (r *LimitingResource) UnmarshalJSON(b []byte) error {
+	return decodeOpenEnum(b, r, ResourceUnknown)
 }
 
 // KillModeName is the tier-1 kill mode a policy sets and a node publishes.
@@ -236,11 +295,19 @@ const (
 	KillReasonPolicyOff KillModeReason = "policy-off"
 	// KillReasonDisarmFile means the node-local disarm file is present.
 	KillReasonDisarmFile KillModeReason = "disarm-file"
+	// KillReasonUnknown stands for a reason this release does not know.
+	KillReasonUnknown KillModeReason = "unknown"
 )
 
 // Valid reports whether r is a kill-mode reason this release knows.
 func (r KillModeReason) Valid() bool {
-	return oneOf(r, KillReasonColdStart, KillReasonObserving, KillReasonArmed, KillReasonPolicyOff, KillReasonDisarmFile)
+	return oneOf(r, KillReasonColdStart, KillReasonObserving, KillReasonArmed, KillReasonPolicyOff, KillReasonDisarmFile, KillReasonUnknown)
+}
+
+// UnmarshalJSON decodes a reason, mapping a value this release does not
+// know to KillReasonUnknown.
+func (r *KillModeReason) UnmarshalJSON(b []byte) error {
+	return decodeOpenEnum(b, r, KillReasonUnknown)
 }
 
 // WouldKillReason is the trigger behind a tier-1 decision.
@@ -253,10 +320,20 @@ const (
 	// WouldKillMemoryFloor means the memory-floor backstop tripped. It is
 	// combined with the held-pressure condition by OR, never by AND.
 	WouldKillMemoryFloor WouldKillReason = "memory-floor"
+	// WouldKillUnknown stands for a trigger this release does not know.
+	WouldKillUnknown WouldKillReason = "unknown"
 )
 
 // Valid reports whether r is a would-kill reason this release knows.
-func (r WouldKillReason) Valid() bool { return oneOf(r, WouldKillHeldPressure, WouldKillMemoryFloor) }
+func (r WouldKillReason) Valid() bool {
+	return oneOf(r, WouldKillHeldPressure, WouldKillMemoryFloor, WouldKillUnknown)
+}
+
+// UnmarshalJSON decodes a trigger, mapping a value this release does not
+// know to WouldKillUnknown.
+func (r *WouldKillReason) UnmarshalJSON(b []byte) error {
+	return decodeOpenEnum(b, r, WouldKillUnknown)
+}
 
 // PolicyOutcome is what the node did with the policy relayed to it.
 type PolicyOutcome string
@@ -274,6 +351,42 @@ const (
 
 // Valid reports whether o is an outcome this release knows.
 func (o PolicyOutcome) Valid() bool { return oneOf(o, PolicyApplied, PolicyRejected, PolicyClamped) }
+
+// PolicyField names a NodeBudgetPolicy spec field a node may clamp, by its
+// JSON path. AppliedPolicy.ClampedFields lists these and nothing else; the
+// status writer turns them into the human-readable condition message.
+type PolicyField string
+
+const (
+	// FieldTier1GraceSeconds is spec.tier1GraceSeconds.
+	FieldTier1GraceSeconds PolicyField = "tier1GraceSeconds"
+	// FieldTier1HeldSeconds is spec.tier1HeldSeconds.
+	FieldTier1HeldSeconds PolicyField = "tier1HeldSeconds"
+	// FieldTier1MaxDeliveriesPerHour is spec.tier1MaxDeliveriesPerHour.
+	FieldTier1MaxDeliveriesPerHour PolicyField = "tier1MaxDeliveriesPerHour"
+	// FieldTier1CooloffSeconds is spec.tier1CooloffSeconds.
+	FieldTier1CooloffSeconds PolicyField = "tier1CooloffSeconds"
+	// FieldReservesCPUSystemReserveMilli is spec.reserves.cpuSystemReserveMilli,
+	// clamped to the measured capacity.
+	FieldReservesCPUSystemReserveMilli PolicyField = "reserves.cpuSystemReserveMilli"
+	// FieldReservesMemSystemReserveBytes is spec.reserves.memSystemReserveBytes,
+	// clamped to the measured capacity.
+	FieldReservesMemSystemReserveBytes PolicyField = "reserves.memSystemReserveBytes"
+	// FieldReservesMemEvictionReserveBytes is
+	// spec.reserves.memEvictionReserveBytes, clamped to the measured capacity.
+	FieldReservesMemEvictionReserveBytes PolicyField = "reserves.memEvictionReserveBytes"
+)
+
+// PolicyFields returns every PolicyField this release knows.
+func PolicyFields() []PolicyField {
+	return []PolicyField{
+		FieldTier1GraceSeconds, FieldTier1HeldSeconds, FieldTier1MaxDeliveriesPerHour, FieldTier1CooloffSeconds,
+		FieldReservesCPUSystemReserveMilli, FieldReservesMemSystemReserveBytes, FieldReservesMemEvictionReserveBytes,
+	}
+}
+
+// Valid reports whether f is a policy field this release knows.
+func (f PolicyField) Valid() bool { return oneOf(f, PolicyFields()...) }
 
 // CounterWindow is the time window of a windowed count.
 type CounterWindow string
@@ -306,12 +419,20 @@ const (
 	CounterMemHigh CounterReason = "mem-high"
 	// CounterTier1Refused counts refused tier-1 deliveries.
 	CounterTier1Refused CounterReason = "tier1-refused"
+	// CounterUnknown stands for a counted event this release does not know.
+	// Windowed counts of unknown reasons are summed into one entry per
+	// window when a report is parsed.
+	CounterUnknown CounterReason = "unknown"
 )
 
 // Valid reports whether r is a counter reason this release knows.
 func (r CounterReason) Valid() bool {
-	return oneOf(r, CounterEviction, CounterOOMKill, CounterKernelKill, CounterRestart, CounterMemHigh, CounterTier1Refused)
+	return oneOf(r, CounterEviction, CounterOOMKill, CounterKernelKill, CounterRestart, CounterMemHigh, CounterTier1Refused, CounterUnknown)
 }
+
+// UnmarshalJSON decodes a counted event, mapping a value this release does
+// not know to CounterUnknown.
+func (r *CounterReason) UnmarshalJSON(b []byte) error { return decodeOpenEnum(b, r, CounterUnknown) }
 
 // WriterShape is how a NodeBudget's status reaches the API server.
 type WriterShape string
@@ -360,22 +481,82 @@ const (
 	ConditionPolicyConflict = "PolicyConflict"
 )
 
-// The condition reasons for ConditionReporting False, and for
-// ConditionPolicyConflict True.
+// The condition reasons. Each NodeBudget condition has a closed set of
+// reasons per status, so a reader (and a test) can branch on the reason
+// without parsing the message. Naming: a True reason names the cause, a
+// False reason names the state that holds instead, both in the upstream
+// CamelCase reason style. A malformed, oversize and unsupported annotation
+// are three distinct reasons, so the remedy is visible from the reason
+// alone. ConditionReasons lists the sets.
 const (
-	// ReasonNodeNotReporting means the node has published no budget, or its
-	// last one is too old.
+	// ReasonNodeReporting (Reporting True) means the node's budget is
+	// current.
+	ReasonNodeReporting = "NodeReporting"
+	// ReasonNodeNotReporting (Reporting False) means the node has published
+	// no budget, or its last one is too old.
 	ReasonNodeNotReporting = "NodeNotReporting"
-	// ReasonAnnotationMalformed means the node's annotation failed the
-	// strict decoder.
+	// ReasonAnnotationMalformed (Reporting False) means the node's
+	// annotation failed the strict decoder.
 	ReasonAnnotationMalformed = "AnnotationMalformed"
-	// ReasonSchemaUnsupported means the node's annotation carries a schema
-	// this reader does not know (for example, a newer node).
+	// ReasonSchemaUnsupported (Reporting False) means the node's annotation
+	// carries a schema this reader does not know (for example, a newer
+	// node).
 	ReasonSchemaUnsupported = "SchemaUnsupported"
-	// ReasonMultiplePolicies means more than one NodeBudgetPolicy selects
-	// the node.
+	// ReasonAnnotationTooLarge (Reporting False) means the node's annotation
+	// is over MaxBudgetAnnotationBytes and was not parsed.
+	ReasonAnnotationTooLarge = "AnnotationTooLarge"
+
+	// ReasonPolicyInvalid (PolicyRejected True) means the relayed policy
+	// failed NodeBudgetPolicySpec.Validate or the strict decoder.
+	ReasonPolicyInvalid = "PolicyInvalid"
+	// ReasonMergedLadderInverted (PolicyRejected True) means the policy is
+	// valid on its own, but its thresholds merged over the producer's
+	// defaults leave a signal's ladder out of order.
+	ReasonMergedLadderInverted = "MergedLadderInverted"
+	// ReasonPolicyAccepted (PolicyRejected False) means the node accepted
+	// the policy it was sent, or no policy selects it.
+	ReasonPolicyAccepted = "PolicyAccepted"
+
+	// ReasonFieldsClamped (PolicyClamped True) means the node raised one or
+	// more fields to a floor or to the measured capacity; the fields are in
+	// status.policy.clampedFields.
+	ReasonFieldsClamped = "FieldsClamped"
+	// ReasonNoFieldsClamped (PolicyClamped False) means the policy in force
+	// is applied as written.
+	ReasonNoFieldsClamped = "NoFieldsClamped"
+
+	// ReasonMultiplePolicies (PolicyConflict True) means more than one
+	// NodeBudgetPolicy selects the node.
 	ReasonMultiplePolicies = "MultiplePolicies"
+	// ReasonSinglePolicy (PolicyConflict False) means at most one
+	// NodeBudgetPolicy selects the node.
+	ReasonSinglePolicy = "SinglePolicy"
 )
+
+// ConditionReasons returns the closed reason set of a NodeBudget condition
+// type for one status ("True" or "False"), or nil for a type or status this
+// release does not define.
+func ConditionReasons(conditionType, status string) []string {
+	switch conditionType + "/" + status {
+	case ConditionReporting + "/True":
+		return []string{ReasonNodeReporting}
+	case ConditionReporting + "/False":
+		return []string{ReasonNodeNotReporting, ReasonAnnotationMalformed, ReasonSchemaUnsupported, ReasonAnnotationTooLarge}
+	case ConditionPolicyRejected + "/True":
+		return []string{ReasonPolicyInvalid, ReasonMergedLadderInverted}
+	case ConditionPolicyRejected + "/False":
+		return []string{ReasonPolicyAccepted}
+	case ConditionPolicyClamped + "/True":
+		return []string{ReasonFieldsClamped}
+	case ConditionPolicyClamped + "/False":
+		return []string{ReasonNoFieldsClamped}
+	case ConditionPolicyConflict + "/True":
+		return []string{ReasonMultiplePolicies}
+	case ConditionPolicyConflict + "/False":
+		return []string{ReasonSinglePolicy}
+	}
+	return nil
+}
 
 // oneOf reports whether v equals one of want.
 func oneOf[T comparable](v T, want ...T) bool {
@@ -385,4 +566,23 @@ func oneOf[T comparable](v T, want ...T) bool {
 		}
 	}
 	return false
+}
+
+// decodeOpenEnum decodes a JSON string into a producer-vocabulary enum. A
+// value Valid does not know becomes unknown; the empty string stays empty
+// (the field is unset). Anything other than a string is an error.
+func decodeOpenEnum[T interface {
+	~string
+	Valid() bool
+}](b []byte, out *T, unknown T) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	v := T(s)
+	if s != "" && !v.Valid() {
+		v = unknown
+	}
+	*out = v
+	return nil
 }

@@ -59,11 +59,11 @@ func sampleDarwin() *NodeBudget {
 		ObjectMeta: metav1.ObjectMeta{Name: "mac-worker-1"},
 		Status: NodeBudgetStatus{
 			NodeBudgetObservation: NodeBudgetObservation{
-				ObservedAt: sampleAt,
-				Generation: 4,
-				Platform:   PlatformDarwin,
-				Level:      LevelOK,
-				Admit:      true,
+				ObservedAt:         sampleAt,
+				ProducerGeneration: 4,
+				Platform:           PlatformDarwin,
+				Level:              LevelOK,
+				Admit:              true,
 				Capacity: BudgetCapacity{
 					CPUCapacityMilli: i64(8000), CPUSystemReserveMilli: i64(500),
 					MemCapacityBytes: i64(16 * gib), MemSystemReserveBytes: i64(2 * gib),
@@ -73,34 +73,34 @@ func sampleDarwin() *NodeBudget {
 				Signals: []BudgetSignal{
 					{
 						ID: SignalMemoryAvailable, Unit: UnitBytes, Value: i64(6 * gib),
-						WarnAt: i64(2 * gib), AdmitStopAt: i64(1536 * mib), CriticalAt: i64(1 * gib),
-						EvictSoftAt: i64(512 * mib), EvictHardAt: i64(100 * mib),
-						WarnReleaseAt: i64(2560 * mib), AdmitStopReleaseAt: i64(2 * gib), CriticalReleaseAt: i64(1536 * mib),
-						EvictSoftReleaseAt: i64(768 * mib), EvictHardReleaseAt: i64(256 * mib),
-						GraceNs: i64(int64(90 * time.Second)), MinReclaimBytes: i64(256 * mib),
+						WarnThreshold: i64(2 * gib), AdmitStopThreshold: i64(1536 * mib), CriticalThreshold: i64(1 * gib),
+						EvictSoftThreshold: i64(512 * mib), EvictHardThreshold: i64(100 * mib),
+						WarnRelease: i64(2560 * mib), AdmitStopRelease: i64(2 * gib), CriticalRelease: i64(1536 * mib),
+						EvictSoftRelease: i64(768 * mib), EvictHardRelease: i64(256 * mib),
+						GraceSeconds: i64(90), MinReclaimBytes: i64(256 * mib),
 						Trend: TrendSteady, LimitingResource: ResourceMemory,
 					},
 					{
 						ID: SignalMemoryCompressor, Unit: UnitPermille, Value: i64(210),
-						WarnAt: i64(500), AdmitStopAt: i64(600), CriticalAt: i64(700), EvictSoftAt: i64(750), EvictHardAt: i64(800),
-						WarnReleaseAt: i64(450), AdmitStopReleaseAt: i64(550), CriticalReleaseAt: i64(650),
-						EvictSoftReleaseAt: i64(720), EvictHardReleaseAt: i64(780),
-						GraceNs: i64(int64(60 * time.Second)), Trend: TrendRising, LimitingResource: ResourceMemory,
+						WarnThreshold: i64(500), AdmitStopThreshold: i64(600), CriticalThreshold: i64(700), EvictSoftThreshold: i64(750), EvictHardThreshold: i64(800),
+						WarnRelease: i64(450), AdmitStopRelease: i64(550), CriticalRelease: i64(650),
+						EvictSoftRelease: i64(720), EvictHardRelease: i64(780),
+						GraceSeconds: i64(60), Trend: TrendRising, LimitingResource: ResourceMemory,
 					},
 					{
 						ID: SignalMemorySwap, Unit: UnitBytes, Value: i64(0),
-						WarnAt: i64(256 * mib), AdmitStopAt: i64(512 * mib), CriticalAt: i64(1 * gib),
-						WindowNs: i64(int64(60 * time.Second)), Trend: TrendSteady, LimitingResource: ResourceMemory,
+						WarnThreshold: i64(256 * mib), AdmitStopThreshold: i64(512 * mib), CriticalThreshold: i64(1 * gib),
+						WindowSeconds: i64(60), Trend: TrendSteady, LimitingResource: ResourceMemory,
 					},
 					{
 						ID: SignalSwapfsAvailable, Unit: UnitBytes, Value: i64(120 * gib),
-						WarnAt: i64(24 * gib), AdmitStopAt: i64(16 * gib), CriticalAt: i64(12 * gib), EvictHardAt: i64(8 * gib),
+						WarnThreshold: i64(24 * gib), AdmitStopThreshold: i64(16 * gib), CriticalThreshold: i64(12 * gib), EvictHardThreshold: i64(8 * gib),
 						LimitingResource: ResourceSwapfs,
 					},
 					{
 						ID: SignalNodefsAvailable, Unit: UnitBytes, Value: i64(120 * gib),
-						WarnAt: i64(20 * gib), AdmitStopAt: i64(15 * gib), CriticalAt: i64(10 * gib), EvictHardAt: i64(2 * gib),
-						EvictHardReleaseAt: i64(10*gib + 1), LimitingResource: ResourceNodefs,
+						WarnThreshold: i64(20 * gib), AdmitStopThreshold: i64(15 * gib), CriticalThreshold: i64(10 * gib), EvictHardThreshold: i64(2 * gib),
+						EvictHardRelease: i64(10*gib + 1), LimitingResource: ResourceNodefs,
 					},
 					{
 						ID: SignalImagefsAvailable, Unit: UnitBytes, Value: i64(120 * gib),
@@ -108,7 +108,7 @@ func sampleDarwin() *NodeBudget {
 					},
 					{
 						ID: SignalPIDAvailable, Unit: UnitCount, Value: i64(9000),
-						WarnAt: i64(3000), AdmitStopAt: i64(2500), CriticalAt: i64(1500), EvictHardAt: i64(1000),
+						WarnThreshold: i64(3000), AdmitStopThreshold: i64(2500), CriticalThreshold: i64(1500), EvictHardThreshold: i64(1000),
 						LimitingResource: ResourcePID,
 					},
 				},
@@ -125,7 +125,8 @@ func sampleDarwin() *NodeBudget {
 						},
 					},
 				},
-				Policy: &AppliedPolicy{Name: "default", ResourceVersion: "4711", Outcome: PolicyApplied},
+				Policy:  &AppliedPolicy{Name: "default", ResourceVersion: "4711", Outcome: PolicyApplied},
+				InForce: &PolicyRef{Name: "default", ResourceVersion: "4711"},
 				Darwin: &DarwinSignals{
 					VMPressureLevel: i64(1), MemorystatusLevelPermille: i64(640),
 					Compressor: &DarwinCompressor{
@@ -135,10 +136,13 @@ func sampleDarwin() *NodeBudget {
 				},
 			},
 			Writer: &BudgetWriter{Shape: WriterAnnotationRelay},
-			Conditions: []metav1.Condition{{
-				Type: ConditionReporting, Status: metav1.ConditionTrue, ObservedGeneration: 1,
-				LastTransitionTime: sampleAt, Reason: "Reporting", Message: "the node's budget is current",
-			}},
+			Conditions: []metav1.Condition{
+				{
+					Type: ConditionReporting, Status: metav1.ConditionTrue, ObservedGeneration: 1,
+					LastTransitionTime: sampleAt, Reason: ReasonNodeReporting, Message: "the node's budget is current",
+				},
+				{Type: ConditionPolicyConflict, Status: metav1.ConditionFalse, LastTransitionTime: sampleAt, Reason: ReasonSinglePolicy},
+			},
 		},
 	}
 }
@@ -146,18 +150,18 @@ func sampleDarwin() *NodeBudget {
 // sampleLinux is a Linux node under pressure, written by an own-node
 // producer.
 func sampleLinux() *NodeBudget {
-	deadline := sampleAt.Add(45 * time.Second).UnixNano()
+	deadline := metav1.NewTime(sampleAt.Add(45 * time.Second))
 	return &NodeBudget{
 		TypeMeta:   metav1.TypeMeta{APIVersion: "budget.k3sm.io/v1alpha1", Kind: "NodeBudget"},
 		ObjectMeta: metav1.ObjectMeta{Name: "linux-worker-1"},
 		Status: NodeBudgetStatus{
 			NodeBudgetObservation: NodeBudgetObservation{
-				ObservedAt:        sampleAt,
-				Generation:        9,
-				Platform:          PlatformLinux,
-				Level:             LevelEvicting,
-				AdmitReasonSignal: SignalMemoryAvailable,
-				EvictDeadlineNs:   i64(deadline),
+				ObservedAt:         sampleAt,
+				ProducerGeneration: 9,
+				Platform:           PlatformLinux,
+				Level:              LevelEvicting,
+				AdmitReasonSignal:  SignalMemoryAvailable,
+				EvictDeadline:      &deadline,
 				Capacity: BudgetCapacity{
 					CPUCapacityMilli: i64(16000), MemCapacityBytes: i64(32 * gib), MemAllocatableBytes: i64(30 * gib),
 					SwapTotalBytes: i64(0), SwapUsedBytes: i64(0),
@@ -165,10 +169,10 @@ func sampleLinux() *NodeBudget {
 				Signals: []BudgetSignal{
 					{
 						ID: SignalMemoryAvailable, Unit: UnitBytes, Value: i64(400 * mib),
-						WarnAt: i64(4 * gib), AdmitStopAt: i64(3 * gib), CriticalAt: i64(1600 * mib),
-						EvictSoftAt: i64(800 * mib), EvictHardAt: i64(100 * mib),
-						GraceNs: i64(int64(90 * time.Second)), MinReclaimBytes: i64(512 * mib),
-						EtaToNextRungNs: i64(int64(30 * time.Second)), Trend: TrendFalling, LimitingResource: ResourceMemory,
+						WarnThreshold: i64(4 * gib), AdmitStopThreshold: i64(3 * gib), CriticalThreshold: i64(1600 * mib),
+						EvictSoftThreshold: i64(800 * mib), EvictHardThreshold: i64(100 * mib),
+						GraceSeconds: i64(90), MinReclaimBytes: i64(512 * mib),
+						EtaToNextRungSeconds: i64(30), Trend: TrendFalling, LimitingResource: ResourceMemory,
 					},
 				},
 				Recommendation: BudgetRecommendation{SafeAdditionalBytes: i64(0), Basis: SignalMemoryAvailable},
@@ -182,9 +186,9 @@ func sampleLinux() *NodeBudget {
 				},
 				Policy: &AppliedPolicy{
 					Name: "linux-workers", ResourceVersion: "88", Outcome: PolicyClamped,
-					ClampedFields: []string{"tier1GraceSeconds"},
-					Message:       "tier1GraceSeconds raised to the 10 s floor",
+					ClampedFields: []PolicyField{FieldTier1GraceSeconds},
 				},
+				InForce: &PolicyRef{Name: "linux-workers", ResourceVersion: "88"},
 				Linux: &LinuxSignals{
 					PSI: &LinuxPSI{
 						CPU:    &PSIResource{Some: &PSILine{Avg10Permille: i64(120), Avg60Permille: i64(80), TotalUs: i64(5_000_000)}, Full: &PSILine{Avg10Permille: i64(0), Avg60Permille: i64(0), TotalUs: i64(0)}},
@@ -196,8 +200,8 @@ func sampleLinux() *NodeBudget {
 			},
 			Writer: &BudgetWriter{Shape: WriterOwnNode, NodeNameExtra: true},
 			Conditions: []metav1.Condition{
-				{Type: ConditionReporting, Status: metav1.ConditionTrue, LastTransitionTime: sampleAt, Reason: "Reporting"},
-				{Type: ConditionPolicyClamped, Status: metav1.ConditionTrue, LastTransitionTime: sampleAt, Reason: "BelowFloor", Message: "tier1GraceSeconds"},
+				{Type: ConditionReporting, Status: metav1.ConditionTrue, LastTransitionTime: sampleAt, Reason: ReasonNodeReporting},
+				{Type: ConditionPolicyClamped, Status: metav1.ConditionTrue, LastTransitionTime: sampleAt, Reason: ReasonFieldsClamped, Message: "tier1GraceSeconds raised to the 10 s floor"},
 			},
 		},
 	}
@@ -323,7 +327,7 @@ func TestGoldenStatusSetCoversEveryOptionalField(t *testing.T) {
 	// The walk is not vacuous: it reaches the inline observation, list
 	// elements, the deepest platform leaves and the writer's conditions.
 	for _, p := range []string{
-		"status.level", "status.signals[].warnAt", "status.counters[].windows[].count",
+		"status.level", "status.signals[].warnThreshold", "status.counters[].windows[].count",
 		"status.linux.psi.memory.full.totalUs", "status.darwin.compressor.bytesUsed",
 		"status.writer.nodeNameExtra", "status.conditions[].reason",
 	} {
@@ -345,15 +349,16 @@ var enumTypes = map[reflect.Type]bool{
 	reflect.TypeOf(WouldKillReason("")): true, reflect.TypeOf(PolicyOutcome("")): true,
 	reflect.TypeOf(CounterWindow("")): true, reflect.TypeOf(CounterReason("")): true,
 	reflect.TypeOf(WriterShape("")): true, reflect.TypeOf(Platform("")): true,
+	reflect.TypeOf(PolicyField("")): true,
 }
 
 // freeStringPaths are the status strings that are not enum values, each
 // with the reason it cannot carry pod identity.
 var freeStringPaths = map[string]string{
-	"status.policy.name":            "the name of a cluster-scoped NodeBudgetPolicy, chosen by an admin",
-	"status.policy.resourceVersion": "an apiserver resourceVersion",
-	"status.policy.clampedFields[]": "a policy field path, pattern-checked",
-	"status.policy.message":         "a bounded note about the policy, written by the node about the policy only",
+	"status.policy.name":             "the name of a cluster-scoped NodeBudgetPolicy, chosen by an admin",
+	"status.policy.resourceVersion":  "an apiserver resourceVersion",
+	"status.inForce.name":            "the name of a cluster-scoped NodeBudgetPolicy, chosen by an admin",
+	"status.inForce.resourceVersion": "an apiserver resourceVersion",
 }
 
 // identityProblems walks a type and reports every field whose name could
@@ -428,19 +433,22 @@ func TestNodeBudgetStatusValidate(t *testing.T) {
 		mutate func(o *NodeBudgetObservation)
 	}{
 		{"no observedAt", func(o *NodeBudgetObservation) { o.ObservedAt = metav1.Time{} }},
-		{"negative generation", func(o *NodeBudgetObservation) { o.Generation = -1 }},
+		{"negative generation", func(o *NodeBudgetObservation) { o.ProducerGeneration = -1 }},
 		{"unknown platform", func(o *NodeBudgetObservation) { o.Platform = "windows" }},
 		{"no platform block", func(o *NodeBudgetObservation) { o.Darwin = nil }},
 		{"platform names the other block", func(o *NodeBudgetObservation) { o.Platform = PlatformLinux }},
 		{"unknown level", func(o *NodeBudgetObservation) { o.Level = "panic" }},
 		{"admit reason while admitting", func(o *NodeBudgetObservation) { o.AdmitReasonSignal = SignalMemoryAvailable }},
 		{"unknown admit reason", func(o *NodeBudgetObservation) { o.Admit = false; o.AdmitReasonSignal = "cpu.available" }},
-		{"negative deadline", func(o *NodeBudgetObservation) { o.EvictDeadlineNs = i64(-1) }},
+		{"zero deadline", func(o *NodeBudgetObservation) { o.EvictDeadline = &metav1.Time{} }},
 		{"negative capacity", func(o *NodeBudgetObservation) { o.Capacity.SwapUsedBytes = i64(-1) }},
 		{"unknown unit", func(o *NodeBudgetObservation) { o.Signals[0].Unit = "pages" }},
+		{"bytes signal in permille", func(o *NodeBudgetObservation) { o.Signals[0].Unit = UnitPermille }},
+		{"compressor in bytes", func(o *NodeBudgetObservation) { o.Signals[1].Unit = UnitBytes }},
+		{"pid in bytes", func(o *NodeBudgetObservation) { o.Signals[6].Unit = UnitBytes }},
 		{"negative value", func(o *NodeBudgetObservation) { o.Signals[0].Value = i64(-1) }},
-		{"release on the pressure side", func(o *NodeBudgetObservation) { o.Signals[0].WarnReleaseAt = i64(1 * gib) }},
-		{"memory.swap evict-soft rung", func(o *NodeBudgetObservation) { o.Signals[2].EvictSoftAt = i64(2 * gib) }},
+		{"release on the pressure side", func(o *NodeBudgetObservation) { o.Signals[0].WarnRelease = i64(1 * gib) }},
+		{"memory.swap evict-soft rung", func(o *NodeBudgetObservation) { o.Signals[2].EvictSoftThreshold = i64(2 * gib) }},
 		{"unknown trend", func(o *NodeBudgetObservation) { o.Signals[0].Trend = "flat" }},
 		{"unknown limiting resource", func(o *NodeBudgetObservation) { o.Signals[0].LimitingResource = "gpu" }},
 		{"shared with itself", func(o *NodeBudgetObservation) { o.Signals[5].SharedWith = SignalImagefsAvailable }},
@@ -465,8 +473,17 @@ func TestNodeBudgetStatusValidate(t *testing.T) {
 		{"negative window count", func(o *NodeBudgetObservation) { o.Counters[2].Windows[0].Count = -1 }},
 		{"policy name not an object name", func(o *NodeBudgetObservation) { o.Policy.Name = "Default Policy" }},
 		{"unknown policy outcome", func(o *NodeBudgetObservation) { o.Policy.Outcome = "ignored" }},
-		{"clamped field not a path", func(o *NodeBudgetObservation) { o.Policy.ClampedFields = []string{"tier1 grace"} }},
-		{"policy message with a control character", func(o *NodeBudgetObservation) { o.Policy.Message = "line\nbreak" }},
+		{"an applied policy with no policy in force", func(o *NodeBudgetObservation) { o.InForce = nil }},
+		{"an applied policy with another version in force", func(o *NodeBudgetObservation) { o.InForce.ResourceVersion = "4700" }},
+		{"an applied policy with another policy in force", func(o *NodeBudgetObservation) { o.InForce.Name = "other" }},
+		{"an in-force name that is not an object name", func(o *NodeBudgetObservation) {
+			o.Policy.Outcome = PolicyRejected
+			o.InForce.Name = "Not A Name"
+		}},
+		{"unknown clamped field", func(o *NodeBudgetObservation) { o.Policy.ClampedFields = []PolicyField{"tier1 grace"} }},
+		{"repeated clamped field", func(o *NodeBudgetObservation) {
+			o.Policy.ClampedFields = []PolicyField{FieldTier1HeldSeconds, FieldTier1HeldSeconds}
+		}},
 		{"memorystatus above 1000 permille", func(o *NodeBudgetObservation) { o.Darwin.MemorystatusLevelPermille = i64(1001) }},
 		{"negative compressor", func(o *NodeBudgetObservation) { o.Darwin.Compressor.BytesUsed = i64(-1) }},
 	} {
@@ -478,6 +495,31 @@ func TestNodeBudgetStatusValidate(t *testing.T) {
 			}
 		})
 	}
+	t.Run("a rejected policy keeps the last valid one in force", func(t *testing.T) {
+		for _, inForce := range []*PolicyRef{{Name: "default", ResourceVersion: "4700"}, {Name: "older"}, nil} {
+			s := sampleDarwin().Status
+			s.Policy = &AppliedPolicy{Name: "default", ResourceVersion: "4711", Outcome: PolicyRejected}
+			s.InForce = inForce
+			if err := s.Validate(); err != nil {
+				t.Errorf("rejected policy with inForce %+v: %v", inForce, err)
+			}
+		}
+	})
+	t.Run("refuses a condition reason outside its closed set", func(t *testing.T) {
+		for _, c := range []metav1.Condition{
+			{Type: ConditionReporting, Status: metav1.ConditionFalse, Reason: ReasonNodeReporting},
+			{Type: ConditionPolicyRejected, Status: metav1.ConditionTrue, Reason: "BadPolicy"},
+			{Type: ConditionPolicyClamped, Status: metav1.ConditionTrue, Reason: ReasonNoFieldsClamped},
+			{Type: ConditionPolicyConflict, Status: metav1.ConditionFalse, Reason: ReasonMultiplePolicies},
+		} {
+			s := sampleDarwin().Status
+			c.LastTransitionTime = sampleAt
+			s.Conditions = []metav1.Condition{c}
+			if err := s.Validate(); err == nil {
+				t.Errorf("%s=%s reason %s was admitted", c.Type, c.Status, c.Reason)
+			}
+		}
+	})
 	t.Run("refuses an unknown writer shape", func(t *testing.T) {
 		s := sampleDarwin().Status
 		s.Writer.Shape = "sidecar"
@@ -601,14 +643,15 @@ func TestBudgetVocabulary(t *testing.T) {
 		id   SignalID
 		code uint64
 		desc bool
+		unit SignalUnit
 	}{
-		{"memory.available", 1, true},
-		{"memory.compressor", 2, false},
-		{"memory.swap", 3, false},
-		{"swapfs.available", 4, true},
-		{"nodefs.available", 5, true},
-		{"imagefs.available", 6, true},
-		{"pid.available", 7, true},
+		{"memory.available", 1, true, "bytes"},
+		{"memory.compressor", 2, false, "permille"},
+		{"memory.swap", 3, false, "bytes"},
+		{"swapfs.available", 4, true, "bytes"},
+		{"nodefs.available", 5, true, "bytes"},
+		{"imagefs.available", 6, true, "bytes"},
+		{"pid.available", 7, true, "count"},
 	}
 	if got := Signals(); len(got) != len(codes) {
 		t.Fatalf("Signals() = %v, want %d signals", got, len(codes))
@@ -617,6 +660,9 @@ func TestBudgetVocabulary(t *testing.T) {
 		if Signals()[i] != tc.id || tc.id.PageCode() != tc.code || !tc.id.Valid() || IsDescending(tc.id) != tc.desc {
 			t.Errorf("%s: code %d valid %v descending %v, want code %d descending %v",
 				tc.id, tc.id.PageCode(), tc.id.Valid(), IsDescending(tc.id), tc.code, tc.desc)
+		}
+		if tc.id.Unit() != tc.unit {
+			t.Errorf("%s unit = %q, want %q", tc.id, tc.id.Unit(), tc.unit)
 		}
 		if id, ok := SignalForPageCode(tc.code); !ok || id != tc.id {
 			t.Errorf("SignalForPageCode(%d) = %q, %v, want %q", tc.code, id, ok, tc.id)
@@ -636,6 +682,17 @@ func TestBudgetVocabulary(t *testing.T) {
 		{AnnotationBand, "budget.k3sm.io/band"},
 		{AnnotationPage, "budget.k3sm.io/page"},
 		{TaintAdmitStop, "budget.k3sm.io/admit-stop"},
+		{TaintAdmitStopEffect, "PreferNoSchedule"},
+		{ReasonAnnotationTooLarge, "AnnotationTooLarge"},
+		{ReasonNodeReporting, "NodeReporting"},
+		{ReasonPolicyInvalid, "PolicyInvalid"},
+		{ReasonMergedLadderInverted, "MergedLadderInverted"},
+		{ReasonPolicyAccepted, "PolicyAccepted"},
+		{ReasonFieldsClamped, "FieldsClamped"},
+		{ReasonNoFieldsClamped, "NoFieldsClamped"},
+		{ReasonSinglePolicy, "SinglePolicy"},
+		{string(TrendUnknown) + string(ResourceUnknown) + string(KillReasonUnknown) + string(WouldKillUnknown) + string(CounterUnknown),
+			"unknownunknownunknownunknownunknown"},
 		{ConditionReporting, "Reporting"},
 		{ConditionPolicyRejected, "PolicyRejected"},
 		{ConditionPolicyClamped, "PolicyClamped"},
@@ -650,6 +707,33 @@ func TestBudgetVocabulary(t *testing.T) {
 	} {
 		if tc.got != tc.want {
 			t.Errorf("got %q, want %q", tc.got, tc.want)
+		}
+	}
+	wantFields := []PolicyField{"tier1GraceSeconds", "tier1HeldSeconds", "tier1MaxDeliveriesPerHour", "tier1CooloffSeconds",
+		"reserves.cpuSystemReserveMilli", "reserves.memSystemReserveBytes", "reserves.memEvictionReserveBytes"}
+	if got := PolicyFields(); !reflect.DeepEqual(got, wantFields) || len(got) > MaxClampedFields {
+		t.Errorf("PolicyFields() = %v, want %v (and at most MaxClampedFields)", got, wantFields)
+	}
+	if SignalID("cpu.available").Unit() != "" {
+		t.Error("an unknown signal has a unit")
+	}
+	for _, tc := range []struct {
+		typ, status string
+		want        []string
+	}{
+		{"Reporting", "True", []string{"NodeReporting"}},
+		{"Reporting", "False", []string{"NodeNotReporting", "AnnotationMalformed", "SchemaUnsupported", "AnnotationTooLarge"}},
+		{"PolicyRejected", "True", []string{"PolicyInvalid", "MergedLadderInverted"}},
+		{"PolicyRejected", "False", []string{"PolicyAccepted"}},
+		{"PolicyClamped", "True", []string{"FieldsClamped"}},
+		{"PolicyClamped", "False", []string{"NoFieldsClamped"}},
+		{"PolicyConflict", "True", []string{"MultiplePolicies"}},
+		{"PolicyConflict", "False", []string{"SinglePolicy"}},
+		{"PolicyConflict", "Unknown", nil},
+		{"Ready", "True", nil},
+	} {
+		if got := ConditionReasons(tc.typ, tc.status); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("ConditionReasons(%s, %s) = %v, want %v", tc.typ, tc.status, got, tc.want)
 		}
 	}
 	if b := Bands(); len(b) != 3 || b[0] != BandCritical || b[1] != BandStandard || b[2] != BandBatch {

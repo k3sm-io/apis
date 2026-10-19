@@ -6,11 +6,11 @@
   },
   "status": {
     "observedAt": "2026-10-19T12:00:00Z",
-    "generation": 9,
+    "producerGeneration": 9,
     "platform": "linux",
     "level": "evicting",
     "admitReasonSignal": "memory.available",
-    "evictDeadlineNs": 1792411245000000000,
+    "evictDeadline": "2026-10-19T12:00:45Z",
     "capacity": {
       "cpuCapacityMilli": 16000,
       "memCapacityBytes": 34359738368,
@@ -23,14 +23,14 @@
         "id": "memory.available",
         "unit": "bytes",
         "value": 419430400,
-        "warnAt": 4294967296,
-        "admitStopAt": 3221225472,
-        "criticalAt": 1677721600,
-        "evictSoftAt": 838860800,
-        "evictHardAt": 104857600,
-        "graceNs": 90000000000,
+        "warnThreshold": 4294967296,
+        "admitStopThreshold": 3221225472,
+        "criticalThreshold": 1677721600,
+        "evictSoftThreshold": 838860800,
+        "evictHardThreshold": 104857600,
+        "graceSeconds": 90,
         "minReclaimBytes": 536870912,
-        "etaToNextRungNs": 30000000000,
+        "etaToNextRungSeconds": 30,
         "trend": "falling",
         "limitingResource": "memory"
       }
@@ -74,8 +74,11 @@
       "outcome": "clamped",
       "clampedFields": [
         "tier1GraceSeconds"
-      ],
-      "message": "tier1GraceSeconds raised to the 10 s floor"
+      ]
+    },
+    "inForce": {
+      "name": "linux-workers",
+      "resourceVersion": "88"
     },
     "linux": {
       "psi": {
@@ -132,15 +135,15 @@
         "type": "Reporting",
         "status": "True",
         "lastTransitionTime": "2026-10-19T12:00:00Z",
-        "reason": "Reporting",
+        "reason": "NodeReporting",
         "message": ""
       },
       {
         "type": "PolicyClamped",
         "status": "True",
         "lastTransitionTime": "2026-10-19T12:00:00Z",
-        "reason": "BelowFloor",
-        "message": "tier1GraceSeconds"
+        "reason": "FieldsClamped",
+        "message": "tier1GraceSeconds raised to the 10 s floor"
       }
     ]
   }

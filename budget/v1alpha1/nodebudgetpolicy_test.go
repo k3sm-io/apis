@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 )
 
 // samplePolicy is a policy that sets every field.
@@ -34,14 +35,14 @@ func samplePolicy() *NodeBudgetPolicy {
 			Priority:     10,
 			Thresholds: []SignalThresholds{
 				{
-					Signal: SignalMemoryCompressor,
-					WarnAt: i64(500), AdmitStopAt: i64(600), CriticalAt: i64(700), EvictSoftAt: i64(750), EvictHardAt: i64(800),
-					WarnReleaseAt: i64(450), AdmitStopReleaseAt: i64(550), CriticalReleaseAt: i64(650),
-					EvictSoftReleaseAt: i64(720), EvictHardReleaseAt: i64(780),
+					Signal:        SignalMemoryCompressor,
+					WarnThreshold: i64(500), AdmitStopThreshold: i64(600), CriticalThreshold: i64(700), EvictSoftThreshold: i64(750), EvictHardThreshold: i64(800),
+					WarnRelease: i64(450), AdmitStopRelease: i64(550), CriticalRelease: i64(650),
+					EvictSoftRelease: i64(720), EvictHardRelease: i64(780),
 					GraceSeconds: i32(60), MinReclaimBytes: i64(256 * mib), DwellSeconds: i32(5),
 				},
 				{
-					Signal: SignalMemorySwap, WarnAt: i64(256 * mib), AdmitStopAt: i64(512 * mib), CriticalAt: i64(1 * gib),
+					Signal: SignalMemorySwap, WarnThreshold: i64(256 * mib), AdmitStopThreshold: i64(512 * mib), CriticalThreshold: i64(1 * gib),
 					WindowSeconds: i32(60),
 				},
 			},
@@ -99,7 +100,7 @@ func TestApplyFloorsClamps(t *testing.T) {
 		Tier1MaxDeliveriesPerHour: i32(60), Tier1CooloffSeconds: i32(-5),
 	}
 	out, clamped := ApplyFloors(in)
-	want := []string{"tier1GraceSeconds", "tier1HeldSeconds", "tier1MaxDeliveriesPerHour", "tier1CooloffSeconds"}
+	want := []PolicyField{FieldTier1GraceSeconds, FieldTier1HeldSeconds, FieldTier1MaxDeliveriesPerHour, FieldTier1CooloffSeconds}
 	if !reflect.DeepEqual(clamped, want) {
 		t.Fatalf("clamped = %v, want %v", clamped, want)
 	}
@@ -135,10 +136,10 @@ func TestNodeBudgetPolicyValidate(t *testing.T) {
 	}{
 		{"unknown signal", func(s *NodeBudgetPolicySpec) { s.Thresholds[0].Signal = "cpu.pressure" }},
 		{"repeated signal", func(s *NodeBudgetPolicySpec) { s.Thresholds[1].Signal = SignalMemoryCompressor }},
-		{"rising ladder misordered", func(s *NodeBudgetPolicySpec) { s.Thresholds[0].CriticalAt = i64(550) }},
-		{"release on the pressure side", func(s *NodeBudgetPolicySpec) { s.Thresholds[0].WarnReleaseAt = i64(500) }},
-		{"memory.swap evict-soft", func(s *NodeBudgetPolicySpec) { s.Thresholds[1].EvictSoftAt = i64(2 * gib) }},
-		{"negative rung", func(s *NodeBudgetPolicySpec) { s.Thresholds[1].WarnAt = i64(-1) }},
+		{"rising ladder misordered", func(s *NodeBudgetPolicySpec) { s.Thresholds[0].CriticalThreshold = i64(550) }},
+		{"release on the pressure side", func(s *NodeBudgetPolicySpec) { s.Thresholds[0].WarnRelease = i64(500) }},
+		{"memory.swap evict-soft", func(s *NodeBudgetPolicySpec) { s.Thresholds[1].EvictSoftThreshold = i64(2 * gib) }},
+		{"negative rung", func(s *NodeBudgetPolicySpec) { s.Thresholds[1].WarnThreshold = i64(-1) }},
 		{"negative grace", func(s *NodeBudgetPolicySpec) { s.Thresholds[0].GraceSeconds = i32(-1) }},
 		{"negative dwell", func(s *NodeBudgetPolicySpec) { s.Thresholds[0].DwellSeconds = i32(-1) }},
 		{"negative reserve", func(s *NodeBudgetPolicySpec) { s.Reserves.MemSystemReserveBytes = i64(-1) }},
@@ -209,5 +210,41 @@ func TestNodeBudgetPolicyDeepCopyIsIndependent(t *testing.T) {
 	assertNoSharedMemory(t, "NodeBudgetPolicyList", reflect.ValueOf(l), reflect.ValueOf(lc))
 	if _, ok := p.DeepCopyObject().(*NodeBudgetPolicy); !ok {
 		t.Fatal("DeepCopyObject did not return a *NodeBudgetPolicy")
+	}
+}
+
+// TestNodeBudgetPolicyModeMustBeQuotedInYAML pins the YAML trap in the mode
+// values: the Kubernetes YAML decoders follow YAML 1.1, which reads a bare
+// on or off as a boolean, so an unquoted mode is refused and the quoted form
+// decodes.
+func TestNodeBudgetPolicyModeMustBeQuotedInYAML(t *testing.T) {
+	t.Parallel()
+	doc := func(mode string) []byte {
+		return []byte("apiVersion: budget.k3sm.io/v1alpha1\nkind: NodeBudgetPolicy\nmetadata:\n  name: p\nspec:\n  mode: " + mode + "\n")
+	}
+	for _, mode := range []string{"off", "on"} {
+		// sigs.k8s.io/yaml turns the boolean into the string "false" or
+		// "true" for a string field, so the bare form never reaches the
+		// intended value: Validate refuses it (and an apiserver refuses the
+		// boolean against the CRD's string type).
+		var p NodeBudgetPolicy
+		if err := utilyaml.Unmarshal(doc(mode), &p); err == nil {
+			if string(p.Spec.Mode) == mode {
+				t.Errorf("unquoted mode: %s decoded as %q; YAML 1.1 should read it as a boolean", mode, mode)
+			}
+			if err := p.Spec.Validate(); !errors.Is(err, ErrInvalidNodeBudgetPolicy) {
+				t.Errorf("unquoted mode: %s decoded to %q and Validate admits it: %v", mode, p.Spec.Mode, err)
+			}
+		}
+		var q NodeBudgetPolicy
+		if err := utilyaml.Unmarshal(doc(`"`+mode+`"`), &q); err != nil {
+			t.Errorf("quoted mode %q is refused: %v", mode, err)
+		} else if string(q.Spec.Mode) != mode || !q.Spec.Mode.Valid() {
+			t.Errorf("quoted mode %q decoded to %q", mode, q.Spec.Mode)
+		}
+	}
+	var a NodeBudgetPolicy
+	if err := utilyaml.Unmarshal(doc("auto"), &a); err != nil || a.Spec.Mode != KillModeAuto {
+		t.Errorf("mode: auto decoded to %q, %v", a.Spec.Mode, err)
 	}
 }
