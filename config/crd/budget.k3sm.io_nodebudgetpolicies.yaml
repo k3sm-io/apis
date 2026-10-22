@@ -1,0 +1,270 @@
+# NodeBudgetPolicy CRD (budget.k3sm.io/v1alpha1): the one configuration
+# object of the node budget contract.
+#
+# Hand-authored (apis runs no controller-gen) to match the Go type in
+# k3sm.io/apis/budget/v1alpha1 (nodebudgetpolicy.go). ALPHA: a SINGLE
+# version v1alpha1 is both served and stored, and its shape may change
+# incompatibly until it graduates.
+#
+# Scope is Cluster and the object is spec only (no status subresource). A
+# policy selects node classes by spec.nodeSelector; when several select one
+# node the highest spec.priority wins and a tie goes to the smallest name.
+# The CEL rules on each thresholds item keep the five-rung ladder in order in
+# the direction of rising pressure (descending for an .available signal) and
+# each release on the calm side of its rung. The tier-1 timers carry their
+# compiled floors as schema bounds; a node clamps any value that reaches it
+# past them. No field has a CRD default; an unset field means the producer's
+# shipped default, and an unset mode means auto. Quote the mode in YAML
+# ("on", "off"): a bare on or off is a YAML 1.1 boolean and is refused.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: nodebudgetpolicies.budget.k3sm.io
+spec:
+  group: budget.k3sm.io
+  scope: Cluster
+  names:
+    kind: NodeBudgetPolicy
+    listKind: NodeBudgetPolicyList
+    plural: nodebudgetpolicies
+    singular: nodebudgetpolicy
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      additionalPrinterColumns:
+        - name: Priority
+          type: integer
+          jsonPath: .spec.priority
+        - name: Mode
+          type: string
+          jsonPath: .spec.mode
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: NodeBudgetPolicy selects node classes by nodeSelector and overrides the node budget defaults for them. It is the only configuration object of budget.k3sm.io.
+          required:
+            - spec
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              properties:
+                nodeSelector:
+                  type: object
+                  description: NodeSelector selects the nodes the policy applies to by exact label match; empty selects every node.
+                  maxProperties: 32
+                  additionalProperties:
+                    type: string
+                    maxLength: 63
+                priority:
+                  type: integer
+                  format: int32
+                  description: Priority orders policies that select the same node; the highest wins and a tie goes to the smallest name.
+                thresholds:
+                  type: array
+                  description: Thresholds override the ladder of individual signals, one entry per signal. Values are in the signal's canonical unit (bytes, permille for memory.compressor, a count for pid.available).
+                  maxItems: 8
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - signal
+                  items:
+                    type: object
+                    required:
+                      - signal
+                    properties:
+                      signal:
+                        type: string
+                        description: Signal names the signal.
+                        enum:
+                          - memory.available
+                          - memory.compressor
+                          - memory.swap
+                          - swapfs.available
+                          - nodefs.available
+                          - imagefs.available
+                          - pid.available
+                      warnThreshold:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: WarnThreshold is the warn rung.
+                      admitStopThreshold:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: AdmitStopThreshold is the rung at which the node stops admitting work.
+                      criticalThreshold:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: CriticalThreshold is the critical rung.
+                      evictSoftThreshold:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: EvictSoftThreshold is the rung that starts the evict-soft grace (tier 1). Not for memory.swap.
+                      evictHardThreshold:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: EvictHardThreshold is the hard trip (tier 2).
+                      warnRelease:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: WarnRelease is the value at which the warn rung releases.
+                      admitStopRelease:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: AdmitStopRelease is the value at which admission resumes.
+                      criticalRelease:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: CriticalRelease is the value at which the critical rung releases.
+                      evictSoftRelease:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: EvictSoftRelease is the value at which the evict-soft rung releases.
+                      evictHardRelease:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: EvictHardRelease is the value at which the hard trip releases.
+                      graceSeconds:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: GraceSeconds is the evict-soft grace, in seconds.
+                      minReclaimBytes:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: MinReclaimBytes is the least an eviction on this signal reclaims.
+                      dwellSeconds:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: DwellSeconds is how long a level must hold before it is published. Optional, with no default.
+                      windowSeconds:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: WindowSeconds is the window of a growth signal (memory.swap).
+                    x-kubernetes-validations:
+                      - rule: "!has(self.warnThreshold) || !has(self.admitStopThreshold) || (self.signal.endsWith('.available') ? self.warnThreshold > self.admitStopThreshold : self.warnThreshold < self.admitStopThreshold)"
+                        message: "warnThreshold must be on the calm side of admitStopThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.warnThreshold) || !has(self.criticalThreshold) || (self.signal.endsWith('.available') ? self.warnThreshold > self.criticalThreshold : self.warnThreshold < self.criticalThreshold)"
+                        message: "warnThreshold must be on the calm side of criticalThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.warnThreshold) || !has(self.evictSoftThreshold) || (self.signal.endsWith('.available') ? self.warnThreshold > self.evictSoftThreshold : self.warnThreshold < self.evictSoftThreshold)"
+                        message: "warnThreshold must be on the calm side of evictSoftThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.warnThreshold) || !has(self.evictHardThreshold) || (self.signal.endsWith('.available') ? self.warnThreshold > self.evictHardThreshold : self.warnThreshold < self.evictHardThreshold)"
+                        message: "warnThreshold must be on the calm side of evictHardThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.admitStopThreshold) || !has(self.criticalThreshold) || (self.signal.endsWith('.available') ? self.admitStopThreshold > self.criticalThreshold : self.admitStopThreshold < self.criticalThreshold)"
+                        message: "admitStopThreshold must be on the calm side of criticalThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.admitStopThreshold) || !has(self.evictSoftThreshold) || (self.signal.endsWith('.available') ? self.admitStopThreshold > self.evictSoftThreshold : self.admitStopThreshold < self.evictSoftThreshold)"
+                        message: "admitStopThreshold must be on the calm side of evictSoftThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.admitStopThreshold) || !has(self.evictHardThreshold) || (self.signal.endsWith('.available') ? self.admitStopThreshold > self.evictHardThreshold : self.admitStopThreshold < self.evictHardThreshold)"
+                        message: "admitStopThreshold must be on the calm side of evictHardThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.criticalThreshold) || !has(self.evictSoftThreshold) || (self.signal.endsWith('.available') ? self.criticalThreshold > self.evictSoftThreshold : self.criticalThreshold < self.evictSoftThreshold)"
+                        message: "criticalThreshold must be on the calm side of evictSoftThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.criticalThreshold) || !has(self.evictHardThreshold) || (self.signal.endsWith('.available') ? self.criticalThreshold > self.evictHardThreshold : self.criticalThreshold < self.evictHardThreshold)"
+                        message: "criticalThreshold must be on the calm side of evictHardThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.evictSoftThreshold) || !has(self.evictHardThreshold) || (self.signal.endsWith('.available') ? self.evictSoftThreshold > self.evictHardThreshold : self.evictSoftThreshold < self.evictHardThreshold)"
+                        message: "evictSoftThreshold must be on the calm side of evictHardThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.warnThreshold) || !has(self.warnRelease) || (self.signal.endsWith('.available') ? self.warnRelease > self.warnThreshold : self.warnRelease < self.warnThreshold)"
+                        message: "warnRelease must be on the calm side of warnThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.admitStopThreshold) || !has(self.admitStopRelease) || (self.signal.endsWith('.available') ? self.admitStopRelease > self.admitStopThreshold : self.admitStopRelease < self.admitStopThreshold)"
+                        message: "admitStopRelease must be on the calm side of admitStopThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.criticalThreshold) || !has(self.criticalRelease) || (self.signal.endsWith('.available') ? self.criticalRelease > self.criticalThreshold : self.criticalRelease < self.criticalThreshold)"
+                        message: "criticalRelease must be on the calm side of criticalThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.evictSoftThreshold) || !has(self.evictSoftRelease) || (self.signal.endsWith('.available') ? self.evictSoftRelease > self.evictSoftThreshold : self.evictSoftRelease < self.evictSoftThreshold)"
+                        message: "evictSoftRelease must be on the calm side of evictSoftThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "!has(self.evictHardThreshold) || !has(self.evictHardRelease) || (self.signal.endsWith('.available') ? self.evictHardRelease > self.evictHardThreshold : self.evictHardRelease < self.evictHardThreshold)"
+                        message: "evictHardRelease must be on the calm side of evictHardThreshold (above it for an .available signal, below it otherwise)"
+                      - rule: "self.signal != 'memory.swap' || !has(self.evictSoftThreshold)"
+                        message: "memory.swap has no evictSoftThreshold rung (swap alone never causes a soft eviction)"
+                reserves:
+                  type: object
+                  description: Reserves override the reserves held back from pods; a reserve above the measured capacity is clamped by the node.
+                  properties:
+                    cpuSystemReserveMilli:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      description: CPUSystemReserveMilli is the CPU held back for the system, in millicores.
+                    memSystemReserveBytes:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      description: MemSystemReserveBytes is the memory held back for the system.
+                    memEvictionReserveBytes:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      description: MemEvictionReserveBytes is the memory held back as the eviction margin.
+                history:
+                  type: object
+                  description: History overrides the recommendation's decayed peak history.
+                  properties:
+                    memoryHalfLifeSeconds:
+                      type: integer
+                      format: int64
+                      minimum: 1
+                      description: MemoryHalfLifeSeconds is the memory history half-life.
+                    cpuHalfLifeSeconds:
+                      type: integer
+                      format: int64
+                      minimum: 1
+                      description: CPUHalfLifeSeconds is the CPU history half-life.
+                    marginPermille:
+                      type: integer
+                      format: int32
+                      minimum: 0
+                      maximum: 1000
+                      description: MarginPermille is the margin taken off the recommendation, in permille.
+                mode:
+                  type: string
+                  description: 'Mode is the tier-1 kill mode: auto (also when unset) observes until the node has recorded 3 matched pressure episodes, on arms at once, off disables tier 1. Tier 2 is always armed. Quote the value in YAML; a bare on or off is a boolean.'
+                  enum:
+                    - auto
+                    - "on"
+                    - "off"
+                tier1GraceSeconds:
+                  type: integer
+                  format: int64
+                  minimum: 10
+                  description: Tier1GraceSeconds is the SIGTERM grace of a tier-1 eviction; the producer passes the larger of it and the pod's terminationGracePeriodSeconds.
+                tier1HeldSeconds:
+                  type: integer
+                  format: int64
+                  minimum: 10
+                  description: Tier1HeldSeconds is how long the held-pressure condition must hold before tier 1 may act.
+                tier1MaxDeliveriesPerHour:
+                  type: integer
+                  format: int32
+                  minimum: 1
+                  maximum: 6
+                  description: Tier1MaxDeliveriesPerHour caps tier-1 deliveries per node per hour; set mode off to stop tier 1.
+                tier1CooloffSeconds:
+                  type: integer
+                  format: int64
+                  minimum: 300
+                  description: Tier1CooloffSeconds is the least time between two tier-1 deliveries on one node.
+                psiHeldPermille:
+                  type: integer
+                  format: int32
+                  minimum: 0
+                  maximum: 1000
+                  description: PSIHeldPermille is the PSI memory level, in permille, that counts as held pressure where PSI exists.

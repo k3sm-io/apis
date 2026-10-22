@@ -45,6 +45,10 @@ limitations under the License.
 // The Update manifest (updates.k3sm.io_updates.yaml) is the alpha
 // updates.k3sm.io/v1alpha1 request to move the whole cluster to one release;
 // k3sm's update controller ensures it through its accessor.
+//
+// The two budget.k3sm.io manifests (NodeBudget and NodeBudgetPolicy) are the
+// alpha budget.k3sm.io/v1alpha1 node budget contract: the per-node published
+// budget and the one policy object. Neither carries labels.
 package crd
 
 import (
@@ -158,4 +162,38 @@ var updateCRDYAML string
 // It returns a fresh copy on every call, for the same reason as MLXModelCRD.
 func UpdateCRD() []byte {
 	return []byte(updateCRDYAML)
+}
+
+// NodeBudgetCRDName is the metadata.name of the NodeBudget
+// CustomResourceDefinition (the <plural>.<group> form the API server
+// addresses it by). Published so a consumer waiting on or reading back the
+// CRD does not spell the string.
+const NodeBudgetCRDName = "nodebudgets.budget.k3sm.io"
+
+//go:embed budget.k3sm.io_nodebudgets.yaml
+var nodeBudgetCRDYAML string
+
+// NodeBudgetCRD returns the budget.k3sm.io/v1alpha1 NodeBudget
+// CustomResourceDefinition manifest as YAML bytes, ready to apply.
+//
+// It returns a fresh copy on every call, for the same reason as MLXModelCRD.
+func NodeBudgetCRD() []byte {
+	return []byte(nodeBudgetCRDYAML)
+}
+
+// NodeBudgetPolicyCRDName is the metadata.name of the NodeBudgetPolicy
+// CustomResourceDefinition (the <plural>.<group> form the API server
+// addresses it by). Published so a consumer waiting on or reading back the
+// CRD does not spell the string.
+const NodeBudgetPolicyCRDName = "nodebudgetpolicies.budget.k3sm.io"
+
+//go:embed budget.k3sm.io_nodebudgetpolicies.yaml
+var nodeBudgetPolicyCRDYAML string
+
+// NodeBudgetPolicyCRD returns the budget.k3sm.io/v1alpha1 NodeBudgetPolicy
+// CustomResourceDefinition manifest as YAML bytes, ready to apply.
+//
+// It returns a fresh copy on every call, for the same reason as MLXModelCRD.
+func NodeBudgetPolicyCRD() []byte {
+	return []byte(nodeBudgetPolicyCRDYAML)
 }
