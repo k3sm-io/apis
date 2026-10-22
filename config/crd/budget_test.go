@@ -67,6 +67,15 @@ var nodeBudgetStatusRules = []string{
 	"!has(self.policy) || self.policy.outcome == 'rejected' || (has(self.inForce) && self.inForce.name == self.policy.name && (has(self.inForce.resourceVersion) ? has(self.policy.resourceVersion) && self.inForce.resourceVersion == self.policy.resourceVersion : !has(self.policy.resourceVersion)))",
 }
 
+// nodeBudgetConditionRules pin each condition type's closed reason set per
+// status on a NodeBudget status condition (budgetv1alpha1.ConditionReasons).
+var nodeBudgetConditionRules = []string{
+	"self.type != 'Reporting' || (self.status == 'True' ? self.reason in ['NodeReporting'] : self.reason in ['NodeNotReporting', 'AnnotationMalformed', 'SchemaUnsupported', 'AnnotationTooLarge'])",
+	"self.type != 'PolicyRejected' || (self.status == 'True' ? self.reason in ['PolicyInvalid', 'MergedLadderInverted'] : self.reason in ['PolicyAccepted'])",
+	"self.type != 'PolicyClamped' || (self.status == 'True' ? self.reason in ['FieldsClamped'] : self.reason in ['NoFieldsClamped'])",
+	"self.type != 'PolicyConflict' || (self.status == 'True' ? self.reason in ['MultiplePolicies'] : self.reason in ['SinglePolicy'])",
+}
+
 // assertBudgetIdentity checks a budget.k3sm.io manifest's identity: group,
 // Cluster scope, names, the single served+stored v1alpha1 version, and no
 // labels or annotations on the CRD object itself (aggregation labels belong
@@ -167,9 +176,11 @@ func TestNodeBudgetCRDMatchesTheGoTypes(t *testing.T) {
 	}
 	status := mapAt(t, rootProps, "status")
 	assertRules(t, "status", status, nodeBudgetStatusRules)
+	assertRules(t, "status.conditions[]", mapAt(t, status, "properties", "conditions", "items"), nodeBudgetConditionRules)
+	assertStringEnum(t, "status.conditions[].status", mapAt(t, status, "properties", "conditions", "items", "properties", "status"), "True", "False")
 	assertRules(t, "status.signals[]", mapAt(t, status, "properties", "signals", "items"),
 		append([]string{nodeBudgetSignalUnitRule}, budgetLadderRules("id")...))
-	if n, want := len(collectRules(m)), len(nodeBudgetStatusRules)+1+len(budgetLadderRules("id")); n != want {
+	if n, want := len(collectRules(m)), len(nodeBudgetStatusRules)+len(nodeBudgetConditionRules)+1+len(budgetLadderRules("id")); n != want {
 		t.Errorf("the manifest carries %d rules in all, want %d", n, want)
 	}
 	sp := mapAt(t, status, "properties")

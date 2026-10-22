@@ -544,7 +544,7 @@ spec:
                       description: NodeNameExtra is true when an own-node producer verified its token's node-name claim at start.
                 conditions:
                   type: array
-                  description: Conditions are the standard conditions (Reporting, PolicyRejected, PolicyClamped, PolicyConflict). They are owned by the status writer and never carried in a node's payload; each reason is from the closed set the Go package publishes per type and status.
+                  description: Conditions are the standard conditions (Reporting, PolicyRejected, PolicyClamped, PolicyConflict). They are owned by the status writer and never carried in a node's payload; each reason is from the closed set the Go package publishes per type and status, and status is True or False (Unknown is not used). The message is free text written by the status writer.
                   maxItems: 8
                   x-kubernetes-list-type: map
                   x-kubernetes-list-map-keys:
@@ -556,6 +556,15 @@ spec:
                       - status
                       - lastTransitionTime
                       - reason
+                    x-kubernetes-validations:
+                    - rule: "self.type != 'Reporting' || (self.status == 'True' ? self.reason in ['NodeReporting'] : self.reason in ['NodeNotReporting', 'AnnotationMalformed', 'SchemaUnsupported', 'AnnotationTooLarge'])"
+                      message: "a Reporting condition carries a reason from its closed set for its status"
+                    - rule: "self.type != 'PolicyRejected' || (self.status == 'True' ? self.reason in ['PolicyInvalid', 'MergedLadderInverted'] : self.reason in ['PolicyAccepted'])"
+                      message: "a PolicyRejected condition carries a reason from its closed set for its status"
+                    - rule: "self.type != 'PolicyClamped' || (self.status == 'True' ? self.reason in ['FieldsClamped'] : self.reason in ['NoFieldsClamped'])"
+                      message: "a PolicyClamped condition carries a reason from its closed set for its status"
+                    - rule: "self.type != 'PolicyConflict' || (self.status == 'True' ? self.reason in ['MultiplePolicies'] : self.reason in ['SinglePolicy'])"
+                      message: "a PolicyConflict condition carries a reason from its closed set for its status"
                     properties:
                       type:
                         type: string
@@ -565,7 +574,6 @@ spec:
                         enum:
                           - "True"
                           - "False"
-                          - Unknown
                       observedGeneration:
                         type: integer
                         format: int64

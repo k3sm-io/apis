@@ -39,25 +39,25 @@ func samplePolicy() *NodeBudgetPolicy {
 					WarnThreshold: i64(500), AdmitStopThreshold: i64(600), CriticalThreshold: i64(700), EvictSoftThreshold: i64(750), EvictHardThreshold: i64(800),
 					WarnRelease: i64(450), AdmitStopRelease: i64(550), CriticalRelease: i64(650),
 					EvictSoftRelease: i64(720), EvictHardRelease: i64(780),
-					GraceSeconds: i32(60), MinReclaimBytes: i64(256 * mib), DwellSeconds: i32(5),
+					GraceSeconds: i64(60), MinReclaimBytes: i64(256 * mib), DwellSeconds: i64(5),
 				},
 				{
 					Signal: SignalMemorySwap, WarnThreshold: i64(256 * mib), AdmitStopThreshold: i64(512 * mib), CriticalThreshold: i64(1 * gib),
-					WindowSeconds: i32(60),
+					WindowSeconds: i64(60),
 				},
 			},
 			Reserves: &BudgetReserves{
 				CPUSystemReserveMilli: i64(500), MemSystemReserveBytes: i64(2 * gib), MemEvictionReserveBytes: i64(512 * mib),
 			},
 			History: &BudgetHistory{
-				MemoryHalfLifeSeconds: i32(DefaultMemoryHalfLifeSeconds), CPUHalfLifeSeconds: i32(DefaultCPUHalfLifeSeconds),
+				MemoryHalfLifeSeconds: i64(DefaultMemoryHalfLifeSeconds), CPUHalfLifeSeconds: i64(DefaultCPUHalfLifeSeconds),
 				MarginPermille: i32(DefaultMarginPermille),
 			},
 			Mode:                      KillModeOn,
-			Tier1GraceSeconds:         i32(20),
-			Tier1HeldSeconds:          i32(30),
+			Tier1GraceSeconds:         i64(20),
+			Tier1HeldSeconds:          i64(30),
 			Tier1MaxDeliveriesPerHour: i32(4),
-			Tier1CooloffSeconds:       i32(1800),
+			Tier1CooloffSeconds:       i64(1800),
 			PSIHeldPermille:           i32(600),
 		},
 	}
@@ -96,8 +96,8 @@ func TestFloorsAreLiteral(t *testing.T) {
 func TestApplyFloorsClamps(t *testing.T) {
 	t.Parallel()
 	in := NodeBudgetPolicySpec{
-		Tier1GraceSeconds: i32(1), Tier1HeldSeconds: i32(0),
-		Tier1MaxDeliveriesPerHour: i32(60), Tier1CooloffSeconds: i32(-5),
+		Tier1GraceSeconds: i64(1), Tier1HeldSeconds: i64(0),
+		Tier1MaxDeliveriesPerHour: i32(60), Tier1CooloffSeconds: i64(-5),
 	}
 	out, clamped := ApplyFloors(in)
 	want := []PolicyField{FieldTier1GraceSeconds, FieldTier1HeldSeconds, FieldTier1MaxDeliveriesPerHour, FieldTier1CooloffSeconds}
@@ -140,10 +140,10 @@ func TestNodeBudgetPolicyValidate(t *testing.T) {
 		{"release on the pressure side", func(s *NodeBudgetPolicySpec) { s.Thresholds[0].WarnRelease = i64(500) }},
 		{"memory.swap evict-soft", func(s *NodeBudgetPolicySpec) { s.Thresholds[1].EvictSoftThreshold = i64(2 * gib) }},
 		{"negative rung", func(s *NodeBudgetPolicySpec) { s.Thresholds[1].WarnThreshold = i64(-1) }},
-		{"negative grace", func(s *NodeBudgetPolicySpec) { s.Thresholds[0].GraceSeconds = i32(-1) }},
-		{"negative dwell", func(s *NodeBudgetPolicySpec) { s.Thresholds[0].DwellSeconds = i32(-1) }},
+		{"negative grace", func(s *NodeBudgetPolicySpec) { s.Thresholds[0].GraceSeconds = i64(-1) }},
+		{"negative dwell", func(s *NodeBudgetPolicySpec) { s.Thresholds[0].DwellSeconds = i64(-1) }},
 		{"negative reserve", func(s *NodeBudgetPolicySpec) { s.Reserves.MemSystemReserveBytes = i64(-1) }},
-		{"zero half-life", func(s *NodeBudgetPolicySpec) { s.History.CPUHalfLifeSeconds = i32(0) }},
+		{"zero half-life", func(s *NodeBudgetPolicySpec) { s.History.CPUHalfLifeSeconds = i64(0) }},
 		{"margin above 1000", func(s *NodeBudgetPolicySpec) { s.History.MarginPermille = i32(1001) }},
 		{"unknown mode", func(s *NodeBudgetPolicySpec) { s.Mode = "observe" }},
 		{"zero deliveries per hour", func(s *NodeBudgetPolicySpec) { s.Tier1MaxDeliveriesPerHour = i32(0) }},

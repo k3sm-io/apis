@@ -278,8 +278,8 @@ func maximalReport() NodeBudgetReport {
 			WouldKill:      &WouldKill{Band: BandStandard, Reason: WouldKillHeldPressure, At: at},
 			Counters:       counters,
 			Policy: &AppliedPolicy{
-				Name: strings.Repeat("a", 253), ResourceVersion: strings.Repeat("9", MaxPolicyResourceVersionBytes),
-				Outcome: PolicyRejected, ClampedFields: clamped,
+				PolicyRef: PolicyRef{Name: strings.Repeat("a", 253), ResourceVersion: strings.Repeat("9", MaxPolicyResourceVersionBytes)},
+				Outcome:   PolicyRejected, ClampedFields: clamped,
 			},
 			InForce: &PolicyRef{Name: strings.Repeat("b", 253), ResourceVersion: strings.Repeat("8", MaxPolicyResourceVersionBytes)},
 			Linux: &LinuxSignals{
@@ -337,7 +337,7 @@ func TestNodeBudgetDesiredPolicyStrictDecode(t *testing.T) {
 	}
 
 	below := sampleDesired()
-	below.Spec.Tier1GraceSeconds = i32(1)
+	below.Spec.Tier1GraceSeconds = i64(1)
 	if _, err := below.Encode(); err != nil {
 		t.Fatalf("a grace below the floor is clamped by the node, not refused: %v", err)
 	}

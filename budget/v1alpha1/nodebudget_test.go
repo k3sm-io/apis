@@ -125,7 +125,7 @@ func sampleDarwin() *NodeBudget {
 						},
 					},
 				},
-				Policy:  &AppliedPolicy{Name: "default", ResourceVersion: "4711", Outcome: PolicyApplied},
+				Policy:  &AppliedPolicy{PolicyRef: PolicyRef{Name: "default", ResourceVersion: "4711"}, Outcome: PolicyApplied},
 				InForce: &PolicyRef{Name: "default", ResourceVersion: "4711"},
 				Darwin: &DarwinSignals{
 					VMPressureLevel: i64(1), MemorystatusLevelPermille: i64(640),
@@ -185,7 +185,7 @@ func sampleLinux() *NodeBudget {
 					},
 				},
 				Policy: &AppliedPolicy{
-					Name: "linux-workers", ResourceVersion: "88", Outcome: PolicyClamped,
+					PolicyRef: PolicyRef{Name: "linux-workers", ResourceVersion: "88"}, Outcome: PolicyClamped,
 					ClampedFields: []PolicyField{FieldTier1GraceSeconds},
 				},
 				InForce: &PolicyRef{Name: "linux-workers", ResourceVersion: "88"},
@@ -498,7 +498,7 @@ func TestNodeBudgetStatusValidate(t *testing.T) {
 	t.Run("a rejected policy keeps the last valid one in force", func(t *testing.T) {
 		for _, inForce := range []*PolicyRef{{Name: "default", ResourceVersion: "4700"}, {Name: "older"}, nil} {
 			s := sampleDarwin().Status
-			s.Policy = &AppliedPolicy{Name: "default", ResourceVersion: "4711", Outcome: PolicyRejected}
+			s.Policy = &AppliedPolicy{PolicyRef: PolicyRef{Name: "default", ResourceVersion: "4711"}, Outcome: PolicyRejected}
 			s.InForce = inForce
 			if err := s.Validate(); err != nil {
 				t.Errorf("rejected policy with inForce %+v: %v", inForce, err)
@@ -511,6 +511,8 @@ func TestNodeBudgetStatusValidate(t *testing.T) {
 			{Type: ConditionPolicyRejected, Status: metav1.ConditionTrue, Reason: "BadPolicy"},
 			{Type: ConditionPolicyClamped, Status: metav1.ConditionTrue, Reason: ReasonNoFieldsClamped},
 			{Type: ConditionPolicyConflict, Status: metav1.ConditionFalse, Reason: ReasonMultiplePolicies},
+			{Type: ConditionPolicyConflict, Status: metav1.ConditionUnknown, Reason: ReasonSinglePolicy},
+			{Type: ConditionReporting, Status: metav1.ConditionUnknown, Reason: ReasonNodeReporting},
 		} {
 			s := sampleDarwin().Status
 			c.LastTransitionTime = sampleAt
@@ -738,5 +740,51 @@ func TestBudgetVocabulary(t *testing.T) {
 	}
 	if b := Bands(); len(b) != 3 || b[0] != BandCritical || b[1] != BandStandard || b[2] != BandBatch {
 		t.Errorf("Bands() = %v, want critical, standard, batch", b)
+	}
+}
+
+// TestProducerCollapsesUnknownValues pins the own-node producer rule as far
+// as the Go side can. The CRD enum of a producer-vocabulary field includes
+// "unknown" and is checked before anything else, so a producer writing
+// status directly must map a value it does not know to "unknown" itself.
+// Validate refuses an unmapped value, accepts "unknown", the JSON decoder
+// collapses an unmapped value on the read side, and no golden document (a
+// producer's output for values it knows) carries "unknown".
+func TestProducerCollapsesUnknownValues(t *testing.T) {
+	t.Parallel()
+	for name, mutate := range map[string]func(s *NodeBudgetStatus, v string){
+		"trend":             func(s *NodeBudgetStatus, v string) { s.Signals[0].Trend = Trend(v) },
+		"limiting resource": func(s *NodeBudgetStatus, v string) { s.Signals[0].LimitingResource = LimitingResource(v) },
+		"kill-mode reason":  func(s *NodeBudgetStatus, v string) { s.KillMode.Reason = KillModeReason(v) },
+		"would-kill reason": func(s *NodeBudgetStatus, v string) {
+			s.WouldKill = &WouldKill{Band: BandBatch, Reason: WouldKillReason(v), At: sampleAt}
+		},
+		"counter window reason": func(s *NodeBudgetStatus, v string) {
+			s.Counters = []BandCounters{{Band: BandBatch, Windows: []WindowCount{{Window: Window1h, Reason: CounterReason(v), Count: 1}}}}
+		},
+	} {
+		unmapped := sampleDarwin().Status
+		mutate(&unmapped, "a-newer-value")
+		if err := unmapped.Validate(); err == nil {
+			t.Errorf("%s: a value the producer did not map to unknown was admitted", name)
+		}
+		collapsed := sampleDarwin().Status
+		mutate(&collapsed, "unknown")
+		if err := collapsed.Validate(); err != nil {
+			t.Errorf("%s: unknown was refused: %v", name, err)
+		}
+	}
+	var tr Trend
+	if err := json.Unmarshal([]byte(`"a-newer-value"`), &tr); err != nil || tr != TrendUnknown {
+		t.Errorf("the read side decodes an unmapped trend to %q, %v; want unknown", tr, err)
+	}
+	for _, f := range []string{"darwin", "linux"} {
+		b, err := os.ReadFile(filepath.Join("testdata", "status", f+".golden.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(b, []byte(`"unknown"`)) {
+			t.Errorf("%s golden emits unknown for a value the producer knows", f)
+		}
 	}
 }

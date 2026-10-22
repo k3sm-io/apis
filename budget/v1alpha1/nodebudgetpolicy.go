@@ -78,17 +78,17 @@ type NodeBudgetPolicySpec struct {
 	Mode KillModeName `json:"mode,omitempty"`
 	// Tier1GraceSeconds is the SIGTERM grace of a tier-1 eviction, at least
 	// MinTier1GraceSeconds.
-	Tier1GraceSeconds *int32 `json:"tier1GraceSeconds,omitempty"`
+	Tier1GraceSeconds *int64 `json:"tier1GraceSeconds,omitempty"`
 	// Tier1HeldSeconds is how long the held-pressure condition must hold, at
 	// least MinTier1HeldSeconds. Unset means DefaultTier1HeldSeconds.
-	Tier1HeldSeconds *int32 `json:"tier1HeldSeconds,omitempty"`
+	Tier1HeldSeconds *int64 `json:"tier1HeldSeconds,omitempty"`
 	// Tier1MaxDeliveriesPerHour caps tier-1 deliveries per node per hour,
 	// from MinTier1DeliveriesPerHour to MaxTier1DeliveriesPerHour.
 	Tier1MaxDeliveriesPerHour *int32 `json:"tier1MaxDeliveriesPerHour,omitempty"`
 	// Tier1CooloffSeconds is the least time between two tier-1 deliveries on
 	// one node, at least MinTier1CooloffSeconds. Unset means
 	// DefaultTier1CooloffSeconds.
-	Tier1CooloffSeconds *int32 `json:"tier1CooloffSeconds,omitempty"`
+	Tier1CooloffSeconds *int64 `json:"tier1CooloffSeconds,omitempty"`
 	// PSIHeldPermille is the PSI memory level, in permille, that counts as
 	// held pressure where PSI exists.
 	PSIHeldPermille *int32 `json:"psiHeldPermille,omitempty"`
@@ -126,15 +126,15 @@ type SignalThresholds struct {
 	EvictHardRelease *int64 `json:"evictHardRelease,omitempty"`
 
 	// GraceSeconds is the evict-soft grace, in seconds.
-	GraceSeconds *int32 `json:"graceSeconds,omitempty"`
+	GraceSeconds *int64 `json:"graceSeconds,omitempty"`
 	// MinReclaimBytes is the least an eviction on this signal reclaims.
 	MinReclaimBytes *int64 `json:"minReclaimBytes,omitempty"`
 	// DwellSeconds is how long a level must hold before it is published.
 	// Optional, with no default: unset keeps the producer's behaviour.
-	DwellSeconds *int32 `json:"dwellSeconds,omitempty"`
+	DwellSeconds *int64 `json:"dwellSeconds,omitempty"`
 	// WindowSeconds is the window, in seconds, of a growth signal
 	// (memory.swap).
-	WindowSeconds *int32 `json:"windowSeconds,omitempty"`
+	WindowSeconds *int64 `json:"windowSeconds,omitempty"`
 }
 
 // BudgetReserves override the reserves held back from pods.
@@ -152,10 +152,10 @@ type BudgetReserves struct {
 type BudgetHistory struct {
 	// MemoryHalfLifeSeconds is the memory history half-life. Unset means
 	// DefaultMemoryHalfLifeSeconds.
-	MemoryHalfLifeSeconds *int32 `json:"memoryHalfLifeSeconds,omitempty"`
+	MemoryHalfLifeSeconds *int64 `json:"memoryHalfLifeSeconds,omitempty"`
 	// CPUHalfLifeSeconds is the CPU history half-life. Unset means
 	// DefaultCPUHalfLifeSeconds.
-	CPUHalfLifeSeconds *int32 `json:"cpuHalfLifeSeconds,omitempty"`
+	CPUHalfLifeSeconds *int64 `json:"cpuHalfLifeSeconds,omitempty"`
 	// MarginPermille is the margin taken off the recommendation. Unset
 	// means DefaultMarginPermille.
 	MarginPermille *int32 `json:"marginPermille,omitempty"`
@@ -271,7 +271,7 @@ func (s *NodeBudgetPolicySpec) validate() error {
 		}
 		for _, f := range []struct {
 			name string
-			v    *int32
+			v    *int64
 		}{{"graceSeconds", t.GraceSeconds}, {"dwellSeconds", t.DwellSeconds}, {"windowSeconds", t.WindowSeconds}} {
 			if err := nonNegative(f.name, f.v); err != nil {
 				return fmt.Errorf("thresholds[%d] %s: %w", i, t.Signal, err)
@@ -298,7 +298,7 @@ func (s *NodeBudgetPolicySpec) validate() error {
 	if h := s.History; h != nil {
 		for _, f := range []struct {
 			name string
-			v    *int32
+			v    *int64
 		}{{"history.memoryHalfLifeSeconds", h.MemoryHalfLifeSeconds}, {"history.cpuHalfLifeSeconds", h.CPUHalfLifeSeconds}} {
 			if f.v != nil && *f.v < 1 {
 				return fmt.Errorf("%s %d is below 1", f.name, *f.v)
@@ -327,7 +327,7 @@ func (s *NodeBudgetPolicySpec) validate() error {
 func ApplyFloors(s NodeBudgetPolicySpec) (NodeBudgetPolicySpec, []PolicyField) {
 	out := *s.DeepCopy()
 	var clamped []PolicyField
-	raise := func(name PolicyField, p *int32, floor int32) {
+	raise := func(name PolicyField, p *int64, floor int64) {
 		if p != nil && *p < floor {
 			*p = floor
 			clamped = append(clamped, name)

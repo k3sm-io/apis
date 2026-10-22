@@ -144,7 +144,7 @@ spec:
                         description: EvictHardRelease is the value at which the hard trip releases.
                       graceSeconds:
                         type: integer
-                        format: int32
+                        format: int64
                         minimum: 0
                         description: GraceSeconds is the evict-soft grace, in seconds.
                       minReclaimBytes:
@@ -154,12 +154,12 @@ spec:
                         description: MinReclaimBytes is the least an eviction on this signal reclaims.
                       dwellSeconds:
                         type: integer
-                        format: int32
+                        format: int64
                         minimum: 0
                         description: DwellSeconds is how long a level must hold before it is published. Optional, with no default.
                       windowSeconds:
                         type: integer
-                        format: int32
+                        format: int64
                         minimum: 0
                         description: WindowSeconds is the window of a growth signal (memory.swap).
                     x-kubernetes-validations:
@@ -220,12 +220,12 @@ spec:
                   properties:
                     memoryHalfLifeSeconds:
                       type: integer
-                      format: int32
+                      format: int64
                       minimum: 1
                       description: MemoryHalfLifeSeconds is the memory history half-life.
                     cpuHalfLifeSeconds:
                       type: integer
-                      format: int32
+                      format: int64
                       minimum: 1
                       description: CPUHalfLifeSeconds is the CPU history half-life.
                     marginPermille:
@@ -243,12 +243,12 @@ spec:
                     - "off"
                 tier1GraceSeconds:
                   type: integer
-                  format: int32
+                  format: int64
                   minimum: 10
                   description: Tier1GraceSeconds is the SIGTERM grace of a tier-1 eviction; the producer passes the larger of it and the pod's terminationGracePeriodSeconds.
                 tier1HeldSeconds:
                   type: integer
-                  format: int32
+                  format: int64
                   minimum: 10
                   description: Tier1HeldSeconds is how long the held-pressure condition must hold before tier 1 may act.
                 tier1MaxDeliveriesPerHour:
@@ -259,7 +259,7 @@ spec:
                   description: Tier1MaxDeliveriesPerHour caps tier-1 deliveries per node per hour; set mode off to stop tier 1.
                 tier1CooloffSeconds:
                   type: integer
-                  format: int32
+                  format: int64
                   minimum: 300
                   description: Tier1CooloffSeconds is the least time between two tier-1 deliveries on one node.
                 psiHeldPermille:

@@ -296,10 +296,8 @@ const MaxWindowCounts = 12
 // refused. It carries no free text: the status writer composes the
 // human-readable condition message from Outcome and ClampedFields.
 type AppliedPolicy struct {
-	// Name is the policy's name.
-	Name string `json:"name"`
-	// ResourceVersion is the policy's resourceVersion as relayed.
-	ResourceVersion string `json:"resourceVersion,omitempty"`
+	// PolicyRef names the policy and the version of it the node was sent.
+	PolicyRef `json:",inline"`
 	// Outcome is what the node did with it.
 	Outcome PolicyOutcome `json:"outcome"`
 	// ClampedFields are the policy fields the node clamped, each listed
@@ -432,8 +430,14 @@ func (s *NodeBudgetStatus) Validate() error {
 		return fmt.Errorf("%w: %d conditions, at most %d", ErrInvalidNodeBudget, n, MaxBudgetConditions)
 	}
 	for i, c := range s.Conditions {
+		if !oneOf(c.Type, ConditionReporting, ConditionPolicyRejected, ConditionPolicyClamped, ConditionPolicyConflict) {
+			continue
+		}
 		reasons := ConditionReasons(c.Type, string(c.Status))
-		if reasons != nil && !oneOf(c.Reason, reasons...) {
+		if reasons == nil {
+			return fmt.Errorf("%w: conditions[%d] %s has status %q, want True or False (Unknown is not used)", ErrInvalidNodeBudget, i, c.Type, c.Status)
+		}
+		if !oneOf(c.Reason, reasons...) {
 			return fmt.Errorf("%w: conditions[%d] %s=%s reason %q, want one of %v", ErrInvalidNodeBudget, i, c.Type, c.Status, c.Reason, reasons)
 		}
 	}

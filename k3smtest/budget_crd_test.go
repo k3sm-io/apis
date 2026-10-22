@@ -49,6 +49,20 @@ var (
 	budgetReleases = []string{"warnRelease", "admitStopRelease", "criticalRelease", "evictSoftRelease", "evictHardRelease"}
 )
 
+// budgetConditionTypes are the condition types whose reasons are closed.
+var budgetConditionTypes = []string{
+	budgetv1alpha1.ConditionReporting, budgetv1alpha1.ConditionPolicyRejected,
+	budgetv1alpha1.ConditionPolicyClamped, budgetv1alpha1.ConditionPolicyConflict,
+}
+
+// budgetConditionRule is the CEL text of one condition type's reason rule, as
+// it appears in the NodeBudget manifest.
+func budgetConditionRule(ct string) string {
+	list := func(rs []string) string { return "['" + strings.Join(rs, "', '") + "']" }
+	return fmt.Sprintf("self.type != '%s' || (self.status == 'True' ? self.reason in %s : self.reason in %s)",
+		ct, list(budgetv1alpha1.ConditionReasons(ct, "True")), list(budgetv1alpha1.ConditionReasons(ct, "False")))
+}
+
 // budgetSelfRules transcribes the budget manifests' rules: on NodeBudget
 // status the three platform rules and the policy-in-force rule; on each NodeBudget signal record the unit
 // rule; and on both that record and a NodeBudgetPolicy thresholds item (whose
@@ -110,6 +124,24 @@ func budgetSelfRules() map[string]func(self any) bool {
 			}
 			return o["unit"] == want
 		},
+	}
+	// One rule per condition type: the reason is in the closed set for the
+	// status (ConditionReasons). The rule text is built from the same sets.
+	for _, ct := range budgetConditionTypes {
+		ct := ct
+		m[budgetConditionRule(ct)] = func(self any) bool {
+			o := obj(self)
+			if o["type"] != ct {
+				return true
+			}
+			reason, _ := o["reason"].(string)
+			for _, r := range budgetv1alpha1.ConditionReasons(ct, fmt.Sprint(o["status"])) {
+				if r == reason {
+					return true
+				}
+			}
+			return false
+		}
 	}
 	for _, key := range []string{"signal", "id"} {
 		key := key
@@ -270,6 +302,15 @@ func TestNodeBudgetCRDRoundTrip(t *testing.T) {
 		}, "status: an applied or clamped policy is the policy in force"},
 		{"an in-force field outside the schema", func(st map[string]any) { st["inForce"].(map[string]any)["uid"] = "x" }, "status.inForce.uid: not declared"},
 		{"a policy message", func(st map[string]any) { st["policy"].(map[string]any)["message"] = "free text" }, "status.policy.message: not declared"},
+		{"a Reporting=True condition with a not-reporting reason", func(st map[string]any) {
+			st["conditions"] = []any{map[string]any{"type": "Reporting", "status": "True", "reason": "NodeNotReporting", "lastTransitionTime": "2026-10-19T12:00:00Z"}}
+		}, "status.conditions[0]: a Reporting condition carries a reason from its closed set for its status"},
+		{"a PolicyConflict condition with a made-up reason", func(st map[string]any) {
+			st["conditions"] = []any{map[string]any{"type": "PolicyConflict", "status": "False", "reason": "Whatever", "lastTransitionTime": "2026-10-19T12:00:00Z"}}
+		}, "status.conditions[0]: a PolicyConflict condition carries a reason from its closed set for its status"},
+		{"an Unknown condition status", func(st map[string]any) {
+			st["conditions"] = []any{map[string]any{"type": "PolicyClamped", "status": "Unknown", "reason": "NoFieldsClamped", "lastTransitionTime": "2026-10-19T12:00:00Z"}}
+		}, "status.conditions[0].status: not in enum"},
 		{"an unknown clamped field", func(st map[string]any) {
 			st["policy"].(map[string]any)["clampedFields"] = []any{"spec.thresholds"}
 		}, "status.policy.clampedFields[0]: not in enum"},
@@ -599,4 +640,43 @@ func policyWire(t *testing.T) map[string]any {
 func sigAt(st map[string]any, i int) map[string]any { return st["signals"].([]any)[i].(map[string]any) }
 func thAt(sp map[string]any, i int) map[string]any {
 	return sp["thresholds"].([]any)[i].(map[string]any)
+}
+
+// TestConditionReasonRulesMatchValidate asserts that, for every condition
+// type, status and reason in the vocabulary, the CEL rule on the NodeBudget
+// condition item and Validate agree.
+func TestConditionReasonRulesMatchValidate(t *testing.T) {
+	t.Parallel()
+	var all []string
+	for _, ct := range budgetConditionTypes {
+		for _, st := range []string{"True", "False"} {
+			all = append(all, budgetv1alpha1.ConditionReasons(ct, st)...)
+		}
+	}
+	all = append(all, "Whatever", "")
+	var hits, misses int
+	for _, ct := range budgetConditionTypes {
+		rule := celSelfTranscriptions[budgetConditionRule(ct)]
+		if rule == nil {
+			t.Fatalf("no transcription for %s", ct)
+		}
+		for _, st := range []string{"True", "False"} {
+			for _, reason := range all {
+				c := metav1.Condition{Type: ct, Status: metav1.ConditionStatus(st), Reason: reason, LastTransitionTime: metav1.Now()}
+				goOK := (&budgetv1alpha1.NodeBudgetStatus{Conditions: []metav1.Condition{c}}).Validate() == nil
+				celOK := rule(map[string]any{"type": ct, "status": st, "reason": reason})
+				if goOK != celOK {
+					t.Errorf("%s=%s reason %q: Validate %v, CEL %v", ct, st, reason, goOK, celOK)
+				}
+				if celOK {
+					hits++
+				} else {
+					misses++
+				}
+			}
+		}
+	}
+	if hits == 0 || misses == 0 {
+		t.Errorf("the enumeration reached only one verdict (%d admitted, %d refused)", hits, misses)
+	}
 }
