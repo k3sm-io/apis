@@ -56,12 +56,14 @@ const (
 // Trust posture (stated precisely — these RPCs are not "root-only"):
 //
 //   - In the installed posture the runtime is embedded in-process in the one
-//     k3sm binary and serves no socket at all. The only unix-socket listener is
-//     created by the standalone k3sm-runtimed daemon binary; an embedded node
-//     never constructs one, so it exposes these RPCs to no peer whatsoever.
+//     k3sm binary, and that binary binds the same kind of unix socket: the node
+//     serves this service (and Runtime) on <root>/run/runtimed.sock, created
+//     by runtime.Listen. The standalone k3sm-runtimed daemon binds its own
+//     socket the same way. Either way the listener is the one the Runtime
+//     service is registered on, and no other.
 //
-//   - The standalone daemon's socket is guarded by POSIX file mode alone: the
-//     socket node is 0600 inside a 0700 parent dir, owned by the daemon's own
+//   - The socket is guarded by POSIX file mode alone: the
+//     socket node is 0600 inside a 0700 parent dir, owned by the serving process's
 //     euid (the unprivileged `_k3sm` user in the shipped posture; root only if
 //     an operator chooses to run the daemon as root). There is no LOCAL_PEERCRED
 //     differentiation on this socket, and pods commonly share the daemon's uid,
@@ -96,6 +98,10 @@ type ImagesClient interface {
 	// ImageFsInfo returns raw statfs-style measurements of the filesystem backing
 	// the image store. It is measurement-shaped only — see FilesystemUsage.
 	ImageFsInfo(ctx context.Context, in *ImageFsInfoRequest, opts ...grpc.CallOption) (*ImageFsInfoResponse, error)
+	// Deprecated: Do not use.
+	// DEPRECATED: the node's image store is becoming an internal pull cache, and
+	// user images live in the cluster registry. Retained on the wire for skew.
+	//
 	// RemoveImage removes an image ROOT from the local index (an untag). Root
 	// removal is authorized and local — an explicit operator/lifecycle action,
 	// never a side effect of fetched content. It unlinks no blobs: blob deletion
@@ -112,6 +118,10 @@ type ImagesClient interface {
 	// dry-run or audit caller can see why a blob survived without the daemon
 	// exporting its policy.
 	PruneImages(ctx context.Context, in *PruneImagesRequest, opts ...grpc.CallOption) (*PruneImagesResponse, error)
+	// Deprecated: Do not use.
+	// DEPRECATED: the node's image store is becoming an internal pull cache, and
+	// user images live in the cluster registry. Retained on the wire for skew.
+	//
 	// LoadImage ingests an image archive the client streams — the `k3sm image
 	// load` / `import` path.
 	//
@@ -149,17 +159,23 @@ type ImagesClient interface {
 	// local image index. A daemon that served this from a second fetch path would
 	// have forked its own verification story.
 	//
-	// This is explicitly the CLI-pull primitive — `k3sm image pull`. It exists so
-	// an operator can WARM and PIN the store ahead of a workload, not so images
-	// can arrive by a route pods do not use.
+	// This is a cache warm: it fills the node's internal pull cache ahead of a
+	// workload, by the route pods use. User images live in the cluster registry,
+	// not in this store.
 	//
-	// Provenance: a successful pull records a reference -> digest index entry — an
-	// edge, plus an OPERATOR root over that reference (the ratified image-GC
-	// provenance model: edges are monotone, roots are digest-pinned, and root
-	// removal is authorized and local). That
-	// root is why a pulled-but-unused image survives PruneImages: it stays
-	// reachable until the operator removes the name with UntagImage.
+	// Provenance: a successful pull records a reference -> digest index entry (an
+	// edge) and will record NO operator root over that reference; this describes
+	// the contract the daemon is moving to, and the daemon change that stops
+	// recording the root ships separately in runtimed. Until it lands, a daemon
+	// still records the OPERATOR root described by the ratified image-GC
+	// provenance model (edges are monotone, roots are digest-pinned, root removal
+	// is authorized and local). Without a root, a pulled-but-unused image is
+	// reclaimable by PruneImages like any other unreferenced cache entry.
 	PullImage(ctx context.Context, in *PullImageRequest, opts ...grpc.CallOption) (*PullImageResponse, error)
+	// Deprecated: Do not use.
+	// DEPRECATED: the node's image store is becoming an internal pull cache, and
+	// user images live in the cluster registry. Retained on the wire for skew.
+	//
 	// TagImage records an ADDITIONAL reference for a manifest digest that is
 	// already in the local store: a new (reference x platform) index entry
 	// pointing at existing content. It contacts no registry and writes no blob.
@@ -179,6 +195,10 @@ type ImagesClient interface {
 	// idempotent OK when it already resolves to this digest. platform is part of
 	// the key, never a filter.
 	TagImage(ctx context.Context, in *TagImageRequest, opts ...grpc.CallOption) (*TagImageResponse, error)
+	// Deprecated: Do not use.
+	// DEPRECATED: the node's image store is becoming an internal pull cache, and
+	// user images live in the cluster registry. Retained on the wire for skew.
+	//
 	// UntagImage removes ONE (reference x platform) index entry. It is the
 	// provenance model's sanctioned EXPLICIT UNTAG — an authorized, local root
 	// removal the operator requested, never a side effect of fetched content.
@@ -221,6 +241,10 @@ type ImagesClient interface {
 	// empty one. That is what lets a later daemon report more without a wire
 	// change.
 	InspectImage(ctx context.Context, in *InspectImageRequest, opts ...grpc.CallOption) (*InspectImageResponse, error)
+	// Deprecated: Do not use.
+	// DEPRECATED: the node's image store is becoming an internal pull cache, and
+	// user images live in the cluster registry. Retained on the wire for skew.
+	//
 	// SaveImage streams one image OUT of the store as a tarred OCI image layout —
 	// the `docker save` analog, and the exact inverse of LoadImage's direction.
 	//
@@ -268,6 +292,7 @@ func (c *imagesClient) ImageFsInfo(ctx context.Context, in *ImageFsInfoRequest, 
 	return out, nil
 }
 
+// Deprecated: Do not use.
 func (c *imagesClient) RemoveImage(ctx context.Context, in *RemoveImageRequest, opts ...grpc.CallOption) (*RemoveImageResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RemoveImageResponse)
@@ -288,6 +313,7 @@ func (c *imagesClient) PruneImages(ctx context.Context, in *PruneImagesRequest, 
 	return out, nil
 }
 
+// Deprecated: Do not use.
 func (c *imagesClient) LoadImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[LoadImageRequest, LoadImageResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &Images_ServiceDesc.Streams[0], Images_LoadImage_FullMethodName, cOpts...)
@@ -311,6 +337,7 @@ func (c *imagesClient) PullImage(ctx context.Context, in *PullImageRequest, opts
 	return out, nil
 }
 
+// Deprecated: Do not use.
 func (c *imagesClient) TagImage(ctx context.Context, in *TagImageRequest, opts ...grpc.CallOption) (*TagImageResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TagImageResponse)
@@ -321,6 +348,7 @@ func (c *imagesClient) TagImage(ctx context.Context, in *TagImageRequest, opts .
 	return out, nil
 }
 
+// Deprecated: Do not use.
 func (c *imagesClient) UntagImage(ctx context.Context, in *UntagImageRequest, opts ...grpc.CallOption) (*UntagImageResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(UntagImageResponse)
@@ -341,6 +369,7 @@ func (c *imagesClient) InspectImage(ctx context.Context, in *InspectImageRequest
 	return out, nil
 }
 
+// Deprecated: Do not use.
 func (c *imagesClient) SaveImage(ctx context.Context, in *SaveImageRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SaveImageResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &Images_ServiceDesc.Streams[1], Images_SaveImage_FullMethodName, cOpts...)
@@ -372,12 +401,14 @@ type Images_SaveImageClient = grpc.ServerStreamingClient[SaveImageResponse]
 // Trust posture (stated precisely — these RPCs are not "root-only"):
 //
 //   - In the installed posture the runtime is embedded in-process in the one
-//     k3sm binary and serves no socket at all. The only unix-socket listener is
-//     created by the standalone k3sm-runtimed daemon binary; an embedded node
-//     never constructs one, so it exposes these RPCs to no peer whatsoever.
+//     k3sm binary, and that binary binds the same kind of unix socket: the node
+//     serves this service (and Runtime) on <root>/run/runtimed.sock, created
+//     by runtime.Listen. The standalone k3sm-runtimed daemon binds its own
+//     socket the same way. Either way the listener is the one the Runtime
+//     service is registered on, and no other.
 //
-//   - The standalone daemon's socket is guarded by POSIX file mode alone: the
-//     socket node is 0600 inside a 0700 parent dir, owned by the daemon's own
+//   - The socket is guarded by POSIX file mode alone: the
+//     socket node is 0600 inside a 0700 parent dir, owned by the serving process's
 //     euid (the unprivileged `_k3sm` user in the shipped posture; root only if
 //     an operator chooses to run the daemon as root). There is no LOCAL_PEERCRED
 //     differentiation on this socket, and pods commonly share the daemon's uid,
@@ -412,6 +443,10 @@ type ImagesServer interface {
 	// ImageFsInfo returns raw statfs-style measurements of the filesystem backing
 	// the image store. It is measurement-shaped only — see FilesystemUsage.
 	ImageFsInfo(context.Context, *ImageFsInfoRequest) (*ImageFsInfoResponse, error)
+	// Deprecated: Do not use.
+	// DEPRECATED: the node's image store is becoming an internal pull cache, and
+	// user images live in the cluster registry. Retained on the wire for skew.
+	//
 	// RemoveImage removes an image ROOT from the local index (an untag). Root
 	// removal is authorized and local — an explicit operator/lifecycle action,
 	// never a side effect of fetched content. It unlinks no blobs: blob deletion
@@ -428,6 +463,10 @@ type ImagesServer interface {
 	// dry-run or audit caller can see why a blob survived without the daemon
 	// exporting its policy.
 	PruneImages(context.Context, *PruneImagesRequest) (*PruneImagesResponse, error)
+	// Deprecated: Do not use.
+	// DEPRECATED: the node's image store is becoming an internal pull cache, and
+	// user images live in the cluster registry. Retained on the wire for skew.
+	//
 	// LoadImage ingests an image archive the client streams — the `k3sm image
 	// load` / `import` path.
 	//
@@ -465,17 +504,23 @@ type ImagesServer interface {
 	// local image index. A daemon that served this from a second fetch path would
 	// have forked its own verification story.
 	//
-	// This is explicitly the CLI-pull primitive — `k3sm image pull`. It exists so
-	// an operator can WARM and PIN the store ahead of a workload, not so images
-	// can arrive by a route pods do not use.
+	// This is a cache warm: it fills the node's internal pull cache ahead of a
+	// workload, by the route pods use. User images live in the cluster registry,
+	// not in this store.
 	//
-	// Provenance: a successful pull records a reference -> digest index entry — an
-	// edge, plus an OPERATOR root over that reference (the ratified image-GC
-	// provenance model: edges are monotone, roots are digest-pinned, and root
-	// removal is authorized and local). That
-	// root is why a pulled-but-unused image survives PruneImages: it stays
-	// reachable until the operator removes the name with UntagImage.
+	// Provenance: a successful pull records a reference -> digest index entry (an
+	// edge) and will record NO operator root over that reference; this describes
+	// the contract the daemon is moving to, and the daemon change that stops
+	// recording the root ships separately in runtimed. Until it lands, a daemon
+	// still records the OPERATOR root described by the ratified image-GC
+	// provenance model (edges are monotone, roots are digest-pinned, root removal
+	// is authorized and local). Without a root, a pulled-but-unused image is
+	// reclaimable by PruneImages like any other unreferenced cache entry.
 	PullImage(context.Context, *PullImageRequest) (*PullImageResponse, error)
+	// Deprecated: Do not use.
+	// DEPRECATED: the node's image store is becoming an internal pull cache, and
+	// user images live in the cluster registry. Retained on the wire for skew.
+	//
 	// TagImage records an ADDITIONAL reference for a manifest digest that is
 	// already in the local store: a new (reference x platform) index entry
 	// pointing at existing content. It contacts no registry and writes no blob.
@@ -495,6 +540,10 @@ type ImagesServer interface {
 	// idempotent OK when it already resolves to this digest. platform is part of
 	// the key, never a filter.
 	TagImage(context.Context, *TagImageRequest) (*TagImageResponse, error)
+	// Deprecated: Do not use.
+	// DEPRECATED: the node's image store is becoming an internal pull cache, and
+	// user images live in the cluster registry. Retained on the wire for skew.
+	//
 	// UntagImage removes ONE (reference x platform) index entry. It is the
 	// provenance model's sanctioned EXPLICIT UNTAG — an authorized, local root
 	// removal the operator requested, never a side effect of fetched content.
@@ -537,6 +586,10 @@ type ImagesServer interface {
 	// empty one. That is what lets a later daemon report more without a wire
 	// change.
 	InspectImage(context.Context, *InspectImageRequest) (*InspectImageResponse, error)
+	// Deprecated: Do not use.
+	// DEPRECATED: the node's image store is becoming an internal pull cache, and
+	// user images live in the cluster registry. Retained on the wire for skew.
+	//
 	// SaveImage streams one image OUT of the store as a tarred OCI image layout —
 	// the `docker save` analog, and the exact inverse of LoadImage's direction.
 	//

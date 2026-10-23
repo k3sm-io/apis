@@ -1994,20 +1994,20 @@ const file_runtime_v1_images_proto_rawDesc = "" +
 	"\x0fLoadImageFormat\x12!\n" +
 	"\x1dLOAD_IMAGE_FORMAT_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dLOAD_IMAGE_FORMAT_DOCKER_SAVE\x10\x01\x12 \n" +
-	"\x1cLOAD_IMAGE_FORMAT_OCI_LAYOUT\x10\x022\xf2\x06\n" +
+	"\x1cLOAD_IMAGE_FORMAT_OCI_LAYOUT\x10\x022\x8b\a\n" +
 	"\x06Images\x12U\n" +
 	"\n" +
 	"ListImages\x12\".k3sm.runtime.v1.ListImagesRequest\x1a#.k3sm.runtime.v1.ListImagesResponse\x12X\n" +
-	"\vImageFsInfo\x12#.k3sm.runtime.v1.ImageFsInfoRequest\x1a$.k3sm.runtime.v1.ImageFsInfoResponse\x12X\n" +
-	"\vRemoveImage\x12#.k3sm.runtime.v1.RemoveImageRequest\x1a$.k3sm.runtime.v1.RemoveImageResponse\x12X\n" +
-	"\vPruneImages\x12#.k3sm.runtime.v1.PruneImagesRequest\x1a$.k3sm.runtime.v1.PruneImagesResponse\x12T\n" +
-	"\tLoadImage\x12!.k3sm.runtime.v1.LoadImageRequest\x1a\".k3sm.runtime.v1.LoadImageResponse(\x01\x12R\n" +
-	"\tPullImage\x12!.k3sm.runtime.v1.PullImageRequest\x1a\".k3sm.runtime.v1.PullImageResponse\x12O\n" +
-	"\bTagImage\x12 .k3sm.runtime.v1.TagImageRequest\x1a!.k3sm.runtime.v1.TagImageResponse\x12U\n" +
+	"\vImageFsInfo\x12#.k3sm.runtime.v1.ImageFsInfoRequest\x1a$.k3sm.runtime.v1.ImageFsInfoResponse\x12]\n" +
+	"\vRemoveImage\x12#.k3sm.runtime.v1.RemoveImageRequest\x1a$.k3sm.runtime.v1.RemoveImageResponse\"\x03\x88\x02\x01\x12X\n" +
+	"\vPruneImages\x12#.k3sm.runtime.v1.PruneImagesRequest\x1a$.k3sm.runtime.v1.PruneImagesResponse\x12Y\n" +
+	"\tLoadImage\x12!.k3sm.runtime.v1.LoadImageRequest\x1a\".k3sm.runtime.v1.LoadImageResponse\"\x03\x88\x02\x01(\x01\x12R\n" +
+	"\tPullImage\x12!.k3sm.runtime.v1.PullImageRequest\x1a\".k3sm.runtime.v1.PullImageResponse\x12T\n" +
+	"\bTagImage\x12 .k3sm.runtime.v1.TagImageRequest\x1a!.k3sm.runtime.v1.TagImageResponse\"\x03\x88\x02\x01\x12Z\n" +
 	"\n" +
-	"UntagImage\x12\".k3sm.runtime.v1.UntagImageRequest\x1a#.k3sm.runtime.v1.UntagImageResponse\x12[\n" +
-	"\fInspectImage\x12$.k3sm.runtime.v1.InspectImageRequest\x1a%.k3sm.runtime.v1.InspectImageResponse\x12T\n" +
-	"\tSaveImage\x12!.k3sm.runtime.v1.SaveImageRequest\x1a\".k3sm.runtime.v1.SaveImageResponse0\x01B\xa3\x01\n" +
+	"UntagImage\x12\".k3sm.runtime.v1.UntagImageRequest\x1a#.k3sm.runtime.v1.UntagImageResponse\"\x03\x88\x02\x01\x12[\n" +
+	"\fInspectImage\x12$.k3sm.runtime.v1.InspectImageRequest\x1a%.k3sm.runtime.v1.InspectImageResponse\x12Y\n" +
+	"\tSaveImage\x12!.k3sm.runtime.v1.SaveImageRequest\x1a\".k3sm.runtime.v1.SaveImageResponse\"\x03\x88\x02\x010\x01B\xa3\x01\n" +
 	"\x13com.k3sm.runtime.v1B\vImagesProtoP\x01Z!k3sm.io/apis/runtime/v1;runtimev1\xa2\x02\x03KRX\xaa\x02\x0fK3sm.Runtime.V1\xca\x02\x0fK3sm\\Runtime\\V1\xe2\x02\x1bK3sm\\Runtime\\V1\\GPBMetadata\xea\x02\x11K3sm::Runtime::V1b\x06proto3"
 
 var (

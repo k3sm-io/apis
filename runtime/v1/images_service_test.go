@@ -466,7 +466,7 @@ func TestImagesServiceSurface(t *testing.T) {
 			{"provenance-free note", "provenance-free by design"},
 			{"operator-CLI-only surface clause", "an operator-CLI-only surface"},
 			// The socket posture, stated precisely rather than as "root-only".
-			{"embedded-posture clause", "serves no socket at all"},
+			{"embedded-posture clause", "the node serves this service (and Runtime) on <root>/run/runtimed.sock"},
 			{"file-mode-alone clause", "guarded by POSIX file mode alone"},
 			{"no-peercred clause", "There is no LOCAL_PEERCRED differentiation on this socket"},
 			{"new-listener clause", "needs a new listener and authorizer design"},
@@ -480,8 +480,8 @@ func TestImagesServiceSurface(t *testing.T) {
 			// untag — not RemoveImage — is the sanctioned root removal, and
 			// that an export is complete only at its terminal frame.
 			{"pull-uses-the-pod-path clause", "the same code path a pod-driven pull takes"},
-			{"pull-is-the-CLI-primitive clause", "explicitly the CLI-pull primitive"},
-			{"pull-records-an-operator-root clause", "an edge, plus an OPERATOR root over that reference"},
+			{"pull-is-a-cache-warm clause", "This is a cache warm"},
+			{"pull-will-record-no-root clause", "will record NO operator root over that reference"},
 			{"provenance-model citation", "provenance model: edges are monotone, roots are digest-pinned, and root removal is authorized and local"},
 			{"tag-is-monotone clause", "a tag can make content reachable, never unreachable"},
 			{"tag-never-repoints clause", "never RE-POINTS an existing entry at a different digest"},
