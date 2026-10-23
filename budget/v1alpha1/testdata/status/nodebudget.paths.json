@@ -1,0 +1,678 @@
+[
+  {
+    "path": "status",
+    "kind": "object"
+  },
+  {
+    "path": "status.admit",
+    "kind": "scalar",
+    "type": "boolean"
+  },
+  {
+    "path": "status.admitReasonSignal",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.capacity",
+    "kind": "object"
+  },
+  {
+    "path": "status.capacity.cpuCapacityMilli",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.capacity.cpuSystemReserveMilli",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.capacity.memAllocatableBytes",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.capacity.memCapacityBytes",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.capacity.memEvictionReserveBytes",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.capacity.memSystemReserveBytes",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.capacity.swapTotalBytes",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.capacity.swapUsedBytes",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.conditions",
+    "kind": "array"
+  },
+  {
+    "path": "status.conditions[]",
+    "kind": "object"
+  },
+  {
+    "path": "status.conditions[].lastTransitionTime",
+    "kind": "scalar",
+    "type": "string",
+    "format": "date-time"
+  },
+  {
+    "path": "status.conditions[].message",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.conditions[].observedGeneration",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.conditions[].reason",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.conditions[].status",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.conditions[].type",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.counters",
+    "kind": "array"
+  },
+  {
+    "path": "status.counters[]",
+    "kind": "object"
+  },
+  {
+    "path": "status.counters[].band",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.counters[].evictionsTotal",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.counters[].kernelKillsTotal",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.counters[].memHighEventsTotal",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.counters[].oomKillsTotal",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.counters[].restartsTotal",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.counters[].tier1RefusedTotal",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.counters[].windows",
+    "kind": "array"
+  },
+  {
+    "path": "status.counters[].windows[]",
+    "kind": "object"
+  },
+  {
+    "path": "status.counters[].windows[].count",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.counters[].windows[].reason",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.counters[].windows[].window",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.darwin",
+    "kind": "object"
+  },
+  {
+    "path": "status.darwin.compressor",
+    "kind": "object"
+  },
+  {
+    "path": "status.darwin.compressor.bytesStored",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.darwin.compressor.bytesUsed",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.darwin.compressor.segmentLimitBytes",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.darwin.memorystatusLevelPermille",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.darwin.swapinsTotal",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.darwin.swapoutsTotal",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.darwin.vmPressureLevel",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.evictDeadline",
+    "kind": "scalar",
+    "type": "string",
+    "format": "date-time"
+  },
+  {
+    "path": "status.inForce",
+    "kind": "object"
+  },
+  {
+    "path": "status.inForce.name",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.inForce.resourceVersion",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.killMode",
+    "kind": "object"
+  },
+  {
+    "path": "status.killMode.armed",
+    "kind": "scalar",
+    "type": "boolean"
+  },
+  {
+    "path": "status.killMode.armingEpisodes",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int32"
+  },
+  {
+    "path": "status.killMode.mode",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.killMode.reason",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.level",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.linux",
+    "kind": "object"
+  },
+  {
+    "path": "status.linux.memoryEvents",
+    "kind": "object"
+  },
+  {
+    "path": "status.linux.memoryEvents.high",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.memoryEvents.max",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.memoryEvents.oom",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.memoryEvents.oomKill",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi",
+    "kind": "object"
+  },
+  {
+    "path": "status.linux.psi.cpu",
+    "kind": "object"
+  },
+  {
+    "path": "status.linux.psi.cpu.full",
+    "kind": "object"
+  },
+  {
+    "path": "status.linux.psi.cpu.full.avg10Permille",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi.cpu.full.avg60Permille",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi.cpu.full.totalUs",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi.cpu.some",
+    "kind": "object"
+  },
+  {
+    "path": "status.linux.psi.cpu.some.avg10Permille",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi.cpu.some.avg60Permille",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi.cpu.some.totalUs",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi.io",
+    "kind": "object"
+  },
+  {
+    "path": "status.linux.psi.io.full",
+    "kind": "object"
+  },
+  {
+    "path": "status.linux.psi.io.full.avg10Permille",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi.io.full.avg60Permille",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi.io.full.totalUs",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi.io.some",
+    "kind": "object"
+  },
+  {
+    "path": "status.linux.psi.io.some.avg10Permille",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi.io.some.avg60Permille",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi.io.some.totalUs",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi.memory",
+    "kind": "object"
+  },
+  {
+    "path": "status.linux.psi.memory.full",
+    "kind": "object"
+  },
+  {
+    "path": "status.linux.psi.memory.full.avg10Permille",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi.memory.full.avg60Permille",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi.memory.full.totalUs",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi.memory.some",
+    "kind": "object"
+  },
+  {
+    "path": "status.linux.psi.memory.some.avg10Permille",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi.memory.some.avg60Permille",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.linux.psi.memory.some.totalUs",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.observedAt",
+    "kind": "scalar",
+    "type": "string",
+    "format": "date-time"
+  },
+  {
+    "path": "status.platform",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.policy",
+    "kind": "object"
+  },
+  {
+    "path": "status.policy.clampedFields",
+    "kind": "array"
+  },
+  {
+    "path": "status.policy.clampedFields[]",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.policy.name",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.policy.outcome",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.policy.resourceVersion",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.producerGeneration",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.recommendation",
+    "kind": "object"
+  },
+  {
+    "path": "status.recommendation.basis",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.recommendation.safeAdditionalBytes",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.signals",
+    "kind": "array"
+  },
+  {
+    "path": "status.signals[]",
+    "kind": "object"
+  },
+  {
+    "path": "status.signals[].admitStopRelease",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.signals[].admitStopThreshold",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.signals[].criticalRelease",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.signals[].criticalThreshold",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.signals[].etaToNextRungSeconds",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.signals[].evictHardRelease",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.signals[].evictHardThreshold",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.signals[].evictSoftRelease",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.signals[].evictSoftThreshold",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.signals[].graceSeconds",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.signals[].id",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.signals[].limitingResource",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.signals[].minReclaimBytes",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.signals[].sharedWith",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.signals[].trend",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.signals[].unit",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.signals[].value",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.signals[].warnRelease",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.signals[].warnThreshold",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.signals[].windowSeconds",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.wouldKill",
+    "kind": "object"
+  },
+  {
+    "path": "status.wouldKill.at",
+    "kind": "scalar",
+    "type": "string",
+    "format": "date-time"
+  },
+  {
+    "path": "status.wouldKill.band",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.wouldKill.reason",
+    "kind": "scalar",
+    "type": "string"
+  },
+  {
+    "path": "status.writer",
+    "kind": "object"
+  },
+  {
+    "path": "status.writer.nodeNameExtra",
+    "kind": "scalar",
+    "type": "boolean"
+  },
+  {
+    "path": "status.writer.shape",
+    "kind": "scalar",
+    "type": "string"
+  }
+]
