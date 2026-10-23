@@ -21,7 +21,7 @@ import (
 	"testing"
 )
 
-// TestHandlerConfigMapsVMBackend is the M5.1-a2 mapping table test: the built-in
+// TestHandlerConfigMapsVMBackend is the mapping table test: the built-in
 // DefaultHandlerConfig resolves "vm" to SANDBOX_BACKEND_VM, the empty/default
 // handler to the host-process default (SANDBOX_BACKEND_UNSPECIFIED), and any
 // unknown non-empty handler to ErrUnknownHandler (fail closed).
@@ -150,7 +150,7 @@ func TestHandlerConfigValidate(t *testing.T) {
 	}
 }
 
-// TestSandboxProfileVMParams proves the additive M5.1 VM-sizing fields carry the
+// TestSandboxProfileVMParams proves the additive VM-sizing fields carry the
 // micro-VM's vCPU count + RAM, round-trip on the wire, and are DISTINCT from the
 // PodBox OOM ceiling (PodBox.memory_limit_bytes): a VM-backed pod can be
 // BestEffort (memory_limit_bytes == 0) yet still boot with a concrete VM memory

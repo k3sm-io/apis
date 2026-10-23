@@ -41,7 +41,7 @@ func bandRange(t *testing.T, md protoreflect.MessageDescriptor, want protoreflec
 	return 0, 0
 }
 
-// TestSandboxProfileGPUEgressCarve pins the M8.1 SandboxProfile carve: allow_gpu
+// TestSandboxProfileGPUEgressCarve pins the MLX SandboxProfile carve: allow_gpu
 // at 102 and allow_internet_egress at 103, taken from the documented 100..149
 // headroom.
 //
@@ -81,7 +81,7 @@ func TestSandboxProfileGPUEgressCarve(t *testing.T) {
 
 	t.Run("the reserved band is re-narrowed and keeps its ceiling", func(t *testing.T) {
 		t.Parallel()
-		// 104 was carved for xcode_toolchain_dir (B264, 2026-09-09): the band
+		// 104 was carved for xcode_toolchain_dir (2026-09-09): the band
 		// re-narrows once more and keeps its ceiling.
 		lo, hi := bandRange(t, md, 105)
 		if lo != 105 || hi != 149 {
@@ -228,7 +228,7 @@ func TestInternetEgressCeilingDocumented(t *testing.T) {
 	}
 }
 
-// TestGPUFactsCarve pins the M8.1 GetRuntimeInfoResponse carve: the GPUFacts
+// TestGPUFactsCarve pins the MLX GetRuntimeInfoResponse carve: the GPUFacts
 // message at field 100, with 101 RESERVED rather than merely earmarked.
 //
 // Reserving 101 is the point of the carve's shape. The band comment has

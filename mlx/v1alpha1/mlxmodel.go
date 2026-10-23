@@ -128,7 +128,7 @@ type MLXModelSpec struct {
 	// Distributed shards the model across ranks, one per node. Nil means
 	// single-node serving.
 	//
-	// The k3sm MLX operator honours it from M17.4 on, serving the shards with
+	// The k3sm MLX operator honours it, serving the shards with
 	// mlx-lm's server. Ranks must be at least 2 (a CEL rule on the CRD in
 	// k3sm.io/apis/config/crd; nothing in this module enforces it). A placement
 	// that cannot be satisfied is reported through the object's conditions and
@@ -161,7 +161,7 @@ type MLXCache struct {
 // MLXModelSpec.Distributed): how many ranks a model shards across, over which
 // collective backend, and with which parallelism.
 //
-// The k3sm MLX operator honours it from M17.4 on and serves the ranks with
+// The k3sm MLX operator honours it and serves the ranks with
 // mlx-lm's server. The CRD admits a block whose Ranks is at least 2 and whose
 // Backend and Parallelism are empty or one of the declared values. A placement
 // the cluster cannot satisfy is reported through conditions, never served

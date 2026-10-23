@@ -67,8 +67,7 @@ func sampleMeshPeer() *MeshPeer {
 // survives a JSON marshal→unmarshal cycle losslessly — the kine-stored,
 // apiserver-served wire form. It is byte-stable (re-marshal equality) to avoid
 // time.Time location/monotonic DeepEqual pitfalls, and explicitly re-checks the
-// version stamp survives. M3.2 acceptance evidence (the type did not exist
-// before).
+// version stamp survives (the type did not exist before).
 func TestMeshPeerJSONRoundTrip(t *testing.T) {
 	t.Parallel()
 	orig := sampleMeshPeer()
@@ -402,7 +401,7 @@ func TestMeshEnrollResponseWithDefaults(t *testing.T) {
 }
 
 // TestMeshEnrollRoundTrip asserts the version-stamped enroll payloads round-trip
-// losslessly and carry a version. M3.2 acceptance evidence.
+// losslessly and carry a version.
 func TestMeshEnrollRoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -476,8 +475,8 @@ func TestMeshEnrollValidate(t *testing.T) {
 	})
 }
 
-// TestNodePortUnchangedM3 is the M3.1 no-op confirmation: ServicePort.NodePort
-// already exists (M1.2), so M3 NodePort work is darwin-net + k3sm only. This
+// TestNodePortUnchangedM3 is the no-op confirmation for multi-node: ServicePort.NodePort
+// already exists, so NodePort work is darwin-net + k3sm only. This
 // pins the field's presence + behavior so no one re-adds, renames, or renumbers
 // it. The field is exercised end-to-end in TestServicePortValidate /
 // TestJSONRoundTrip; here we assert its JSON name and round-trip explicitly.

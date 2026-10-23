@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# apis B389 acceptance gate — hack/gen.sh must reinstall a codegen tool whose
+# apis acceptance gate — hack/gen.sh must reinstall a codegen tool whose
 # --version is not the pinned one, not merely one that is absent.
 #
-# THE ITEM (B389): gen.sh's old need() was presence-only (`command -v`), so a
+# THE DEFECT: gen.sh's old need() was presence-only (`command -v`), so a
 # stale pre-bump buf / protoc-gen-go / protoc-gen-go-grpc left in GOPATH/bin
 # silently won over a bumped pin in hack/lib/buf-env.sh, and the next
 # regenerate used the old toolchain — breaking the reproducible-codegen
@@ -55,7 +55,7 @@ GEN="$ROOT/hack/gen.sh"
 BUFENV="$ROOT/hack/lib/buf-env.sh"
 CI="$ROOT/hack/ci.sh"
 
-echo "==> B389 acceptance (version-aware codegen toolchain install; repo: $ROOT)"
+echo "==> codegen toolchain acceptance (version-aware codegen toolchain install; repo: $ROOT)"
 
 PASS=0
 FAIL=0
@@ -63,7 +63,7 @@ ladder() { if [ "$1" = ok ]; then echo "PASS  $2"; PASS=$((PASS + 1)); else echo
 die() {
 	echo "FAIL  $1" >&2
 	echo
-	echo "==> B389: $PASS passed, $((FAIL + 1)) failed"
+	echo "==> codegen toolchain: $PASS passed, $((FAIL + 1)) failed"
 	exit 1
 }
 
@@ -286,5 +286,5 @@ done
 [ "$p_ok" = 1 ] && ladder ok "b389.8 gen.sh, buf-env.sh, ci.sh and this gate parse"
 
 echo
-echo "==> B389: $PASS passed, $FAIL failed"
+echo "==> codegen toolchain: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

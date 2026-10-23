@@ -34,9 +34,9 @@ type HandlerName string
 const (
 	// HandlerVM is the RuntimeClass handler that selects the
 	// Virtualization.framework micro-VM backend (SandboxBackend_SANDBOX_BACKEND_VM)
-	// for Linux-image / untrusted-tenancy pods — see k3sm/docs/DESIGN.md §5a. An
-	// operator opts a workload in by creating a RuntimeClass with handler "vm" and
-	// setting the pod's runtimeClassName to it.
+	// for Linux-image / untrusted-tenancy pods — see §5a of docs/DESIGN.md in the k3sm repository
+	// (github.com/k3sm-io/k3sm). An operator opts a workload in by creating a
+	// RuntimeClass with handler "vm" and setting the pod's runtimeClassName to it.
 	HandlerVM HandlerName = "vm"
 
 	// HandlerWasm is the RuntimeClass handler that selects the WebAssembly

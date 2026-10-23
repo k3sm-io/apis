@@ -22,7 +22,7 @@ import (
 	"testing"
 )
 
-// TestDataVolumePathContractDocumented is B148's named gate.
+// TestDataVolumePathContractDocumented is the named gate for the data-volume path contract.
 //
 // SandboxProfile.data_volume_path reads as a free-form producer-set path, but the
 // daemon accepts EXACTLY TWO spellings it derives itself for the box's own pod id

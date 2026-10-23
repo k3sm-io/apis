@@ -4,7 +4,7 @@
 for Apple Silicon. It holds the gRPC protobufs, the Kubernetes custom resource types, and the
 small set of plain Go types that cross a repository boundary somewhere in the system: the
 runtime API a node daemon serves, the pod and image message shapes both ends of that API agree
-on, the `MeshPeer` and `MLXModel` custom resources, and the service-proxy and DNS-shim
+on, the custom resources (`MeshPeer`, `Interconnect`, `MLXModel`, `HelmChart`, `HelmChartConfig`, `Update`, `NodeBudget`, `NodeBudgetPolicy`), and the service-proxy and DNS-shim
 configuration structs. Every other k3sm repository imports this module, and this module imports
 none of them. That keeps the dependency graph free of cycles: a shared type placed here can be
 used by any repository, while a type placed in one of the other repositories and needed by a
@@ -34,9 +34,12 @@ additive change before this module's own version is bumped in their `go.mod`.
 | `storage/v1` | The local-path storage provisioner contract: the `StorageClass` parameters, the per-claim data directory derivation, and the node-topology key used to pin a local `PersistentVolume` to the node that holds its data. Plain Go, complementing the upstream `storage.k8s.io` and `core/v1` types rather than replacing them. |
 | `guest/v1` | The contract for a pod that runs inside a Linux micro-VM: the `GuestAgent` gRPC service the in-guest agent serves over vsock, the `GuestSpec` boot descriptor, and the `VMHostSpec` the host-side VM process reads to build the machine. |
 | `shim/v1` | The internal contract between the runtime daemon and the resident per-container shim that owns a container's stdio, log file, and exit status: the `ContainerShim` gRPC service. Both ends come from the same runtime build, so it changes in lockstep and is not covered by the additive-only promise; `api_version` makes a mismatch legible. |
+| `net/v1alpha1` | The `Interconnect` custom resource (`net.k3sm.io/v1alpha1`, cluster-scoped), the direct-link description between nodes. Marked alpha: fields here may change incompatibly between releases. |
+| `helm/v1` | The `HelmChart` and `HelmChartConfig` custom resources (`helm.k3sm.io/v1`, namespaced), mirroring k3s's `helm.cattle.io/v1` field for field. |
+| `budget/v1alpha1` | The `NodeBudget` and `NodeBudgetPolicy` custom resources (`budget.k3sm.io/v1alpha1`, both cluster-scoped): the node budget contract, how much more work a node can take and what it has shed. Marked alpha: fields here may change incompatibly between releases. |
 | `mlx/v1alpha1` | The `MLXModel` custom resource (`mlx.k3sm.io/v1alpha1`) for native Apple-Silicon model serving, plus the `mlx.k3sm.io/*` label and resource-name constants a node advertises. Marked alpha: fields here may change incompatibly between releases. |
 | `updates/v1alpha1` | The `Update` custom resource (`updates.k3sm.io/v1alpha1`), cluster-scoped, that asks for every node to move to one k3sm release: the release tag, the roll strategy (workers before the server, how many nodes at once, whether to drain), the checksum and signature checks the download must pass, whether a downgrade is allowed, and a cancel switch, with per-node progress in its status. Marked alpha: fields here may change incompatibly between releases. |
-| `config/crd` | The CustomResourceDefinition manifests for `MeshPeer`, `MLXModel` and `Update`, embedded into the Go package at build time with the standard library's `embed` directive and exposed through named accessors so a consumer applies the exact bytes checked in here. |
+| `config/crd` | The CustomResourceDefinition manifests for all eight custom resources (`MLXModel`, `MeshPeer`, `Interconnect`, `HelmChart`, `HelmChartConfig`, `Update`, `NodeBudget`, `NodeBudgetPolicy`), embedded into the Go package at build time with the standard library's `embed` directive and exposed through named accessors so a consumer applies the exact bytes checked in here. |
 | `k3smtest` | A capability taxonomy and a `SkipUnless` test helper shared by the other repositories' test suites, so a test can name what it needs (root, a second machine, network egress, and so on) instead of each repository inventing its own vocabulary. |
 | `buf.yaml`, `buf.gen.yaml`, `buf/baseline.binpb` | The protobuf toolchain configuration and the wire-compatibility baseline (see Building below). |
 
@@ -88,20 +91,21 @@ Every proto file in this module states the same rule in its header comment: fiel
 stable and the surface is additive-only. A field is never renumbered or repurposed, and a
 reserved number or name is never reused. New fields take the next free number, or are carved out
 of a range the message has explicitly set aside with a `reserved` statement — for example
-`PodBox` reserves `100` to `199` for fields not yet defined, and each carve narrows that range
-rather than removing it. `buf breaking` enforces this mechanically on every change.
+`PodBox` reserves `105` to `199` for fields not yet defined (`100` to `104` are allocated), and each
+carve narrows that range rather than removing it. `buf breaking` enforces this mechanically on
+every change.
 
-The Go-only packages (`net/v1`, `storage/v1`, `mlx/v1alpha1`'s label constants) follow the same
-additive-only discipline by convention: existing exported fields, functions, and constants are
-stable, and new fields are optional additions. The one documented exception is `mlx/v1alpha1`'s
-`MLXModel` custom resource itself, which is `v1alpha1` and may change incompatibly between
-releases — its package comment says so explicitly, and everything else in the module still
-treats the alpha CRD's group name and label keys as stable node- and scheduler-facing
-identifiers even while its field shape is not.
+The Go-only packages (`net/v1`, `storage/v1`) follow the same additive-only discipline by
+convention: existing exported fields, functions, and constants are stable, and new fields are
+optional additions. The alpha custom resources (`mlx/v1alpha1`, `updates/v1alpha1`,
+`budget/v1alpha1` and `net/v1alpha1`, which holds `Interconnect`) may change incompatibly between
+releases; each package comment says so. Their group names and label and annotation keys stay
+stable node- and scheduler-facing identifiers even while the field shapes are not.
 
-Custom resources are served and stored at a single version today (`v1` for `MeshPeer`,
-`v1alpha1` for `MLXModel`); within a served version, payload evolution rides an explicit schema
-version field on the object's spec rather than a new API version.
+Custom resources are served and stored at a single version today: `v1` for `MeshPeer`,
+`HelmChart` and `HelmChartConfig`; `v1alpha1` for `MLXModel`, `Interconnect`, `Update`,
+`NodeBudget` and `NodeBudgetPolicy`. Within a served version, payload evolution rides an explicit
+schema version field on the object's spec rather than a new API version.
 
 ## Contributing
 
