@@ -16,6 +16,9 @@
   "notifyWaitOffset": 128,
   "notifyWaitBytes": 4,
   "maxNodeNameBytes": 253,
+  "staleFactor": 3,
+  "observedAtResolution": "1s",
+  "readerRetries": 64,
   "layout": "layout.v1.0.txt",
   "codes": {
     "band": [
@@ -140,7 +143,7 @@
       "name": "node-name-too-long",
       "file": "negative/node-name-too-long.v1.page",
       "sha256": "49fc097dbd27ed0cf8eb035224d21065f3d2a805546de1b0d0784322d903c25b",
-      "error": "abiMismatch",
+      "error": "corrupt",
       "encoderError": "nodeNameTooLong"
     }
   ],

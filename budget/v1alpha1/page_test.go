@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -517,6 +518,8 @@ func TestPageLayoutGoldenFixture(t *testing.T) {
 				"unknown band":                func(s *PageSnapshot) { s.Counters[0].Band = "gold" },
 				"negative counter":            func(s *PageSnapshot) { s.Counters[1].RestartsTotal = -1 },
 				"zero observedAt":             func(s *PageSnapshot) { s.ObservedAt = metav1.Time{} },
+				"zero writer period":          func(s *PageSnapshot) { s.WriterPeriodSeconds = 0 },
+				"negative writer period":      func(s *PageSnapshot) { s.WriterPeriodSeconds = -1 },
 			} {
 				s := pageSampleSnapshot(PlatformDarwin)
 				s.Signals = append([]BudgetSignal(nil), s.Signals...)
@@ -911,10 +914,173 @@ func TestPageWriter(t *testing.T) {
 	publish(warn, 16, 4)
 }
 
+// seqlockOutcome is what one seqlock read attempt saw.
+type seqlockOutcome int
+
+const (
+	// seqlockUnstable: seq was odd or moved; the reader retries.
+	seqlockUnstable seqlockOutcome = iota
+	// seqlockPublished: a stable read of a published body.
+	seqlockPublished
+	// seqlockTorn: a stable read whose body was never published.
+	seqlockTorn
+)
+
+// seqlockRead is the test's seqlock reader: load seq, refuse odd, load
+// every body word, refuse a moved seq, and classify the body against the
+// published set. load is the word loader, so the negative controls can
+// forge a torn page.
+func seqlockRead(load func(off int) uint64, body []byte, published map[string]bool) seqlockOutcome {
+	s1 := load(PageSeqOffset)
+	if s1%2 == 1 {
+		return seqlockUnstable
+	}
+	for off := PageHeaderSize; off < pageBodyEnd; off += 8 {
+		binary.LittleEndian.PutUint64(body[off-PageHeaderSize:], load(off))
+	}
+	if load(PageSeqOffset) != s1 {
+		return seqlockUnstable
+	}
+	if !published[string(body)] {
+		return seqlockTorn
+	}
+	return seqlockPublished
+}
+
+// pageWordLoader loads page words with sync/atomic, as an SDK reader does.
+func pageWordLoader(page []byte) func(off int) uint64 {
+	return func(off int) uint64 { return atomic.LoadUint64((*uint64)(unsafe.Pointer(&page[off]))) }
+}
+
 // TestPageWriterSeqlock runs a writer against a seqlock reader that loads
-// every word atomically; every stable read must be one of the published
-// pages, never a mix.
+// every word atomically: every stable read must be one of the published
+// pages, never a mix. The writer pauses at handshakes, so stable reads are
+// guaranteed and a run with none fails; the negative controls show the
+// reader catches an odd seq, a moved seq and a torn body.
 func TestPageWriterSeqlock(t *testing.T) {
+	t.Parallel()
+	a := pageSampleSnapshot(PlatformDarwin)
+	b := pageSampleSnapshot(PlatformDarwin)
+	b.Generation, b.Level, b.Capacity.SwapUsedBytes = 99, LevelCritical, i64(3*gib)
+	b.ObservedAt = metav1.NewTime(sampleAt.Add(time.Hour))
+	encA, encB := mustEncode(t, a), mustEncode(t, b)
+	published := map[string]bool{
+		string(encA[PageHeaderSize:pageBodyEnd]): true,
+		string(encB[PageHeaderSize:pageBodyEnd]): true,
+	}
+
+	t.Run("negative controls", func(t *testing.T) {
+		body := make([]byte, pageBodyEnd-PageHeaderSize)
+		le := binary.LittleEndian
+		fromPage := func(p []byte, seq func() uint64) func(int) uint64 {
+			return func(off int) uint64 {
+				if off == PageSeqOffset {
+					return seq()
+				}
+				return le.Uint64(p[off:])
+			}
+		}
+		fixed := func(v uint64) func() uint64 { return func() uint64 { return v } }
+		if got := seqlockRead(fromPage(encA, fixed(2)), body, published); got != seqlockPublished {
+			t.Fatalf("a clean page reads %v, want published", got)
+		}
+		if got := seqlockRead(fromPage(encA, fixed(3)), body, published); got != seqlockUnstable {
+			t.Errorf("an odd seq reads %v, want unstable", got)
+		}
+		var n uint64
+		moving := func() uint64 { n += 2; return n }
+		if got := seqlockRead(fromPage(encA, moving), body, published); got != seqlockUnstable {
+			t.Errorf("a seq that moved during the read reads %v, want unstable", got)
+		}
+		// b's generation word over a's body: half of a publication.
+		torn := append([]byte(nil), encA...)
+		gen := pageOffset("generation")
+		copy(torn[gen:gen+8], encB[gen:gen+8])
+		if got := seqlockRead(fromPage(torn, fixed(2)), body, published); got != seqlockTorn {
+			t.Errorf("a body changed between the two seq reads reads %v, want torn", got)
+		}
+	})
+
+	t.Run("concurrent", func(t *testing.T) {
+		page := alignedPage()
+		w, err := NewPageWriter(page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := w.Resume(); err != nil {
+			t.Fatal(err)
+		}
+		// The first publication before the reader starts: the resumed page's
+		// zero body is no published page.
+		if err := w.Publish(&a); err != nil {
+			t.Fatal(err)
+		}
+		const publishes, handshakeEvery = 4000, 50
+		pause, resume := make(chan struct{}), make(chan struct{})
+		var stop atomic.Bool
+		var wg sync.WaitGroup
+		var stable, windows, torn atomic.Int64
+		load := pageWordLoader(page)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			body := make([]byte, pageBodyEnd-PageHeaderSize)
+			for !stop.Load() {
+				select {
+				case <-pause:
+					// The writer is parked: this read must be stable.
+					windows.Add(1)
+					switch seqlockRead(load, body, published) {
+					case seqlockPublished:
+						stable.Add(1)
+					case seqlockUnstable:
+						t.Errorf("a read inside a writer pause was unstable")
+					case seqlockTorn:
+						torn.Add(1)
+					}
+					resume <- struct{}{}
+					continue
+				default:
+				}
+				switch seqlockRead(load, body, published) {
+				case seqlockPublished:
+					stable.Add(1)
+				case seqlockTorn:
+					torn.Add(1)
+				}
+			}
+		}()
+		for i := range publishes {
+			s := a
+			if i%2 == 1 {
+				s = b
+			}
+			if err := w.Publish(&s); err != nil {
+				t.Fatal(err)
+			}
+			if i%handshakeEvery == handshakeEvery-1 {
+				pause <- struct{}{}
+				<-resume
+			}
+		}
+		stop.Store(true)
+		wg.Wait()
+		if torn.Load() != 0 {
+			t.Fatalf("%d stable reads were no published page", torn.Load())
+		}
+		if windows.Load() != publishes/handshakeEvery || stable.Load() == 0 {
+			t.Fatalf("%d stable reads over %d writer pauses: the check ran vacuously", stable.Load(), windows.Load())
+		}
+		t.Logf("%d stable reads, %d of them in writer pauses", stable.Load(), windows.Load())
+	})
+}
+
+// TestPageWriterNotifyOrder pins the publish order's last two stores (seq
+// even, then notifyEpoch): a reader that waits for the low 32-bit word of
+// notifyEpoch to change and then reads seq and the body always sees an
+// even seq and the body of the publication that bumped the epoch, never an
+// older one. With the two stores swapped, the reader sees an odd seq.
+func TestPageWriterNotifyOrder(t *testing.T) {
 	t.Parallel()
 	page := alignedPage()
 	w, err := NewPageWriter(page)
@@ -924,52 +1090,101 @@ func TestPageWriterSeqlock(t *testing.T) {
 	if err := w.Resume(); err != nil {
 		t.Fatal(err)
 	}
-	a := pageSampleSnapshot(PlatformDarwin)
-	b := pageSampleSnapshot(PlatformDarwin)
-	b.Generation, b.Level, b.Capacity.SwapUsedBytes = 99, LevelCritical, i64(3*gib)
-	b.ObservedAt = metav1.NewTime(sampleAt.Add(time.Hour))
-	bodies := map[string]bool{}
-	for _, s := range []PageSnapshot{a, b} {
-		bodies[string(mustEncode(t, s)[PageHeaderSize:pageBodyEnd])] = true
+	const publishes = 5000
+	snap := func(i int) PageSnapshot {
+		s := pageSampleSnapshot(PlatformDarwin)
+		s.Generation = int64(i + 1) // a new generation is always PageNotifyDue
+		return s
 	}
-	word := func(off int) uint64 { return atomic.LoadUint64((*uint64)(unsafe.Pointer(&page[off]))) }
-	var stop atomic.Bool
+	want := make([][]byte, publishes)
+	for i := range want {
+		want[i] = mustEncode(t, snap(i))[PageHeaderSize:pageBodyEnd]
+	}
+	waitWord := (*uint32)(unsafe.Pointer(&page[PageNotifyEpochOffset]))
+	load := pageWordLoader(page)
+	ack := make(chan struct{})
+	var oddSeq, oldBody atomic.Int64
 	var wg sync.WaitGroup
-	var stable atomic.Int64
+	// Read the starting epoch before the writer can move it, or the reader
+	// would wait for a publication that already happened.
+	last := atomic.LoadUint32(waitWord)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		body := make([]byte, pageBodyEnd-PageHeaderSize)
-		for !stop.Load() {
-			s1 := word(PageSeqOffset)
-			if s1%2 == 1 || s1 == 0 {
-				continue
+		for i := range publishes {
+			for n := 0; atomic.LoadUint32(waitWord) == last; n++ {
+				if n%4096 == 4095 {
+					runtime.Gosched()
+				}
 			}
+			seq := load(PageSeqOffset)
 			for off := PageHeaderSize; off < pageBodyEnd; off += 8 {
-				binary.LittleEndian.PutUint64(body[off-PageHeaderSize:], word(off))
+				binary.LittleEndian.PutUint64(body[off-PageHeaderSize:], load(off))
 			}
-			if word(PageSeqOffset) != s1 {
-				continue
+			last = atomic.LoadUint32(waitWord)
+			if seq%2 == 1 {
+				oddSeq.Add(1)
 			}
-			stable.Add(1)
-			if !bodies[string(body)] {
-				t.Errorf("a stable read at seq %d is no published page", s1)
-				return
+			if !bytes.Equal(body, want[i]) {
+				oldBody.Add(1)
 			}
+			ack <- struct{}{}
 		}
 	}()
-	for i := range 4000 {
-		s := a
-		if i%2 == 1 {
-			s = b
-		}
+	for i := range publishes {
+		s := snap(i)
 		if err := w.Publish(&s); err != nil {
 			t.Fatal(err)
 		}
+		<-ack
 	}
-	stop.Store(true)
 	wg.Wait()
-	if stable.Load() == 0 {
-		t.Log("the reader saw no stable read; the check ran vacuously this time")
+	if oddSeq.Load() != 0 || oldBody.Load() != 0 {
+		t.Fatalf("after a notifyEpoch change, %d of %d reads saw an odd seq and %d an older body",
+			oddSeq.Load(), publishes, oldBody.Load())
+	}
+}
+
+// pageCodeTablesText is the canonical text of the code tables: one line
+// per table, by name, "<name> <value for code 1> <value for code 2> ...".
+func pageCodeTablesText() string {
+	tables := PageCodeTables()
+	names := make([]string, 0, len(tables))
+	for n := range tables {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	for _, n := range names {
+		b.WriteString(n + " " + strings.Join(tables[n], " ") + "\n")
+	}
+	return b.String()
+}
+
+// The frozen digests of ABI 1.0, outside UPDATE_GOLDEN's reach: deleting
+// and regenerating layout.v1.0.txt, or changing a code, is red here. A
+// deliberate change is a new minor (a new layout file, which freezes its
+// own digests beside these) or a new major, never an edit of these.
+const (
+	pageFrozenLayoutV1_0SHA256 = "8bc4e92dc4f96f8658603207b163439b61cb343843da8daa7ee9919d07e2c0e7"
+	pageFrozenCodesV1_0SHA256  = "fb8fe24705c8fcacde290a714c12638704f18dd6d6ce9c3671283f57e482e24d"
+)
+
+// TestPageFrozenDigests checks the committed layout descriptor of minor 0,
+// this build's descriptor while the minor is 0, and the code tables
+// against the frozen digests.
+func TestPageFrozenDigests(t *testing.T) {
+	t.Parallel()
+	if got := sha256Hex(readPageFile(t, pageLayoutFile(0))); got != pageFrozenLayoutV1_0SHA256 {
+		t.Errorf("%s digest %s, frozen %s", pageLayoutFile(0), got, pageFrozenLayoutV1_0SHA256)
+	}
+	if PageABIMinor == 0 {
+		if got := sha256Hex([]byte(PageLayout())); got != pageFrozenLayoutV1_0SHA256 {
+			t.Errorf("PageLayout() digest %s, frozen %s", got, pageFrozenLayoutV1_0SHA256)
+		}
+	}
+	if got := sha256Hex([]byte(pageCodeTablesText())); got != pageFrozenCodesV1_0SHA256 {
+		t.Errorf("code tables digest %s, frozen %s:\n%s", got, pageFrozenCodesV1_0SHA256, pageCodeTablesText())
 	}
 }

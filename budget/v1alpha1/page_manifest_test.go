@@ -18,33 +18,11 @@ package budgetv1alpha1
 
 import "strconv"
 
-// The page reader errors, by their language-neutral contract names. Every
-// SDK maps each to its own error type and checks its mapping against the
-// negative cases of the manifest.
-const (
-	// PageErrNotFound: no page, or no access to it.
-	PageErrNotFound = "notFound"
-	// PageErrABIMismatch: bad magic, an unknown ABI major, a header size
-	// other than PageHeaderSize, or a field outside the range the layout
-	// defines (a nodeNameLen above MaxPageNodeNameBytes).
-	PageErrABIMismatch = "abiMismatch"
-	// PageErrTruncated: a file shorter than headerSize + bodySize, or a
-	// bodySize below the size the reader's own minor knows.
-	PageErrTruncated = "truncated"
-	// PageErrTorn: no stable read (an even seq equal on both sides) after
-	// the reader's retries.
-	PageErrTorn = "torn"
-	// PageErrStale: now - observedAt above three writer periods.
-	PageErrStale = "stale"
-	// PageEncoderErrNodeNameTooLong names ErrPageNodeNameTooLong in the
-	// manifest, for SDK writers.
-	PageEncoderErrNodeNameTooLong = "nodeNameTooLong"
-)
-
 // PageManifest is the contract the SDKs vendor beside the page fixtures
-// (testdata/page/manifest.json): the constants, the code tables, the
-// fixture digests, the negative page set with the error each case must
-// produce, and the notifyEpoch transition vectors.
+// (testdata/page/manifest.json): the constants, the reader contract, the
+// code tables, the fixture digests, the negative page set with the error
+// each case must produce, and the notifyEpoch transition vectors. It is
+// test-only Go; the JSON file is the contract.
 type PageManifest struct {
 	// PageABIMajor is PageABIMajor.
 	PageABIMajor int `json:"pageABIMajor"`
@@ -81,6 +59,15 @@ type PageManifest struct {
 	NotifyWaitBytes int `json:"notifyWaitBytes"`
 	// MaxNodeNameBytes is MaxPageNodeNameBytes.
 	MaxNodeNameBytes int `json:"maxNodeNameBytes"`
+	// StaleFactor is the reader's staleness bound: a page is stale when
+	// now - observedAt > StaleFactor * writerPeriodSeconds.
+	StaleFactor int `json:"staleFactor"`
+	// ObservedAtResolution is observedAt's resolution: whole seconds, so a
+	// staleness verdict may be up to one second early or late.
+	ObservedAtResolution string `json:"observedAtResolution"`
+	// ReaderRetries is how many seqlock read attempts a reader makes before
+	// it returns torn.
+	ReaderRetries int `json:"readerRetries"`
 	// Layout is the descriptor file of this minor (PageLayout).
 	Layout string `json:"layout"`
 	// Codes are PageCodeTables: the value at index i has code i+1, and 0
@@ -136,6 +123,16 @@ type PageNotifyVector struct {
 	Due bool `json:"due"`
 }
 
+// The reader contract the manifest publishes for every SDK reader.
+const (
+	// pageStaleFactor: a page is stale when now - observedAt exceeds this
+	// many writer periods.
+	pageStaleFactor = 3
+	// pageReaderRetries is the seqlock read attempts an SDK reader makes
+	// before it returns torn.
+	pageReaderRetries = 64
+)
+
 // pageLayoutFile is the descriptor file name of a minor of this major.
 func pageLayoutFile(minor int) string {
 	return "layout.v" + strconv.Itoa(PageABIMajor) + "." + strconv.Itoa(minor) + ".txt"
@@ -163,6 +160,9 @@ func NewPageManifest() PageManifest {
 		NotifyWaitOffset:     PageNotifyEpochOffset,
 		NotifyWaitBytes:      4,
 		MaxNodeNameBytes:     MaxPageNodeNameBytes,
+		StaleFactor:          pageStaleFactor,
+		ObservedAtResolution: "1s",
+		ReaderRetries:        pageReaderRetries,
 		Layout:               pageLayoutFile(PageABIMinor),
 		Codes:                PageCodeTables(),
 		Negative: []PageNegativeCase{
@@ -173,7 +173,7 @@ func NewPageManifest() PageManifest {
 			{Name: "odd-seq", File: "negative/odd-seq.v1.page", Error: PageErrTorn},
 			{
 				Name: "node-name-too-long", File: "negative/node-name-too-long.v1.page",
-				Error: PageErrABIMismatch, EncoderError: PageEncoderErrNodeNameTooLong,
+				Error: PageErrCorrupt, EncoderError: PageEncoderErrNodeNameTooLong,
 			},
 		},
 	}

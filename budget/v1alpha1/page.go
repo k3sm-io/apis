@@ -109,8 +109,9 @@ type PageSnapshot struct {
 	// Generation is the producer's generation, status.producerGeneration:
 	// it bumps on a writer restart and on a policy change.
 	Generation int64
-	// WriterPeriodSeconds is the writer's publication period. A reader
-	// treats the page as stale when now - ObservedAt exceeds three periods.
+	// WriterPeriodSeconds is the writer's publication period, at least 1. A
+	// reader treats the page as stale when now - ObservedAt exceeds three
+	// periods (the manifest's staleFactor).
 	WriterPeriodSeconds int64
 	// NodeName is the node's name, metadata.name, 1 to
 	// MaxPageNodeNameBytes bytes.
@@ -586,6 +587,7 @@ const pageLayoutHeader = `# k3sm node budget page, ABI major 1: a 4096-byte litt
 # Codes are u64, index+1 in the manifest tables, 0 unset or unknown; an absent i64 is -9223372036854775808.
 # Signal and counter slots are filled in order; an empty slot (id or band 0) is all zero bytes.
 # nodeName: 256 inline bytes after nodeNameLen; a length above 253 is refused by writers and readers.
+# Host or guest: platform=darwin with every linux word absent is the host's page; with any linux word present, a vm guest's.
 # Seqlock: store seq odd, every body word (headerSize to headerSize+bodySize), seq even, then notifyEpoch.
 # notifyEpoch: alone on its line, outside the seqlock region; wait on its low 32-bit word, the 4 bytes at
 # its offset; bumped only on a change of level, admit, a threshold or generation; it wraps, so compare
@@ -661,6 +663,8 @@ func checkPageSnapshot(s *PageSnapshot) error {
 		return fmt.Errorf("%w: %w (%d bytes)", ErrInvalidPageSnapshot, ErrPageNodeNameTooLong, len(s.NodeName))
 	case s.NodeName == "":
 		return fmt.Errorf("%w: the node name is empty", ErrInvalidPageSnapshot)
+	case s.WriterPeriodSeconds <= 0:
+		return fmt.Errorf("%w: writer period %d s, want at least 1", ErrInvalidPageSnapshot, s.WriterPeriodSeconds)
 	case !s.Platform.Valid():
 		return fmt.Errorf("%w: platform %q is not a known platform", ErrInvalidPageSnapshot, s.Platform)
 	case !s.Level.Valid():
@@ -788,7 +792,7 @@ func (w *PageWriter) Resume() error {
 
 // encodeHeader writes the header line of this minor into dst.
 func encodeHeader(dst []byte) error {
-	s := PageSnapshot{NodeName: "-", Platform: PlatformLinux, Level: LevelOK, Linux: &LinuxSignals{}}
+	s := PageSnapshot{NodeName: "-", WriterPeriodSeconds: 1, Platform: PlatformLinux, Level: LevelOK, Linux: &LinuxSignals{}}
 	s.ObservedAt = metav1.Unix(1, 0)
 	return EncodePage(dst, &s)
 }

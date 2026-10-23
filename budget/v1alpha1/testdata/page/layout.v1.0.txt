@@ -6,6 +6,7 @@
 # Codes are u64, index+1 in the manifest tables, 0 unset or unknown; an absent i64 is -9223372036854775808.
 # Signal and counter slots are filled in order; an empty slot (id or band 0) is all zero bytes.
 # nodeName: 256 inline bytes after nodeNameLen; a length above 253 is refused by writers and readers.
+# Host or guest: platform=darwin with every linux word absent is the host's page; with any linux word present, a vm guest's.
 # Seqlock: store seq odd, every body word (headerSize to headerSize+bodySize), seq even, then notifyEpoch.
 # notifyEpoch: alone on its line, outside the seqlock region; wait on its low 32-bit word, the 4 bytes at
 # its offset; bumped only on a change of level, admit, a threshold or generation; it wraps, so compare

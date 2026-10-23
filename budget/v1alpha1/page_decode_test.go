@@ -96,7 +96,7 @@ func decodePage(b []byte) (PageSnapshot, error) {
 
 	n := word("nodeNameLen")
 	if n > MaxPageNodeNameBytes {
-		return s, readErr(PageErrABIMismatch, "nodeNameLen %d above %d", n, MaxPageNodeNameBytes)
+		return s, readErr(PageErrCorrupt, "nodeNameLen %d above %d", n, MaxPageNodeNameBytes)
 	}
 	off := pageOffset("nodeName")
 	s.NodeName = string(b[off : off+int(n)])
