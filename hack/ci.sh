@@ -20,7 +20,7 @@ hack/verify-boilerplate.sh
 # for. A NON-ZERO exit (broken go.mod, unresolvable dependency, bad GOWORK, absent
 # toolchain) is a HARD ERROR: the old `[ -n "$(go list ./... 2>/dev/null)" ]` could
 # not tell the two apart, so it silently skipped vet/build/test and still reported
-# green — a gate that cannot even enumerate its packages must go RED (B168).
+# green — a gate that cannot even enumerate its packages must go RED.
 golist_err="$(mktemp)"
 trap 'rm -f "$golist_err"' EXIT
 if ! go_pkgs="$(CGO_ENABLED=$CGO go list ./... 2>"$golist_err")"; then
@@ -130,7 +130,7 @@ fi
 # genuinely absent rather than merely unresolved.
 . hack/lib/buf-env.sh
 
-# A genuine absence never passes silently — the k3sm/hack/acceptance/B58.sh shape:
+# A genuine absence never passes silently — the shape k3sm/hack/acceptance uses:
 # hard FAIL under $CI (CI must carry the pinned toolchain), PENDING + non-zero
 # locally so no caller can mistake a degraded run for a green one by exit code.
 if ! command -v buf >/dev/null 2>&1; then

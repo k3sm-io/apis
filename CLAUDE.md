@@ -19,7 +19,7 @@ go mod tidy
 ## Layout
 - `runtime/v1/`, `guest/v1/`, `shim/v1/` — gRPC protos + generated Go
 - `net/v1/`, `storage/v1/` — shared Go types (DNS, mesh/`MeshPeer`, Service, storage)
-- `net/v1alpha1/`, `mlx/v1alpha1/`, `helm/v1/` — CRD types; the CRD manifests live in `config/crd/`
+- `net/v1alpha1/`, `mlx/v1alpha1/`, `helm/v1/`, `budget/v1alpha1/`, `updates/v1alpha1/` — CRD types; the CRD manifests live in `config/crd/`
 - `k3smtest/` — shared test helpers (capability skips)
 - `buf/` — the breaking-change baseline for `buf breaking`
 
