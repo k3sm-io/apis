@@ -1,0 +1,6 @@
+# The page fixtures are compared byte for byte and digested in SHA256SUMS:
+# never convert line endings or merge them. The text files keep a diff.
+testdata/page/** binary
+testdata/page/*.txt diff
+testdata/page/*.json diff
+testdata/page/SHA256SUMS diff

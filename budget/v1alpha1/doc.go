@@ -56,10 +56,9 @@ limitations under the License.
 // (IsDescending). Each release value sits on the calm side of its rung.
 // memory.swap has no evict-soft rung. Every signal has one canonical unit
 // (SignalID.Unit), so a threshold means the same on every node. Durations
-// on both objects are whole seconds, held in an int64 on both so a value
-// converts to the page's nanoseconds without overflow, and times are
-// metav1.Time; only the
-// budget page uses nanoseconds. The same rules are CEL on both CRDs (the
+// on both objects are whole seconds, held in an int64, and times are
+// metav1.Time; the budget page carries the same seconds, and its times as
+// whole Unix seconds. The same rules are CEL on both CRDs (the
 // NodeBudget status has no relay in front of it when an own-node producer
 // writes it) and Go in NodeBudgetPolicySpec.Validate and
 // NodeBudgetObservation.Validate.
@@ -138,6 +137,45 @@ limitations under the License.
 // unknown enum, a misordered ladder, a negative size, a zero delivery cap) is
 // refused: the node keeps its last valid policy and reports outcome
 // rejected, because no reading of it is safe.
+//
+// # The budget page
+//
+// The page is the SDK's fast path over the same node-level data: one
+// fixed 4096-byte little-endian file per node, PageFileName, at
+// DefaultPagePath for native Darwin pods and LinuxPagePath on Linux. Its
+// ABI (PageABIMajor, PageABIMinor) is versioned independently of the CRD
+// version. page.go holds one ordered field table; the offsets, the layout
+// descriptor (PageLayout), the byte budget and EncodePage all derive from
+// it, and the golden fixtures, the frozen descriptors and the manifest
+// under testdata/page are what the SDKs vendor and test against. Three
+// decisions fix its shape:
+//
+// The page mirrors the status. A page field has the name, the meaning and
+// the unit of the NodeBudget field it carries (seconds, not nanoseconds;
+// windowSeconds, sharedWith and unit on every signal; all six per-band
+// counters; the darwin and linux blocks as the status has them), so a
+// value reads the same through either channel. Only the header (magic,
+// abiMajor, abiMinor, headerSize, bodySize), seq, notifyEpoch and
+// writerPeriodSeconds are page-only; generation is
+// status.producerGeneration. The conditions, the writer, the policy
+// references, wouldKill, the windowed counts and every string but the node
+// name stay on the NodeBudget. Enums are u64 codes from append-only tables
+// (page_codes.go, PageCodeTables) in which 0 is unset or unknown, and an
+// optional i64 the producer could not sample holds PageAbsent. A vm guest
+// page is the host's page with the linux block filled by guest-init as the
+// guest section.
+//
+// The node name is inline: a length word, then a 256-byte field. A name
+// over MaxPageNodeNameBytes is an encoder error (ErrPageNodeNameTooLong),
+// and a reader refuses a page whose length word exceeds it.
+//
+// notifyEpoch is a u64 alone on its own 64-byte line at
+// PageNotifyEpochOffset, outside the seqlock region. Readers that wait use
+// its low 32-bit word, the four bytes at that same offset, as the futex or
+// os_sync_wait_on_address target. PageWriter stores it after the final
+// even seq store and only when PageNotifyDue (a change of level, admit, a
+// threshold or the generation). It wraps freely, and readers compare it
+// for inequality only.
 //
 // # Conformance
 //
