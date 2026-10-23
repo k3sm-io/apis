@@ -146,6 +146,16 @@ limitations under the License.
 // Darwin and one Linux, are what a conforming producer's status is checked
 // against, beside a dry-run apply against the CRD.
 //
+// Two files beside the goldens are the vendoring contract for the client
+// SDKs. SHA256SUMS digests every other file in testdata/status (the form
+// sha256sum -c and shasum -a 256 -c read), so an SDK vendors the golden
+// bytes and checks them against the digest. nodebudget.paths.json lists
+// every property path of the CRD's status schema (dotted, "[]" for an array
+// element) with its kind (scalar, array or object) and, for a scalar, its
+// OpenAPI type and format; an SDK's schema-walk tests are driven from it.
+// Both are derived, never hand-edited: they are regenerated with the goldens
+// (UPDATE_GOLDEN=1), and a test fails when either is stale.
+//
 // Being served objects, NodeBudget and NodeBudgetPolicy embed
 // metav1.TypeMeta and ObjectMeta and carry hand-written DeepCopy methods
 // (this module runs no code generation). The CRD manifests are in
