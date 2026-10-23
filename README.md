@@ -91,21 +91,21 @@ Every proto file in this module states the same rule in its header comment: fiel
 stable and the surface is additive-only. A field is never renumbered or repurposed, and a
 reserved number or name is never reused. New fields take the next free number, or are carved out
 of a range the message has explicitly set aside with a `reserved` statement — for example
-`PodBox` reserves `100` to `199` for fields not yet defined, and each carve narrows that range
-rather than removing it. `buf breaking` enforces this mechanically on every change.
+`PodBox` reserves `105` to `199` for fields not yet defined (`100` to `104` are allocated), and each
+carve narrows that range rather than removing it. `buf breaking` enforces this mechanically on
+every change.
 
-The Go-only packages (`net/v1`, `storage/v1`, `mlx/v1alpha1`'s label constants) follow the same
-additive-only discipline by convention: existing exported fields, functions, and constants are
-stable, and new fields are optional additions. The one documented exception is `mlx/v1alpha1`'s
-`MLXModel` custom resource itself, which is `v1alpha1` and may change incompatibly between
-releases — its package comment says so explicitly, and everything else in the module still
-treats the alpha CRD's group name and label keys as stable node- and scheduler-facing
-identifiers even while its field shape is not.
+The Go-only packages (`net/v1`, `storage/v1`) follow the same additive-only discipline by
+convention: existing exported fields, functions, and constants are stable, and new fields are
+optional additions. The alpha custom resources (`mlx/v1alpha1`, `updates/v1alpha1`,
+`budget/v1alpha1` and `net/v1alpha1`, which holds `Interconnect`) may change incompatibly between
+releases; each package comment says so. Their group names and label and annotation keys stay
+stable node- and scheduler-facing identifiers even while the field shapes are not.
 
-Custom resources are served and stored at a single version today (`v1` for `MeshPeer`,
+Custom resources are served and stored at a single version today: `v1` for `MeshPeer`,
 `HelmChart` and `HelmChartConfig`; `v1alpha1` for `MLXModel`, `Interconnect`, `Update`,
-`NodeBudget` and `NodeBudgetPolicy`); within a served version, payload evolution rides an explicit schema
-version field on the object's spec rather than a new API version.
+`NodeBudget` and `NodeBudgetPolicy`. Within a served version, payload evolution rides an explicit
+schema version field on the object's spec rather than a new API version.
 
 ## Contributing
 
