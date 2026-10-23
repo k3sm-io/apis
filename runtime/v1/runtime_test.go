@@ -71,7 +71,7 @@ func TestRoundTrip(t *testing.T) {
 		Stdin:      true,
 	}, &Container{})
 
-	// M10.2: a native sidecar — an init container carrying the container-level
+	// A native sidecar — an init container carrying the container-level
 	// restart_policy (KEP-753). The enum field must survive the wire so the
 	// signal crosses the provider↔runtimed contract.
 	roundTrip(t, "Container_native_sidecar_restart_policy", &Container{
@@ -81,7 +81,7 @@ func TestRoundTrip(t *testing.T) {
 		RestartPolicy: ContainerRestartPolicy_CONTAINER_RESTART_POLICY_ALWAYS,
 	}, &Container{})
 
-	// M12.1: an explicit imagePullPolicy — the apiserver-stamped value the
+	// An explicit imagePullPolicy — the apiserver-stamped value the
 	// provider forwards verbatim. The enum field must survive the wire so the
 	// policy reaches runtimed's puller.
 	roundTrip(t, "Container_image_pull_policy", &Container{
@@ -242,10 +242,10 @@ func TestRoundTrip(t *testing.T) {
 	}, &GetRuntimeInfoResponse{})
 	roundTrip(t, "RuntimeCondition", &RuntimeCondition{Type: "ImageStoreReady", Status: ConditionStatus_CONDITION_STATUS_FALSE, Reason: "Init", Message: "warming"}, &RuntimeCondition{})
 
-	// --- M2.1 pod-spec fidelity additions ---------------------------------
+	// --- pod-spec fidelity additions -------------------------------------
 	// One fully-populated case per new message. These are the fails-before
 	// (the messages did not exist) / passes-after acceptance evidence for
-	// apis:M2.1 — proto.Equal must survive marshal→unmarshal for every field.
+	// pod-spec fidelity — proto.Equal must survive marshal→unmarshal for every field.
 
 	// Container scope: volume mounts, named ports, probes (all three handlers),
 	// security context, envFrom, and env[].valueFrom.fieldRef.
@@ -357,9 +357,9 @@ func TestRoundTrip(t *testing.T) {
 	roundTrip(t, "LinuxContainerUser", &LinuxContainerUser{Uid: 1000, Gid: 2000, SupplementalGroups: []int64{999, 1000}}, &LinuxContainerUser{})
 	roundTrip(t, "ContainerUser", &ContainerUser{Linux: &LinuxContainerUser{Uid: 1000, Gid: 2000, SupplementalGroups: []int64{999}}}, &ContainerUser{})
 
-	// A Container populated with every M2.1 field at once (named-port table +
+	// A Container populated with every pod-spec fidelity field at once (named-port table +
 	// probes referencing it by name + mounts + envFrom + valueFrom + secctx).
-	roundTrip(t, "Container_full_M2_1", &Container{
+	roundTrip(t, "Container_full", &Container{
 		Name:    "app",
 		Image:   "registry.example/app@sha256:abc",
 		Command: []string{"/app"},
@@ -386,8 +386,8 @@ func TestRoundTrip(t *testing.T) {
 		},
 	}, &Container{})
 
-	// A PodBox populated with every M2.1 pod-scope field at once.
-	roundTrip(t, "PodBox_full_M2_1", &PodBox{
+	// A PodBox populated with every pod-scope fidelity field at once.
+	roundTrip(t, "PodBox_full", &PodBox{
 		PodId:      "11111111-2222-3333-4444-555555555555",
 		Namespace:  "default",
 		Name:       "demo",
@@ -410,7 +410,7 @@ func TestRoundTrip(t *testing.T) {
 	}, &PodBox{})
 
 	// A ContainerStatus populated with the new lossless-mirror fields.
-	roundTrip(t, "ContainerStatus_full_M2_1", &ContainerStatus{
+	roundTrip(t, "ContainerStatus_full", &ContainerStatus{
 		Name:         "app",
 		State:        &ContainerState{Running: &ContainerStateRunning{StartedAt: ts}},
 		Ready:        true,
@@ -427,10 +427,10 @@ func TestRoundTrip(t *testing.T) {
 		User: &ContainerUser{Linux: &LinuxContainerUser{Uid: 1000, Gid: 2000, SupplementalGroups: []int64{999, 1000}}},
 	}, &ContainerStatus{})
 
-	// --- M2.2 resource limits + metrics additions ----------------------------
+	// --- resource limits + metrics additions ------------------------------
 	// One fully-populated case per new message/field. These are the fails-before
 	// (the messages/fields did not exist) / passes-after acceptance evidence for
-	// apis:M2.2 — proto.Equal must survive marshal→unmarshal for every new field.
+	// resource limits + metrics — proto.Equal must survive marshal→unmarshal for every new field.
 
 	roundTrip(t, "ResourceLimit", &ResourceLimit{Type: "RLIMIT_NOFILE", Soft: 1024, Hard: 4096}, &ResourceLimit{})
 	roundTrip(t, "ResourceList", &ResourceList{Quantities: map[string]string{"cpu": "500m", "memory": "1Gi"}}, &ResourceList{})
@@ -456,10 +456,10 @@ func TestRoundTrip(t *testing.T) {
 		},
 	}, &PodStats{})
 
-	// PodBox carrying every M2.2 resource-limit field (the typed memory limit +
-	// QoS class + rlimits that replace the M2.1 k3sm.io/memory-limit-bytes
+	// PodBox carrying every resource-limit field (the typed memory limit +
+	// QoS class + rlimits that replace the earlier k3sm.io/memory-limit-bytes
 	// annotation seam runtimed bridged the limit on).
-	roundTrip(t, "PodBox_resources_M2_2", &PodBox{
+	roundTrip(t, "PodBox_resources", &PodBox{
 		PodId:            "11111111-2222-3333-4444-555555555555",
 		Name:             "demo",
 		MemoryLimitBytes: 512 << 20,
@@ -470,9 +470,9 @@ func TestRoundTrip(t *testing.T) {
 		},
 	}, &PodBox{})
 
-	// ContainerStatus carrying the M2.2 resource mirror (resources +
+	// ContainerStatus carrying the resource mirror (resources +
 	// allocatedResources) — completes the lossless corev1 mirror.
-	roundTrip(t, "ContainerStatus_resources_M2_2", &ContainerStatus{
+	roundTrip(t, "ContainerStatus_resources", &ContainerStatus{
 		Name:  "app",
 		State: &ContainerState{Running: &ContainerStateRunning{StartedAt: ts}},
 		Ready: true,
@@ -483,7 +483,7 @@ func TestRoundTrip(t *testing.T) {
 		AllocatedResources: &ResourceList{Quantities: map[string]string{"cpu": "250m", "memory": "256Mi"}},
 	}, &ContainerStatus{})
 
-	// M2.2 RPC request/response messages (the metrics + restart wire surface).
+	// RPC request/response messages (the metrics + restart wire surface).
 	roundTrip(t, "ListPodStatsRequest", &ListPodStatsRequest{PodId: "p1"}, &ListPodStatsRequest{})
 	roundTrip(t, "ListPodStatsResponse", &ListPodStatsResponse{PodStats: []*PodStats{
 		{PodId: "p1", Namespace: "default", Name: "n", Timestamp: ts, Memory: &MemoryStats{WorkingSetBytes: 16 << 20}},
@@ -497,10 +497,10 @@ func TestRoundTrip(t *testing.T) {
 		FailureReason: FailureReason_FAILURE_REASON_NOT_FOUND,
 	}, &RestartContainerResponse{})
 
-	// --- M3.1 persistent-storage volume source --------------------------------
+	// --- persistent-storage volume source ---------------------------------
 	// The PV/PVC volume source added to the Volume union (field 7) — the
 	// fails-before (the message did not exist) / passes-after acceptance evidence
-	// for apis:M3.1. proto.Equal must survive marshal→unmarshal.
+	// for the persistent-storage volume source. proto.Equal must survive marshal→unmarshal.
 	roundTrip(t, "PersistentVolumeClaimVolumeSource", &PersistentVolumeClaimVolumeSource{
 		ClaimName: "postgres-data", ReadOnly: false,
 	}, &PersistentVolumeClaimVolumeSource{})
@@ -511,10 +511,10 @@ func TestRoundTrip(t *testing.T) {
 		Name: "data", PersistentVolumeClaim: &PersistentVolumeClaimVolumeSource{ClaimName: "postgres-data"},
 	}, &Volume{})
 
-	// A PodBox carrying a PVC-backed volume alongside an ephemeral M2.1 source
+	// A PodBox carrying a PVC-backed volume alongside an ephemeral source
 	// (the StatefulSet-storage shape a Postgres needs), mounted by a
-	// container — the cross-message M3.1 wire surface.
-	roundTrip(t, "PodBox_persistentVolume_M3_1", &PodBox{
+	// container — the cross-message persistent-storage wire surface.
+	roundTrip(t, "PodBox_persistentVolume", &PodBox{
 		PodId:     "11111111-2222-3333-4444-555555555555",
 		Namespace: "demo",
 		Name:      "postgres-0",
@@ -637,7 +637,7 @@ func TestSandboxProfileDeniedLocalPorts(t *testing.T) {
 	}
 }
 
-// TestQOSClassZeroValue asserts the M2.2 QOSClass zero value is UNSPECIFIED:
+// TestQOSClassZeroValue asserts the QOSClass zero value is UNSPECIFIED:
 // the provider must classify a pod explicitly; an unset class is "not
 // classified" (runtimed treats it as BestEffort), never an accidental
 // Guaranteed. The three real classes must all be non-zero.
@@ -657,7 +657,7 @@ func TestQOSClassZeroValue(t *testing.T) {
 	}
 }
 
-// TestContainerRestartPolicyZeroValue asserts the M10.2 ContainerRestartPolicy
+// TestContainerRestartPolicyZeroValue asserts the ContainerRestartPolicy
 // zero value is UNSPECIFIED — the load-bearing skew contract: an unset field
 // means legacy behavior in both directions (an old reader ignores it, an old
 // writer never sets it), so ALWAYS (the native-sidecar signal) must be
@@ -672,7 +672,7 @@ func TestContainerRestartPolicyZeroValue(t *testing.T) {
 	}
 }
 
-// TestImagePullPolicyZeroValue asserts the M12.1 ImagePullPolicy zero value is
+// TestImagePullPolicyZeroValue asserts the ImagePullPolicy zero value is
 // UNSPECIFIED — the load-bearing skew contract: an unset field means today's
 // legacy pull-through in BOTH directions (an old provider never sets it; a new
 // runtimed reads absent-as-legacy), so every explicit policy — NEVER above all,
@@ -693,8 +693,8 @@ func TestImagePullPolicyZeroValue(t *testing.T) {
 	}
 }
 
-// TestContainerImagePullPolicyFieldNumber pins the M12.1 band allocation: the
-// field number is >= 101, because 100 is reserved for M11.1's image_platform
+// TestContainerImagePullPolicyFieldNumber pins the image_pull_policy band allocation: the
+// field number is >= 101, because 100 is reserved for image_platform
 // regardless of which carve lands first. Read from the descriptor, so a proto
 // edit that renumbers the field (a wire break for every deployed node) fails
 // here and not only in buf breaking.
@@ -707,19 +707,19 @@ func TestContainerImagePullPolicyFieldNumber(t *testing.T) {
 	if got := fd.Number(); got != 101 {
 		t.Fatalf("image_pull_policy field number = %d, want 101 (>=101: 100 is pinned to image_platform)", got)
 	}
-	// 100 was held for M11.1's image_platform, which has since claimed it. The
+	// 100 was held for image_platform, which has since claimed it. The
 	// pin is therefore checked by its OUTCOME rather than by the reservation: 100
 	// belongs to image_platform and to nothing else. Asserting it were still
 	// reserved would now be asserting the carve never landed.
 	md := (&Container{}).ProtoReflect().Descriptor()
 	if got := md.Fields().ByNumber(100); got == nil {
-		t.Fatal("Container field number 100 is unallocated; it is pinned to M11.1's image_platform")
+		t.Fatal("Container field number 100 is unallocated; it is pinned to image_platform")
 	} else if got.Name() != "image_platform" {
 		t.Fatalf("Container field 100 = %q, want image_platform (the number was pinned to it)", got.Name())
 	}
 }
 
-// TestM2_2RPCsRegistered asserts the M2.2 additive RPCs (ListPodStats,
+// TestM2_2RPCsRegistered asserts the additive resource-metrics RPCs (ListPodStats,
 // RestartContainer) are registered on the generated Runtime gRPC service
 // descriptor as UNARY methods — the wire surface a runtimed server implements
 // and the provider calls. This is the passes-after evidence the new RPCs
@@ -738,7 +738,7 @@ func TestM2_2RPCsRegistered(t *testing.T) {
 			t.Errorf("RPC %q is not registered as a unary method on Runtime_ServiceDesc", name)
 		}
 	}
-	// Guard against a regression that turns either into a stream — the M2.2
+	// Guard against a regression that turns either into a stream — the
 	// contract is unary request/response.
 	for _, s := range Runtime_ServiceDesc.Streams {
 		if _, ok := want[s.StreamName]; ok {

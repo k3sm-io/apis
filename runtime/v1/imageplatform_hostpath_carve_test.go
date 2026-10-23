@@ -25,14 +25,14 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
-// TestContainerImagePlatformCarve pins the M11.1 platform-override carve.
+// TestContainerImagePlatformCarve pins the platform-override carve.
 //
 // Multi-arch image selection is specified against an explicit per-container
 // override, but the field did not exist — so every consumer of "the platform
 // this container asked for" was specified against a carve nobody had filed.
 //
 // Field 100 was pinned to this name by the band comment before either of the two
-// Container carves landed, which is why M12.1 started its own allocation at 101.
+// Container carves landed, which is why the image_pull_policy allocation started at 101.
 // The gate gives that pin teeth: the number, the TYPE (the existing Platform
 // message, never a parallel string), the re-narrowed band, and the absent-means-
 // no-override reading a default value would destroy.
@@ -144,7 +144,7 @@ func TestContainerImagePlatformCarve(t *testing.T) {
 	})
 }
 
-// TestVolumeHostPathCarve pins the M11.1 hostPath carve.
+// TestVolumeHostPathCarve pins the hostPath carve.
 //
 // The field lands consumer-less on purpose: a pod spec carrying a hostPath must
 // be representable so it can be rejected with a legible reason, rather than

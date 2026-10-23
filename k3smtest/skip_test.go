@@ -61,7 +61,7 @@ func runHelper(t *testing.T, env []string) (output string, exitCode int) {
 	return string(out), code
 }
 
-// TestSkipUnless_FatalNotSkip is the B187 meta-test: it PROVES, by actually
+// TestSkipUnless_FatalNotSkip is the meta-test that PROVES, by actually
 // running SkipUnless to its terminal outcome in a child process, that
 // K3SM_CI_REQUIRE flips an absent capability from SKIP to FATAL — the one
 // behavior that keeps a lab run honest (see doc.go). A regression that made

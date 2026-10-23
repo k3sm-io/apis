@@ -352,7 +352,7 @@ func TestNodeTopology(t *testing.T) {
 }
 
 // TestJSONRoundTrip asserts the storage contract types survive a JSON
-// marshal→unmarshal cycle unchanged — the M3.1 acceptance evidence for the
+// marshal→unmarshal cycle unchanged — the acceptance evidence for the
 // StorageClass/provisioner contract + the PV node-affinity/topology fields.
 func TestJSONRoundTrip(t *testing.T) {
 	t.Parallel()

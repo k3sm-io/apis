@@ -23,7 +23,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
-// TestImageManifestPlatformCarve is B127's named gate.
+// TestImageManifestPlatformCarve is the named gate for the image manifest platform carve.
 //
 // The local image index is specified as keyed by (reference x platform), and the
 // GC's provenance edges and the container-status image_id are specified against
