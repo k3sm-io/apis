@@ -576,6 +576,7 @@ func populatedMessages() []proto.Message {
 			Reference: "example.com/img:tag",
 			Platform:  &Platform{Os: "darwin", Architecture: "arm64"},
 			Policy:    ImagePullPolicy_IMAGE_PULL_POLICY_IF_NOT_PRESENT,
+			CacheOnly: true,
 		},
 		&PullImageResponse{Image: img, AlreadyPresent: true},
 		&TagImageRequest{
