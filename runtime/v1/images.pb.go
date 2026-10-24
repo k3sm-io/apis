@@ -1030,7 +1030,13 @@ type PullImageRequest struct {
 	// the pull, reusing cached blobs) in both skew directions, exactly as it is on
 	// Container.image_pull_policy; NEVER performs no registry round trip at all
 	// and fails NOT_FOUND when the reference is locally absent.
-	Policy        ImagePullPolicy `protobuf:"varint,3,opt,name=policy,proto3,enum=k3sm.runtime.v1.ImagePullPolicy" json:"policy,omitempty"`
+	Policy ImagePullPolicy `protobuf:"varint,3,opt,name=policy,proto3,enum=k3sm.runtime.v1.ImagePullPolicy" json:"policy,omitempty"`
+	// cache_only makes the pull fill the node's content cache only and record no
+	// operator root, so the image can be garbage-collected as soon as no pod uses
+	// it. k3sm sets it when it warms the cache after a build or load whose image
+	// now lives in the cluster registry. An older daemon ignores the field and
+	// records a root as before, so mixed versions are safe.
+	CacheOnly     bool `protobuf:"varint,4,opt,name=cache_only,json=cacheOnly,proto3" json:"cache_only,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1084,6 +1090,13 @@ func (x *PullImageRequest) GetPolicy() ImagePullPolicy {
 		return x.Policy
 	}
 	return ImagePullPolicy_IMAGE_PULL_POLICY_UNSPECIFIED
+}
+
+func (x *PullImageRequest) GetCacheOnly() bool {
+	if x != nil {
+		return x.CacheOnly
+	}
+	return false
 }
 
 // PullImageResponse reports what the pull resolved to.
@@ -1926,11 +1939,13 @@ const file_runtime_v1_images_proto_rawDesc = "" +
 	"\x11LoadImageResponse\x12.\n" +
 	"\x06images\x18\x01 \x03(\v2\x16.k3sm.runtime.v1.ImageR\x06images\x12%\n" +
 	"\x0ereceived_bytes\x18\x02 \x01(\x03R\rreceivedBytes\x12(\n" +
-	"\x05error\x18\x03 \x01(\v2\x12.google.rpc.StatusR\x05errorJ\x05\bd\x10\x96\x01\"\xa8\x01\n" +
+	"\x05error\x18\x03 \x01(\v2\x12.google.rpc.StatusR\x05errorJ\x05\bd\x10\x96\x01\"\xc7\x01\n" +
 	"\x10PullImageRequest\x12\x1c\n" +
 	"\treference\x18\x01 \x01(\tR\treference\x125\n" +
 	"\bplatform\x18\x02 \x01(\v2\x19.k3sm.runtime.v1.PlatformR\bplatform\x128\n" +
-	"\x06policy\x18\x03 \x01(\x0e2 .k3sm.runtime.v1.ImagePullPolicyR\x06policyJ\x05\bd\x10\x96\x01\"\x9b\x01\n" +
+	"\x06policy\x18\x03 \x01(\x0e2 .k3sm.runtime.v1.ImagePullPolicyR\x06policy\x12\x1d\n" +
+	"\n" +
+	"cache_only\x18\x04 \x01(\bR\tcacheOnlyJ\x05\bd\x10\x96\x01\"\x9b\x01\n" +
 	"\x11PullImageResponse\x12,\n" +
 	"\x05image\x18\x01 \x01(\v2\x16.k3sm.runtime.v1.ImageR\x05image\x12'\n" +
 	"\x0falready_present\x18\x02 \x01(\bR\x0ealreadyPresent\x12(\n" +

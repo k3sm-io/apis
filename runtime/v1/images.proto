@@ -559,6 +559,13 @@ message PullImageRequest {
   // and fails NOT_FOUND when the reference is locally absent.
   ImagePullPolicy policy = 3;
 
+  // cache_only makes the pull fill the node's content cache only and record no
+  // operator root, so the image can be garbage-collected as soon as no pod uses
+  // it. k3sm sets it when it warms the cache after a build or load whose image
+  // now lives in the cluster registry. An older daemon ignores the field and
+  // records a root as before, so mixed versions are safe.
+  bool cache_only = 4;
+
   reserved 100 to 149;
 }
 
