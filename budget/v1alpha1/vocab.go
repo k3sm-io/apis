@@ -200,7 +200,9 @@ const (
 )
 
 // Bands returns the three bands in their fixed order (critical, standard,
-// batch), the order the page lays out its counters in.
+// batch), the order of their page codes (1 to 3). Page counter slots are
+// filled in the producer's order; a reader identifies each slot by its band
+// code.
 func Bands() []Band { return []Band{BandCritical, BandStandard, BandBatch} }
 
 // Valid reports whether b is a band this release knows.
@@ -344,8 +346,9 @@ const (
 	// PolicyRejected means the policy was invalid; the node kept its last
 	// valid policy.
 	PolicyRejected PolicyOutcome = "rejected"
-	// PolicyClamped means the policy was applied with some values raised to
-	// the compiled floors.
+	// PolicyClamped means the policy was applied with some values clamped:
+	// raised to the compiled floors, or a reserve lowered to the measured
+	// capacity.
 	PolicyClamped PolicyOutcome = "clamped"
 )
 
@@ -440,7 +443,7 @@ type WriterShape string
 const (
 	// WriterAnnotationRelay means the node writes the budget.k3sm.io/status
 	// annotation on its own Node and a server-side relay writes the status.
-	// It is the only shape k3sm ships.
+	// It is the shape k3sm's own producer is designed for.
 	WriterAnnotationRelay WriterShape = "annotation-relay"
 	// WriterOwnNode means a per-node producer writes the status of its own
 	// node's NodeBudget directly, held to that node by an admission policy
@@ -474,7 +477,7 @@ const (
 	// relayed to it and keeps its last valid one.
 	ConditionPolicyRejected = "PolicyRejected"
 	// ConditionPolicyClamped is True while the node applies its policy with
-	// values raised to the compiled floors.
+	// values clamped to the compiled floors or to the measured capacity.
 	ConditionPolicyClamped = "PolicyClamped"
 	// ConditionPolicyConflict is True while more than one NodeBudgetPolicy
 	// selects the node; the message names the policies that lost.
@@ -518,7 +521,7 @@ const (
 	ReasonPolicyAccepted = "PolicyAccepted"
 
 	// ReasonFieldsClamped (PolicyClamped True) means the node raised one or
-	// more fields to a floor or to the measured capacity; the fields are in
+	// more fields to a floor or lowered a reserve to the measured capacity; the fields are in
 	// status.policy.clampedFields.
 	ReasonFieldsClamped = "FieldsClamped"
 	// ReasonNoFieldsClamped (PolicyClamped False) means the policy in force

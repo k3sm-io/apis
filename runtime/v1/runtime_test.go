@@ -719,13 +719,13 @@ func TestContainerImagePullPolicyFieldNumber(t *testing.T) {
 	}
 }
 
-// TestM2_2RPCsRegistered asserts the additive resource-metrics RPCs (ListPodStats,
+// TestResourceMetricsRPCsRegistered asserts the additive resource-metrics RPCs (ListPodStats,
 // RestartContainer) are registered on the generated Runtime gRPC service
 // descriptor as UNARY methods — the wire surface a runtimed server implements
 // and the provider calls. This is the passes-after evidence the new RPCs
 // reached the generated service, not just the .proto, and that they are
 // request/response (not streaming).
-func TestM2_2RPCsRegistered(t *testing.T) {
+func TestResourceMetricsRPCsRegistered(t *testing.T) {
 	t.Parallel()
 	want := map[string]bool{"ListPodStats": false, "RestartContainer": false}
 	for _, m := range Runtime_ServiceDesc.Methods {

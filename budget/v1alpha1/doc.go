@@ -30,6 +30,10 @@ limitations under the License.
 // conditions are owned by the status writer (k3sm's relay, or an own-node
 // producer), never carried in the node's payload.
 //
+// This package defines the contract only. No k3sm release yet ships the node
+// producer or the server relay; where these comments say what the relay does,
+// they state what a conforming relay must do.
+//
 // NodeBudgetPolicy is cluster-scoped, spec only, and the one configuration
 // object of the group: it selects node classes by nodeSelector and overrides
 // the threshold ladder, the reserves, the history half-lives and the tier-1

@@ -50,7 +50,9 @@ const (
 
 	// ConditionInterconnectAttached is the Pod condition type the provider
 	// records for an opted-in pod: True with the medium as reason and the
-	// address as message, or False with one of the reasons below.
+	// address as message, or False with a reason saying why the attach failed (the
+	// shared reasons below, or a provider-local one). The reasons below are also
+	// used on the Interconnect's and an MLXModel's own status.
 	ConditionInterconnectAttached = "k3sm.io/InterconnectAttached"
 
 	// ReasonInterconnectSlotsExhausted means every slot on the node is taken.

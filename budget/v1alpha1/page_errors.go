@@ -23,7 +23,9 @@ const (
 	// PageErrNotFound: no page, or no access to it.
 	PageErrNotFound = "notFound"
 	// PageErrABIMismatch: bad magic, an unknown ABI major, a header size
-	// other than PageHeaderSize, or a code the reader's tables do not hold.
+	// other than PageHeaderSize, or an unknown code in a structural table
+	// (signal, unit, level, band, platform, kill mode). An unknown code in a
+	// producer-vocabulary table reads as that type's "unknown" value instead.
 	PageErrABIMismatch = "abiMismatch"
 	// PageErrTruncated: a file shorter than headerSize + bodySize, or a
 	// bodySize below the size the reader's own minor knows.

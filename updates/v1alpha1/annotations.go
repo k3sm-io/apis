@@ -16,10 +16,10 @@ limitations under the License.
 
 package updatesv1alpha1
 
-// The k3sm.io/* Node annotation keys the update controller and the root
-// helper that installs a release on each node share. Both sides must agree
-// on the exact byte string, so they are published here and no consumer
-// spells a literal.
+// The k3sm.io/* Node annotation keys of a managed update that the apis contract
+// fixes. k3sm adds the payload-signature and signer keys beside them (in its
+// update package). Both sides must agree on the exact byte string, so they are
+// published here and no consumer spells a literal.
 //
 // Note the project convention: CRD groups are <area>.k3sm.io (GroupName is
 // updates.k3sm.io), while labels and annotations are k3sm.io/*. The two

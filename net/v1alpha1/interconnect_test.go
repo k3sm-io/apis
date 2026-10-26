@@ -279,7 +279,7 @@ func TestInterconnectKeys(t *testing.T) {
 	if MaxInterconnectReportBytes != 4096 || MaxInterconnectReportPeers != 16 ||
 		InterconnectReportMinInterval != 10*time.Second || InterconnectAnnotationSchema != 1 ||
 		MaxInterconnectDomainUUIDBytes != 64 || MaxInterconnectListItems != 64 {
-		t.Error("the I6 report bounds moved")
+		t.Error("the report bounds moved")
 	}
 }
 
@@ -302,7 +302,7 @@ func peers(n int) []string {
 	return out
 }
 
-// TestInterconnectReportParse covers the I6 bounds on the untrusted report:
+// TestInterconnectReportParse covers the report bounds on the untrusted report:
 // round trip, oversize, too many peers, unknown and missing schema, unknown
 // fields, malformed input and bad field values.
 func TestInterconnectReportParse(t *testing.T) {

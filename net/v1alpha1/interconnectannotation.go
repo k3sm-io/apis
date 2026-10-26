@@ -84,7 +84,8 @@ type InterconnectReport struct {
 	ReachablePeers []string `json:"reachablePeers,omitempty"`
 }
 
-// Validate reports whether the report is within the I6 bounds on its own:
+// Validate reports whether the report is within the reader bounds above on
+// its own:
 // Schema is current (else ErrUnknownInterconnectSchema), at most
 // MaxInterconnectReportPeers reachable peers and peer domain UUIDs, local
 // domain UUIDs no more than MaxInterconnectSlot+1, every UUID 1 to
