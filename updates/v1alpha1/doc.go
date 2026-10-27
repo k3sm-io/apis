@@ -29,7 +29,7 @@ limitations under the License.
 // verified, one entry per node with the release it moved from and to and the
 // step it is on, a derived overall Phase, and the generation the status
 // describes. The Node annotation keys the controller and the per-node root
-// helper share are in annotations.go.
+// helper share are in annotations.go (the signature keys are k3sm's own).
 //
 // # One at a time: the singleton
 //

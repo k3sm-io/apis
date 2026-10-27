@@ -16,9 +16,10 @@ limitations under the License.
 
 package runtimev1
 
-// The wasm RuntimeClass contract strings. runtimed and k3sm import these; neither
-// re-declares a literal, so the producer and the consumer of each string cannot
-// drift apart.
+// The wasm RuntimeClass contract strings, published for the wasm backend's
+// producer (runtimed) and consumer (the k3sm provider), which must import them
+// rather than re-declare a literal, so the two cannot drift apart. The backend
+// is not implemented yet; the rules below are the contract it must meet.
 const (
 	// WasmPlatformOS is the OCI platform os of a WebAssembly (WASI) module
 	// image.
@@ -46,7 +47,7 @@ const (
 	// the check.
 	ConditionWasmBackendAvailable = "WasmBackendAvailable"
 
-	// LabelWasm is the node label marking a node whose runtime reports
+	// LabelWasm is the label that will mark a node whose runtime reports
 	// ConditionWasmBackendAvailable, so the "wasm" RuntimeClass schedules only
 	// onto nodes that can run it.
 	LabelWasm = "k3sm.io/wasm"
@@ -54,7 +55,7 @@ const (
 	// AnnotationWasmSignature is the pod-level annotation opting a wasm pod in
 	// to the module signature check. "required" is its one accepted value.
 	//
-	// The k3sm provider reads it and AnnotationWasmSignatureKey once, at pod
+	// The k3sm provider must read it and AnnotationWasmSignatureKey once, at pod
 	// create, under a closed truth table:
 	//
 	//   - "required" with a well-formed key annotation: stamp

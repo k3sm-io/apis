@@ -129,8 +129,8 @@ func (s InterconnectSpec) EffectiveFallback() InterconnectFallback {
 }
 
 // NamespaceAllowed reports whether pods in namespace ns may attach under the
-// namespace rule alone. An EMPTY AllowedNamespaces allows every namespace (plan
-// I9); a non-empty one allows only the namespaces it lists.
+// namespace rule alone. An EMPTY AllowedNamespaces allows every namespace; a
+// non-empty one allows only the namespaces it lists.
 //
 // It does not check that the interconnect is armed: a caller must also require
 // Spec.Enabled before letting any pod attach.
@@ -206,9 +206,11 @@ func (in *Interconnect) Validate() error {
 type InterconnectMemberState string
 
 const (
-	// InterconnectMemberUp means the node's report is fresh, its address equals
-	// the server's recomputation, and at least one peer it reaches also reaches
-	// it.
+	// InterconnectMemberUp means the node's report is fresh, its cluster index is
+	// within 0..MaxInterconnectNodeIndex (the server derives its address; a node
+	// never supplies one), it is not in a cable loop, at least one peer it reaches
+	// also reaches it, and all of that has held continuously for the server's up
+	// hold.
 	InterconnectMemberUp InterconnectMemberState = "up"
 	// InterconnectMemberDown means the node is cabled but not usable.
 	InterconnectMemberDown InterconnectMemberState = "down"

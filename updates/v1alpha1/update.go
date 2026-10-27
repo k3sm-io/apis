@@ -70,8 +70,9 @@ type UpdateSpec struct {
 	// False refuses a downgrade before any node is touched.
 	AllowDowngrade bool `json:"allowDowngrade,omitempty"`
 
-	// Cancel stops the roll: the node in progress finishes its current step
-	// and no further node is started. The update then ends Cancelled. Nodes
+	// Cancel stops the roll: a node still being cordoned or drained is
+	// uncordoned and marked Cancelled, a node already handed the release
+	// finishes its install, and no further node is started. The update then ends Cancelled. Nodes
 	// already moved stay on Version; a cancel is not a rollback. It is
 	// one-way: once true it cannot be set back to false (a CEL transition rule
 	// on the CRD).
@@ -95,11 +96,14 @@ type UpdateStrategy struct {
 	Order UpdateOrder `json:"order,omitempty"`
 
 	// MaxUnavailable is the most nodes updated at once. At least 1; 0 means
-	// the CRD default of 1. The server is always updated alone.
+	// the CRD default of 1. The controller currently honours it as 1 whatever
+	// the value: nodes roll one at a time, and the server is always updated
+	// alone.
 	MaxUnavailable int32 `json:"maxUnavailable,omitempty"`
 
-	// Drain evicts each node's pods (after cordoning it) before the node is
-	// restarted. False only cordons the node, so its pods ride the restart.
+	// Drain evicts each worker's pods (after cordoning it) before the node is
+	// restarted; the server is cordoned but never drained, and drain on a
+	// one-node cluster is refused before anything starts. False only cordons the node, so its pods ride the restart.
 	Drain bool `json:"drain,omitempty"`
 }
 
@@ -178,14 +182,14 @@ const (
 	// UpdateNodePhaseRestarting means the node's services are restarting on
 	// the new release.
 	UpdateNodePhaseRestarting UpdateNodePhase = "Restarting"
-	// UpdateNodePhaseDone means the node runs Spec.Version and is schedulable
-	// again.
+	// UpdateNodePhaseDone means the node runs Spec.Version and the update's own
+	// cordon is lifted (a cordon an operator set before the update stays).
 	UpdateNodePhaseDone UpdateNodePhase = "Done"
 	// UpdateNodePhaseFailed means the node's update failed; Message carries
 	// the reason.
 	UpdateNodePhaseFailed UpdateNodePhase = "Failed"
 	// UpdateNodePhaseCancelled means Spec.Cancel stopped the roll before this
-	// node started.
+	// node was handed the release.
 	UpdateNodePhaseCancelled UpdateNodePhase = "Cancelled"
 )
 
@@ -214,8 +218,10 @@ type UpdateNodeStatus struct {
 	FinishedAt *metav1.Time `json:"finishedAt,omitempty"`
 }
 
-// UpdateResolved is the release an Update actually verified: the tag and the
-// digest of the payload whose checksum and signatures passed.
+// UpdateResolved is the release an Update resolved: the tag and the payload
+// digest the release's published checksums name (and a root-held release pin,
+// when one is set), recorded before the first node is touched. Each node
+// verifies its download against this digest and Spec.Verify.
 type UpdateResolved struct {
 	// Version is the release tag that was resolved.
 	Version string `json:"version,omitempty"`
@@ -231,8 +237,8 @@ type UpdateStatus struct {
 	// Phase is the derived single-word summary shown as a printer column.
 	// Display only; see UpdatePhase.
 	Phase UpdatePhase `json:"phase,omitempty"`
-	// Resolved is the release that was verified. Nil until verification has
-	// passed once.
+	// Resolved is the release the target resolved to. Nil until the release
+	// index has been resolved once.
 	Resolved *UpdateResolved `json:"resolved,omitempty"`
 	// Nodes is the progress of each node, one entry per node name (at most
 	// 64).

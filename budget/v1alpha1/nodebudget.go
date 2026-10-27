@@ -32,7 +32,8 @@ const (
 	// MaxBudgetConditions is the most conditions a NodeBudget status carries.
 	MaxBudgetConditions = 8
 	// MaxClampedFields is the most entries AppliedPolicy.ClampedFields
-	// lists: one per PolicyField.
+	// lists. Each PolicyField appears at most once, and the bound leaves room
+	// above the seven this release knows.
 	MaxClampedFields = 8
 	// MaxPolicyResourceVersionBytes is the longest policy resourceVersion an
 	// observation or a desired-policy payload carries.
@@ -151,7 +152,7 @@ type BudgetCapacity struct {
 // BudgetSignal is one generic signal record. Values, rungs and releases are
 // in Unit, which must be the signal's canonical unit (SignalID.Unit);
 // durations are whole seconds. A nil field is unset or could not be sampled.
-// (The budget page carries the same durations in nanoseconds.)
+// (The budget page carries the same durations, in the same whole seconds.)
 //
 // The five rungs are strictly ordered in the direction of rising pressure
 // (descending for an "*.available" signal, see IsDescending), and each
@@ -289,7 +290,8 @@ type WindowCount struct {
 }
 
 // MaxWindowCounts is the most windowed counts one band carries: one per
-// window and reason.
+// window (two) and named reason (six). Unknown entries count against the same
+// bound.
 const MaxWindowCounts = 12
 
 // AppliedPolicy is the NodeBudgetPolicy the node applied, clamped or

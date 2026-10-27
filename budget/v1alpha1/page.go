@@ -41,8 +41,8 @@ const (
 	// PageFileName is the page's file name, budget.v<PageABIMajor>.page.
 	PageFileName = "budget.v1.page"
 	// DefaultPagePath is where a native Darwin pod finds the page: a
-	// top-level budget directory under the default work dir, outside every
-	// protected tree.
+	// top-level budget directory under the default data root (/var/lib/k3sm),
+	// beside the server and agent work dirs and outside every protected tree.
 	DefaultPagePath = "/var/lib/k3sm/budget/" + PageFileName
 	// LinuxPagePath is where a Linux reader finds the page (a vm guest, or a
 	// pod on a Linux producer's node), by a bind mount or a hostPath.
