@@ -35,20 +35,8 @@ limitations under the License.
 // CI and test-support work that runtimed's MLX acceptance gate
 // (SkipUnless(t, "apple-gpu")) needs before the wider public-CI milestone
 // (which also owns the still-deferred CI workflow itself) is ready to open.
-// Nothing here touches CI configuration. The capability helpers are pure Go
-// and stdlib-only; the runtime contract suite below also imports gRPC and
-// this module's runtime/v1, and nothing outside this module.
-//
-// # The runtime contract suite
-//
-// RunRuntimeContract checks the node to runtime gRPC seam once: the fields
-// and outcomes the node acts on (the pod id and phase on every status, an
-// unknown pod reported in-band as NotFound, an idempotent delete, a named
-// runtime). The real runtime daemon and each in-memory fake the node's tests
-// use run the same suite, so a fake that drifts from the daemon goes red in
-// its own repository instead of passing tests that the daemon would fail.
-// TestRuntimeContract proves the suite itself: a reference fake passes it,
-// and fakes that each drop one field fail the case that owns that field.
+// Nothing here touches CI configuration; it is a pure-Go, stdlib-only
+// package like the rest of this module.
 //
 // # Skip vs. fatal
 //
@@ -68,9 +56,8 @@ limitations under the License.
 //
 // # Stability contract
 //
-// The Capability values, the taxonomy (All), the SkipUnless/Available
-// signatures, and the RuntimeContract/RunRuntimeContract/CheckRuntimeContract/
-// ServeRuntime signatures are part of the shared contract every importing repo compiles
+// The Capability values, the taxonomy (All), and the SkipUnless/Available
+// signatures are part of the shared contract every importing repo compiles
 // against — additive-only: a new Capability constant may be added; an
 // existing one is never renamed or repurposed once a consumer depends on it.
 package k3smtest
