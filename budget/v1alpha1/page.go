@@ -37,7 +37,9 @@ const (
 	// (PageFileName), so a reader of an older major finds no page.
 	PageABIMajor = 1
 	// PageABIMinor is the page ABI minor. A minor only appends fields.
-	PageABIMinor = 0
+	// Minor 1 appends the CPU performance and efficiency core counts and the
+	// GPU presence and count to the capacity, after the counters.
+	PageABIMinor = 1
 	// PageFileName is the page's file name, budget.v<PageABIMajor>.page.
 	PageFileName = "budget.v1.page"
 	// DefaultPagePath is where a native Darwin pod finds the page: a
@@ -574,6 +576,22 @@ func pageFieldSpecs() []pageField {
 			})
 		}
 	}
+
+	// Minor 1: the CPU core split and the GPU presence, appended. gpuPresent
+	// is an i64 holding 0 or 1, or PageAbsent when the producer does not know.
+	opt("capacity.cpuPerformanceCores", "status.capacity.cpuPerformanceCores",
+		func(s *PageSnapshot) *int64 { return s.Capacity.CPUPerformanceCores })
+	opt("capacity.cpuEfficiencyCores", "status.capacity.cpuEfficiencyCores",
+		func(s *PageSnapshot) *int64 { return s.Capacity.CPUEfficiencyCores })
+	add(pageField{name: "capacity.gpuPresent", kind: kindI64, enum: "bool", absent: true, status: "status.capacity.gpuPresent",
+		get: func(s *PageSnapshot) (uint64, bool) {
+			if s.Capacity.GPUPresent == nil {
+				return pageAbsentWord, true
+			}
+			return boolWord(*s.Capacity.GPUPresent)
+		}})
+	opt("capacity.gpuCount", "status.capacity.gpuCount",
+		func(s *PageSnapshot) *int64 { return s.Capacity.GPUCount })
 	return f
 }
 

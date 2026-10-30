@@ -39,7 +39,9 @@ const (
 )
 
 func i64(v int64) *int64 { return &v }
-func i32(v int32) *int32 { return &v }
+
+func ptrTo[T any](v T) *T { return &v }
+func i32(v int32) *int32  { return &v }
 
 // goldenStatusFiles are the conformance documents, one per platform.
 var goldenStatusFiles = map[Platform]string{
@@ -69,6 +71,8 @@ func sampleDarwin() *NodeBudget {
 					MemCapacityBytes: i64(16 * gib), MemSystemReserveBytes: i64(2 * gib),
 					MemEvictionReserveBytes: i64(512 * mib), MemAllocatableBytes: i64(13*gib + 512*mib),
 					SwapTotalBytes: i64(4 * gib), SwapUsedBytes: i64(1 * gib),
+					CPUPerformanceCores: i64(4), CPUEfficiencyCores: i64(4),
+					GPUPresent: ptrTo(true), GPUCount: i64(1),
 				},
 				Signals: []BudgetSignal{
 					{
@@ -165,6 +169,7 @@ func sampleLinux() *NodeBudget {
 				Capacity: BudgetCapacity{
 					CPUCapacityMilli: i64(16000), MemCapacityBytes: i64(32 * gib), MemAllocatableBytes: i64(30 * gib),
 					SwapTotalBytes: i64(0), SwapUsedBytes: i64(0),
+					GPUPresent: ptrTo(false), GPUCount: i64(0),
 				},
 				Signals: []BudgetSignal{
 					{
@@ -442,6 +447,13 @@ func TestNodeBudgetStatusValidate(t *testing.T) {
 		{"unknown admit reason", func(o *NodeBudgetObservation) { o.Admit = false; o.AdmitReasonSignal = "cpu.available" }},
 		{"zero deadline", func(o *NodeBudgetObservation) { o.EvictDeadline = &metav1.Time{} }},
 		{"negative capacity", func(o *NodeBudgetObservation) { o.Capacity.SwapUsedBytes = i64(-1) }},
+		{"negative core count", func(o *NodeBudgetObservation) { o.Capacity.CPUEfficiencyCores = i64(-1) }},
+		{"gpu count without presence", func(o *NodeBudgetObservation) {
+			o.Capacity.GPUPresent, o.Capacity.GPUCount = ptrTo(false), i64(1)
+		}},
+		{"gpu presence without count", func(o *NodeBudgetObservation) {
+			o.Capacity.GPUPresent, o.Capacity.GPUCount = ptrTo(true), i64(0)
+		}},
 		{"unknown unit", func(o *NodeBudgetObservation) { o.Signals[0].Unit = "pages" }},
 		{"bytes signal in permille", func(o *NodeBudgetObservation) { o.Signals[0].Unit = UnitPermille }},
 		{"compressor in bytes", func(o *NodeBudgetObservation) { o.Signals[1].Unit = UnitBytes }},

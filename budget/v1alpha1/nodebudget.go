@@ -147,6 +147,22 @@ type BudgetCapacity struct {
 	SwapTotalBytes *int64 `json:"swapTotalBytes,omitempty"`
 	// SwapUsedBytes is the swap in use.
 	SwapUsedBytes *int64 `json:"swapUsedBytes,omitempty"`
+	// CPUPerformanceCores is the number of logical CPUs in the performance
+	// cluster (hw.perflevel0.logicalcpu on macOS). It is unset on a host
+	// with no performance level split.
+	CPUPerformanceCores *int64 `json:"cpuPerformanceCores,omitempty"`
+	// CPUEfficiencyCores is the number of logical CPUs in the efficiency
+	// cluster (hw.perflevel1.logicalcpu on macOS). It is unset on a host
+	// with no performance level split.
+	CPUEfficiencyCores *int64 `json:"cpuEfficiencyCores,omitempty"`
+	// GPUPresent reports whether the node advertises a GPU to pods (the
+	// mlx.k3sm.io/gpu extended resource). Unset means the producer does not
+	// know.
+	GPUPresent *bool `json:"gpuPresent,omitempty"`
+	// GPUCount is the count of the mlx.k3sm.io/gpu extended resource the
+	// node advertises, 0 when it advertises none. A count above 0 requires
+	// GPUPresent true.
+	GPUCount *int64 `json:"gpuCount,omitempty"`
 }
 
 // BudgetSignal is one generic signal record. Values, rungs and releases are
@@ -574,10 +590,16 @@ func (c *BudgetCapacity) validate() error {
 		{"memAllocatableBytes", c.MemAllocatableBytes},
 		{"swapTotalBytes", c.SwapTotalBytes},
 		{"swapUsedBytes", c.SwapUsedBytes},
+		{"cpuPerformanceCores", c.CPUPerformanceCores},
+		{"cpuEfficiencyCores", c.CPUEfficiencyCores},
+		{"gpuCount", c.GPUCount},
 	} {
 		if err := nonNegative("capacity."+f.name, f.v); err != nil {
 			return err
 		}
+	}
+	if c.GPUPresent != nil && c.GPUCount != nil && *c.GPUPresent != (*c.GPUCount > 0) {
+		return fmt.Errorf("capacity.gpuCount %d disagrees with capacity.gpuPresent %t", *c.GPUCount, *c.GPUPresent)
 	}
 	return nil
 }
@@ -789,6 +811,10 @@ func (in *BudgetCapacity) DeepCopyInto(out *BudgetCapacity) {
 		MemAllocatableBytes:     clonePtr(in.MemAllocatableBytes),
 		SwapTotalBytes:          clonePtr(in.SwapTotalBytes),
 		SwapUsedBytes:           clonePtr(in.SwapUsedBytes),
+		CPUPerformanceCores:     clonePtr(in.CPUPerformanceCores),
+		CPUEfficiencyCores:      clonePtr(in.CPUEfficiencyCores),
+		GPUPresent:              clonePtr(in.GPUPresent),
+		GPUCount:                clonePtr(in.GPUCount),
 	}
 }
 

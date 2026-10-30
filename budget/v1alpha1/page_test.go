@@ -168,6 +168,8 @@ var pageNotifyVectors = []PageNotifyVector{
 	{Field: "signals[0].trend", Value: 3, Due: false},
 	{Field: "observedAt", Value: sampleAt.Unix() + 1, Due: false},
 	{Field: "capacity.swapUsedBytes", Value: 2 * gib, Due: false},
+	{Field: "capacity.cpuPerformanceCores", Value: 6, Due: false},
+	{Field: "capacity.gpuPresent", Value: 0, Due: false},
 	{Field: "darwin.vmPressureLevel", Value: 2, Due: false},
 	{Field: "counters[2].evictionsTotal", Value: 6, Due: false},
 	{Field: "killMode.armingEpisodes", Value: 3, Due: false},
@@ -351,6 +353,9 @@ func TestPageLayoutGoldenFixture(t *testing.T) {
 			"admit": 2072, "admitReasonSignal": 2080, "evictDeadline": 2088,
 			"killMode.mode": 2096, "killMode.armed": 2104, "killMode.armingEpisodes": 2112, "killMode.reason": 2120,
 			"recommendation.safeAdditionalBytes": 2128, "recommendation.basis": 2136,
+			// Minor 1 appends the CPU core split and the GPU presence after the counters.
+			"capacity.cpuPerformanceCores": 2312, "capacity.cpuEfficiencyCores": 2320,
+			"capacity.gpuPresent": 2328, "capacity.gpuCount": 2336,
 		}
 		signal0 := map[string]int{
 			"id": 792, "unit": 800, "value": 808,
@@ -393,8 +398,11 @@ func TestPageLayoutGoldenFixture(t *testing.T) {
 				}
 			}
 		}
-		if pageBodyEnd != 2312 {
-			t.Errorf("the body ends at %d, want 2312", pageBodyEnd)
+		if pageBodyEnd != 2344 {
+			t.Errorf("the body ends at %d, want 2344", pageBodyEnd)
+		}
+		if PageABIMinor != 1 {
+			t.Errorf("PageABIMinor = %d, want 1: the core split and GPU fields are minor 1", PageABIMinor)
 		}
 		for name, c := range map[string]int{
 			"seq": PageSeqOffset, "notifyEpoch": PageNotifyEpochOffset, "generation": PageHeaderSize,
@@ -760,6 +768,7 @@ func pageSnapshotAllowlist() map[string]bool {
 		"Capacity.CPUCapacityMilli", "Capacity.CPUSystemReserveMilli", "Capacity.MemCapacityBytes",
 		"Capacity.MemSystemReserveBytes", "Capacity.MemEvictionReserveBytes", "Capacity.MemAllocatableBytes",
 		"Capacity.SwapTotalBytes", "Capacity.SwapUsedBytes",
+		"Capacity.CPUPerformanceCores", "Capacity.CPUEfficiencyCores", "Capacity.GPUPresent", "Capacity.GPUCount",
 		"Level",
 		"Darwin.VMPressureLevel", "Darwin.MemorystatusLevelPermille", "Darwin.Compressor.BytesUsed",
 		"Darwin.Compressor.BytesStored", "Darwin.Compressor.SegmentLimitBytes", "Darwin.SwapinsTotal", "Darwin.SwapoutsTotal",

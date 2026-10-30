@@ -24,10 +24,33 @@
     "format": "int64"
   },
   {
+    "path": "status.capacity.cpuEfficiencyCores",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.capacity.cpuPerformanceCores",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
     "path": "status.capacity.cpuSystemReserveMilli",
     "kind": "scalar",
     "type": "integer",
     "format": "int64"
+  },
+  {
+    "path": "status.capacity.gpuCount",
+    "kind": "scalar",
+    "type": "integer",
+    "format": "int64"
+  },
+  {
+    "path": "status.capacity.gpuPresent",
+    "kind": "scalar",
+    "type": "boolean"
   },
   {
     "path": "status.capacity.memAllocatableBytes",
