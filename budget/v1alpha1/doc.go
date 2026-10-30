@@ -169,6 +169,13 @@ limitations under the License.
 // page is the host's page with the linux block filled by guest-init as the
 // guest section.
 //
+// Minor 1 appends four capacity fields after the counters: the CPU
+// performance and efficiency core counts (hw.perflevel0 and
+// hw.perflevel1 on macOS, absent where the host has no split), and the GPU
+// presence and the count of the mlx.k3sm.io/gpu extended resource. A
+// minor-0 reader reads its known prefix and ignores them. gpuPresent is an
+// i64 that holds 0, 1 or PageAbsent, marked "bool" in the descriptor.
+//
 // The node name is inline: a length word, then a 256-byte field. A name
 // over MaxPageNodeNameBytes is an encoder error (ErrPageNodeNameTooLong),
 // and a reader refuses a page whose length word exceeds it.

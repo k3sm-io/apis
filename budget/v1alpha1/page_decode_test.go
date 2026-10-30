@@ -110,6 +110,17 @@ func decodePage(b []byte) (PageSnapshot, error) {
 		MemCapacityBytes: opt("capacity.memCapacityBytes"), MemSystemReserveBytes: opt("capacity.memSystemReserveBytes"),
 		MemEvictionReserveBytes: opt("capacity.memEvictionReserveBytes"), MemAllocatableBytes: opt("capacity.memAllocatableBytes"),
 		SwapTotalBytes: opt("capacity.swapTotalBytes"), SwapUsedBytes: opt("capacity.swapUsedBytes"),
+		CPUPerformanceCores: opt("capacity.cpuPerformanceCores"), CPUEfficiencyCores: opt("capacity.cpuEfficiencyCores"),
+		GPUCount: opt("capacity.gpuCount"),
+	}
+	if v := opt("capacity.gpuPresent"); v != nil {
+		switch *v {
+		case 0, 1:
+			present := *v == 1
+			s.Capacity.GPUPresent = &present
+		default:
+			return s, readErr(PageErrCorrupt, "capacity.gpuPresent holds %d, want 0 or 1", *v)
+		}
 	}
 	s.Level = Level(code("level", codes["level"], ""))
 

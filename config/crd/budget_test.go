@@ -191,7 +191,8 @@ func TestNodeBudgetCRDMatchesTheGoTypes(t *testing.T) {
 	assertDeclared(t, "status.inForce", mapAt(t, sp, "inForce", "properties"), "name", "resourceVersion")
 	assertDeclared(t, "status.capacity", mapAt(t, sp, "capacity", "properties"),
 		"cpuCapacityMilli", "cpuSystemReserveMilli", "memCapacityBytes", "memSystemReserveBytes",
-		"memEvictionReserveBytes", "memAllocatableBytes", "swapTotalBytes", "swapUsedBytes")
+		"memEvictionReserveBytes", "memAllocatableBytes", "swapTotalBytes", "swapUsedBytes",
+		"cpuPerformanceCores", "cpuEfficiencyCores", "gpuPresent", "gpuCount")
 	sig := mapAt(t, sp, "signals", "items", "properties")
 	assertDeclared(t, "status.signals[]", sig,
 		"id", "unit", "value", "warnThreshold", "admitStopThreshold", "criticalThreshold", "evictSoftThreshold", "evictHardThreshold",

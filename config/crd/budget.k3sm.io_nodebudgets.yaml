@@ -155,6 +155,24 @@ spec:
                       format: int64
                       minimum: 0
                       description: SwapUsedBytes is the swap in use.
+                    cpuPerformanceCores:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      description: CPUPerformanceCores is the number of logical CPUs in the performance cluster (hw.perflevel0.logicalcpu on macOS); unset without a performance level split.
+                    cpuEfficiencyCores:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      description: CPUEfficiencyCores is the number of logical CPUs in the efficiency cluster (hw.perflevel1.logicalcpu on macOS); unset without a performance level split.
+                    gpuPresent:
+                      type: boolean
+                      description: GPUPresent reports whether the node advertises a GPU to pods (the mlx.k3sm.io/gpu extended resource); unset when the producer does not know.
+                    gpuCount:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      description: GPUCount is the count of the mlx.k3sm.io/gpu extended resource the node advertises, 0 when it advertises none.
                 signals:
                   type: array
                   description: Signals are the generic signal records, one per signal.
