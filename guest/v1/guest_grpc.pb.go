@@ -57,6 +57,7 @@ const (
 	GuestAgent_Stop_FullMethodName             = "/k3sm.guest.v1.GuestAgent/Stop"
 	GuestAgent_Attach_FullMethodName           = "/k3sm.guest.v1.GuestAgent/Attach"
 	GuestAgent_RestartContainer_FullMethodName = "/k3sm.guest.v1.GuestAgent/RestartContainer"
+	GuestAgent_PublishBudget_FullMethodName    = "/k3sm.guest.v1.GuestAgent/PublishBudget"
 )
 
 // GuestAgentClient is the client API for GuestAgent service.
@@ -178,6 +179,25 @@ type GuestAgentClient interface {
 	// Unimplemented), so the restart is never attempted against an agent that
 	// cannot perform it.
 	RestartContainer(ctx context.Context, in *RestartContainerRequest, opts ...grpc.CallOption) (*RestartContainerResponse, error)
+	// PublishBudget hands the guest the latest node budget page, so a workload
+	// in a vm pod reads the same node-level data a native pod reads from the
+	// host. A host file shared over virtiofs is not coherent with the host's
+	// stores, so the page crosses as bytes instead. The host calls it on a level
+	// change and on a heartbeat, at most once per second; the guest writes the
+	// bytes into its own guest-local page and answers. The call is unary and
+	// carries a whole page, so a dropped call loses nothing a later one does not
+	// replace.
+	//
+	// The guest validates the size and the page's ABI major before writing and
+	// refuses a page that fails either with InvalidArgument, leaving its last
+	// good page in place. A refused or failed call never affects the pod's
+	// containers.
+	//
+	// An agent that implements this RPC advertises the capability token
+	// publish-budget in HealthResponse.capabilities. The host does not call it on
+	// a guest that does not advertise the token (an older initramfs answers
+	// Unimplemented).
+	PublishBudget(ctx context.Context, in *Budget, opts ...grpc.CallOption) (*PublishBudgetResponse, error)
 }
 
 type guestAgentClient struct {
@@ -286,6 +306,16 @@ func (c *guestAgentClient) RestartContainer(ctx context.Context, in *RestartCont
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RestartContainerResponse)
 	err := c.cc.Invoke(ctx, GuestAgent_RestartContainer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *guestAgentClient) PublishBudget(ctx context.Context, in *Budget, opts ...grpc.CallOption) (*PublishBudgetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PublishBudgetResponse)
+	err := c.cc.Invoke(ctx, GuestAgent_PublishBudget_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -411,6 +441,25 @@ type GuestAgentServer interface {
 	// Unimplemented), so the restart is never attempted against an agent that
 	// cannot perform it.
 	RestartContainer(context.Context, *RestartContainerRequest) (*RestartContainerResponse, error)
+	// PublishBudget hands the guest the latest node budget page, so a workload
+	// in a vm pod reads the same node-level data a native pod reads from the
+	// host. A host file shared over virtiofs is not coherent with the host's
+	// stores, so the page crosses as bytes instead. The host calls it on a level
+	// change and on a heartbeat, at most once per second; the guest writes the
+	// bytes into its own guest-local page and answers. The call is unary and
+	// carries a whole page, so a dropped call loses nothing a later one does not
+	// replace.
+	//
+	// The guest validates the size and the page's ABI major before writing and
+	// refuses a page that fails either with InvalidArgument, leaving its last
+	// good page in place. A refused or failed call never affects the pod's
+	// containers.
+	//
+	// An agent that implements this RPC advertises the capability token
+	// publish-budget in HealthResponse.capabilities. The host does not call it on
+	// a guest that does not advertise the token (an older initramfs answers
+	// Unimplemented).
+	PublishBudget(context.Context, *Budget) (*PublishBudgetResponse, error)
 	mustEmbedUnimplementedGuestAgentServer()
 }
 
@@ -444,6 +493,9 @@ func (UnimplementedGuestAgentServer) Attach(grpc.BidiStreamingServer[v1.AttachRe
 }
 func (UnimplementedGuestAgentServer) RestartContainer(context.Context, *RestartContainerRequest) (*RestartContainerResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RestartContainer not implemented")
+}
+func (UnimplementedGuestAgentServer) PublishBudget(context.Context, *Budget) (*PublishBudgetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PublishBudget not implemented")
 }
 func (UnimplementedGuestAgentServer) mustEmbedUnimplementedGuestAgentServer() {}
 func (UnimplementedGuestAgentServer) testEmbeddedByValue()                    {}
@@ -574,6 +626,24 @@ func _GuestAgent_RestartContainer_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GuestAgent_PublishBudget_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Budget)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GuestAgentServer).PublishBudget(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GuestAgent_PublishBudget_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GuestAgentServer).PublishBudget(ctx, req.(*Budget))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // GuestAgent_ServiceDesc is the grpc.ServiceDesc for GuestAgent service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -596,6 +666,10 @@ var GuestAgent_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RestartContainer",
 			Handler:    _GuestAgent_RestartContainer_Handler,
+		},
+		{
+			MethodName: "PublishBudget",
+			Handler:    _GuestAgent_PublishBudget_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

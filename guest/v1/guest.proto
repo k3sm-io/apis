@@ -161,6 +161,26 @@ service GuestAgent {
   // Unimplemented), so the restart is never attempted against an agent that
   // cannot perform it.
   rpc RestartContainer(RestartContainerRequest) returns (RestartContainerResponse);
+
+  // PublishBudget hands the guest the latest node budget page, so a workload
+  // in a vm pod reads the same node-level data a native pod reads from the
+  // host. A host file shared over virtiofs is not coherent with the host's
+  // stores, so the page crosses as bytes instead. The host calls it on a level
+  // change and on a heartbeat, at most once per second; the guest writes the
+  // bytes into its own guest-local page and answers. The call is unary and
+  // carries a whole page, so a dropped call loses nothing a later one does not
+  // replace.
+  //
+  // The guest validates the size and the page's ABI major before writing and
+  // refuses a page that fails either with InvalidArgument, leaving its last
+  // good page in place. A refused or failed call never affects the pod's
+  // containers.
+  //
+  // An agent that implements this RPC advertises the capability token
+  // publish-budget in HealthResponse.capabilities. The host does not call it on
+  // a guest that does not advertise the token (an older initramfs answers
+  // Unimplemented).
+  rpc PublishBudget(Budget) returns (PublishBudgetResponse);
 }
 
 // ---------------------------------------------------------------------------
@@ -218,10 +238,14 @@ message HealthResponse {
   //                         guest_private to an agent that does not advertise it.
   //   sidecar-init          GuestContainer.sidecar (diagnostic).
   //   image-user            GuestContainer.image_user (diagnostic).
+  //   memory-limits         GuestContainer.memory_limit_bytes and
+  //                         memory_high_bytes (diagnostic).
   //
   // Tokens tied to GuestAgent RPCs:
   //   restart-container     GuestAgent.RestartContainer. A host MUST NOT call
   //                         RestartContainer on an agent that does not advertise it.
+  //   publish-budget        GuestAgent.PublishBudget. A host MUST NOT call
+  //                         PublishBudget on an agent that does not advertise it.
   //
   // These tokens are diagnosis: they let a host name the fix ("this guest
   // predates the field") before booting a spec the guest cannot honor. They are
@@ -370,6 +394,25 @@ message RestartContainerRequest {
 // returning, at which point the new instance is running and its started event
 // is on the ContainerEvents stream. Reserved for future detail.
 message RestartContainerResponse {
+  reserved 100 to 149;
+}
+
+// Budget is one node budget page, as the host's node agent wrote it.
+message Budget {
+  // page is the whole page file: exactly 4096 bytes, the budget page ABI's
+  // fixed size (k3sm.io/apis/budget/v1alpha1 PageSize). The guest refuses any
+  // other length, and a page whose header names an ABI major it does not
+  // speak, with InvalidArgument. The page carries node-level data only; the
+  // guest appends its own guest section in its local copy and never edits
+  // the host's fields.
+  bytes page = 1;
+
+  reserved 100 to 149;
+}
+
+// PublishBudgetResponse is empty: the page is accepted by the call returning.
+// Reserved for future detail.
+message PublishBudgetResponse {
   reserved 100 to 149;
 }
 
@@ -541,6 +584,27 @@ message GuestContainer {
   // that predates the field boots a spec that does not set it. A core field,
   // so it takes the next sequential number, not the headroom band.
   string image_user = 14;
+
+  // memory_limit_bytes is the container's memory limit, which the guest init
+  // writes to the container cgroup's memory.max. 0 means no limit, the
+  // container is then bounded only by the VM's memory. A container that
+  // exceeds it is killed by the guest kernel's cgroup OOM killer and reported
+  // as ContainerExited.oom_killed.
+  //
+  // memory_high_bytes is the container's memory.high, the throttle point below
+  // the limit. 0 means unset. The host chooses the value; the guest applies
+  // exactly what it is given and derives no default of its own. A guest
+  // refuses a spec where either value is negative, or where both are set and
+  // memory_high_bytes exceeds memory_limit_bytes.
+  //
+  // An agent that applies both advertises the memory-limits capability
+  // (HealthResponse.capabilities). A guest init that predates the fields
+  // refuses a spec that sets either, so a limit is never silently ignored, and
+  // the host emits them only when its pinned initramfs names a guest init that
+  // knows them. Absent from the proto-JSON spec when 0. Core fields, so they
+  // take the next sequential numbers, not the headroom band.
+  int64 memory_limit_bytes = 15;
+  int64 memory_high_bytes = 16;
 
   reserved 100 to 149;
 }
