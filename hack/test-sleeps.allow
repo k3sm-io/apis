@@ -1,0 +1,6 @@
+# Wall-clock waits and fixed ports in tests that predate hack/verify-test-sleeps.sh.
+# One entry per file and symbol: <path>:<symbol> <reason> <deadline YYYY-MM-DD>.
+# The seeded deadlines are staggered by package, one package a week, so they do
+# not all expire together. Fixing a test means deleting its entry and lowering
+# the count; adding an entry means raising it, in the same reviewed change.
+# count: 0
