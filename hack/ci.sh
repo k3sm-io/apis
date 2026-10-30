@@ -21,8 +21,9 @@ hack/verify-boilerplate.sh
 # toolchain) is a HARD ERROR: the old `[ -n "$(go list ./... 2>/dev/null)" ]` could
 # not tell the two apart, so it silently skipped vet/build/test and still reported
 # green — a gate that cannot even enumerate its packages must go RED.
-golist_err="$(mktemp)"
-trap 'rm -f "$golist_err"' EXIT
+ci_tmp="$(mktemp -d)"
+trap 'rm -rf "$ci_tmp"' EXIT
+golist_err="$ci_tmp/golist.err"
 if ! go_pkgs="$(CGO_ENABLED=$CGO go list ./... 2>"$golist_err")"; then
 	echo "FAIL: [apis] go list ./... failed — cannot enumerate packages; refusing to skip vet/build/test:" >&2
 	cat "$golist_err" >&2
@@ -32,7 +33,41 @@ fi
 if [ -n "$go_pkgs" ]; then
 	echo "==> [apis] go vet";   CGO_ENABLED=$CGO go vet ./...
 	echo "==> [apis] go build"; CGO_ENABLED=$CGO go build ./...
-	echo "==> [apis] go test";  CGO_ENABLED=$CGO go test ./...
+	# Every test runs under the race detector. The output is kept so that a red
+	# run ends with the failing tests, not only a long scroll.
+	echo "==> [apis] go test -race"
+	# Written to a file and then printed, not piped through tee, so the
+	# gate needs no tool beyond cat and grep and the exit status comes
+	# straight from go test, not a pipeline.
+	test_rc=0
+	CGO_ENABLED=$CGO go test -race ./... > "$ci_tmp/gotest.log" 2>&1 || test_rc=$?
+	cat "$ci_tmp/gotest.log"
+	if [ "$test_rc" -ne 0 ]; then
+		echo "==> [apis] go test FAILED; failing tests:" >&2
+		grep -E '^[[:space:]]*--- FAIL:|^FAIL[[:space:]]|^panic:' "$ci_tmp/gotest.log" >&2 || echo "    (no FAIL line; read the output above)" >&2
+		races="$(grep -c 'WARNING: DATA RACE' "$ci_tmp/gotest.log" || true)"
+		[ "$races" = 0 ] || echo "    data races reported: $races" >&2
+		exit 1
+	fi
+
+	# The race witness: a planted race that go test -race must catch. If the
+	# toolchain's race detector is not live, this goes red instead of the gate
+	# passing races silently.
+	echo "==> [apis] race witness"
+	if CGO_ENABLED=$CGO go test -race -count=1 ./hack/testdata/racewitness > "$ci_tmp/witness.log" 2>&1; then
+		echo "FAIL: [apis] the planted race in hack/testdata/racewitness passed; go test -race does not detect races" >&2
+		exit 1
+	fi
+	if ! grep -q 'WARNING: DATA RACE' "$ci_tmp/witness.log"; then
+		echo "FAIL: [apis] the race witness failed without a race report:" >&2
+		cat "$ci_tmp/witness.log" >&2
+		exit 1
+	fi
+
+	# Wall-clock waits and fixed ports in tests, outside hack/test-sleeps.allow.
+	echo "==> [apis] test-sleep lint"
+	hack/verify-test-sleeps.sh --self-test
+	hack/verify-test-sleeps.sh
 
 	# staticcheck, pinned to an exact version: a different staticcheck reports
 	# different findings, so an unpinned tool would make the verdict depend on the
