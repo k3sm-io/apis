@@ -923,6 +923,92 @@ func TestPageWriter(t *testing.T) {
 	publish(warn, 16, 4)
 }
 
+// TestResumeHeaderRewriteIsSeqGuarded checks that a reader loading the
+// header between any two of Resume's stores never sees an abiMinor and a
+// bodySize that disagree. Readers check the header before their seqlock
+// copy, so the guard is the store order, not seq: in a rollback (a page of
+// a newer minor, with a larger body, resumed by this one) the abiMinor
+// word goes first, and in an upgrade the bodySize word does. The reader
+// here knows a hypothetical minor 2 that appends four words, as a newer
+// SDK would.
+func TestResumeHeaderRewriteIsSeqGuarded(t *testing.T) {
+	t.Parallel()
+	le := binary.LittleEndian
+	bodyOf := map[uint16]uint32{
+		0: uint32(pageOffset("capacity.cpuPerformanceCores") - PageHeaderSize),
+		1: uint32(pageBodySize()),
+		2: uint32(pageBodySize() + 32),
+	}
+	minorOff, sizeOff := pageOffset("abiMinor"), pageOffset("bodySize")
+	cases := []struct {
+		name  string
+		minor uint16
+	}{
+		{"rollback from a newer minor", 2},
+		{"upgrade from minor 0", 0},
+		{"same minor", PageABIMinor},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			page := alignedPage()
+			w, err := NewPageWriter(page)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := w.Resume(); err != nil {
+				t.Fatal(err)
+			}
+			s := pageSampleSnapshot(PlatformDarwin)
+			if err := w.Publish(&s); err != nil {
+				t.Fatal(err)
+			}
+			// The page as a writer of tc.minor left it.
+			le.PutUint16(page[minorOff:], tc.minor)
+			le.PutUint32(page[sizeOff:], bodyOf[tc.minor])
+
+			load := pageWordLoader(page)
+			read := func() (uint16, uint32) {
+				var hdr [PageSeqOffset]byte
+				for off := 0; off < len(hdr); off += 8 {
+					le.PutUint64(hdr[off:], load(off))
+				}
+				return le.Uint16(hdr[minorOff:]), le.Uint32(hdr[sizeOff:])
+			}
+			w2, err := NewPageWriter(page)
+			if err != nil {
+				t.Fatal(err)
+			}
+			stores := 0
+			w2.headerStored = func() {
+				stores++
+				minor, body := read()
+				known, ok := bodyOf[minor]
+				if !ok {
+					t.Errorf("store %d: abiMinor %d is neither the old nor the new minor", stores, minor)
+					return
+				}
+				if body < known {
+					t.Errorf("store %d: abiMinor %d with bodySize %d, below its %d: a reader reports truncated",
+						stores, minor, body, known)
+				}
+			}
+			if err := w2.Resume(); err != nil {
+				t.Fatal(err)
+			}
+			if stores != PageSeqOffset/8 {
+				t.Fatalf("%d header stores observed, want %d: the check ran vacuously", stores, PageSeqOffset/8)
+			}
+			if minor, body := read(); minor != PageABIMinor || body != bodyOf[PageABIMinor] {
+				t.Fatalf("resumed header abiMinor %d bodySize %d, want %d %d", minor, body, PageABIMinor, bodyOf[PageABIMinor])
+			}
+			if seq := le.Uint64(page[PageSeqOffset:]); seq != 2 {
+				t.Fatalf("Resume moved seq to %d", seq)
+			}
+		})
+	}
+}
+
 // seqlockOutcome is what one seqlock read attempt saw.
 type seqlockOutcome int
 
