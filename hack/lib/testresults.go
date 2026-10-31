@@ -20,6 +20,8 @@ limitations under the License.
 // `go test -json` stream. It is a sanctioned copy of the shared k3sm quarantine
 // rules: every k3sm repository carries its own copy so a lone clone can gate
 // itself, and a change to the rules updates every copy in the same change.
+// Every copy runs the shared cases in hack/lib/testdata/quarantine-corpus (see its
+// README.md and DISAGREEMENTS.md); here TestQuarantineCorpusParity runs them.
 //
 // Usage:
 //
