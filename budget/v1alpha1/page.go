@@ -755,6 +755,9 @@ type PageWriter struct {
 	resumed bool
 	last    pageNotifyKey
 	hasLast bool
+	// headerStored, when set, runs after each header word Resume stores. It
+	// is a test seam for observing the header between stores; nil in use.
+	headerStored func()
 }
 
 // NewPageWriter returns a writer over page, the caller's mapping of the
@@ -782,15 +785,27 @@ func (w *PageWriter) word(off int) *uint64 { return (*uint64)(unsafe.Pointer(&w.
 // 0. An odd seq, left by a writer that died mid-write, stays odd until the
 // next Publish rewrites the body. Resume then writes this minor's header,
 // the magic last.
+//
+// Readers check the header before their seqlock copy and do not check it
+// again, so the header rewrite is not under the seqlock; instead the store
+// order keeps every intermediate header valid. A header is valid when its
+// bodySize is at least the body size of its abiMinor. The abiMinor word and
+// the bodySize word are separate stores, so the one that keeps the pair
+// valid goes first: bodySize when the body grows or stays (a newer minor
+// over an older one), abiMinor when it shrinks (an older minor over a
+// newer one, a rollback). Either intermediate pair then has a bodySize at
+// least that of its minor.
 func (w *PageWriter) Resume() error {
 	var hdr [PageSeqOffset]byte
 	for off := 0; off < len(hdr); off += 8 {
 		binary.LittleEndian.PutUint64(hdr[off:], atomic.LoadUint64(w.word(off)))
 	}
 	w.seq, w.epoch = 0, 0
+	shrinks := false
 	if string(hdr[:len(PageMagic)]) == PageMagic &&
 		binary.LittleEndian.Uint16(hdr[pageOffset("abiMajor"):]) == PageABIMajor &&
 		binary.LittleEndian.Uint32(hdr[pageOffset("headerSize"):]) == PageHeaderSize {
+		shrinks = int(binary.LittleEndian.Uint32(hdr[pageOffset("bodySize"):])) > pageBodySize()
 		w.seq = atomic.LoadUint64(w.word(PageSeqOffset))
 		w.epoch = atomic.LoadUint64(w.word(PageNotifyEpochOffset))
 		if w.seq%2 == 1 {
@@ -801,8 +816,23 @@ func (w *PageWriter) Resume() error {
 	if err := encodeHeader(fresh[:]); err != nil {
 		return err
 	}
-	for off := PageSeqOffset - 8; off >= 0; off -= 8 {
+	minorWord, sizeWord := pageOffset("abiMinor")&^7, pageOffset("bodySize")&^7
+	order := make([]int, 0, PageSeqOffset/8)
+	for off := PageSeqOffset - 8; off > 0; off -= 8 {
+		if off != minorWord && off != sizeWord {
+			order = append(order, off)
+		}
+	}
+	if shrinks {
+		order = append(order, minorWord, sizeWord)
+	} else {
+		order = append(order, sizeWord, minorWord)
+	}
+	for _, off := range append(order, 0) {
 		atomic.StoreUint64(w.word(off), binary.LittleEndian.Uint64(fresh[off:]))
+		if w.headerStored != nil {
+			w.headerStored()
+		}
 	}
 	w.resumed, w.hasLast = true, false
 	return nil
