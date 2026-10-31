@@ -67,7 +67,7 @@ if [ -n "$go_pkgs" ]; then
 	echo "==> [apis] go test -race (quarantine tier: $test_tier)"
 	CGO_ENABLED=$CGO go build -o "$ci_tmp/testresults" hack/lib/testresults.go
 	set +e
-	CGO_ENABLED=$CGO go test -race -json ./... 2>"$ci_tmp/gotest.err" \
+	CGO_ENABLED=$CGO go test -race -count=1 -json ./... 2>"$ci_tmp/gotest.err" \
 		| "$ci_tmp/testresults" -registry hack/quarantine.txt -tier "$test_tier" ${edited_pkgs[@]+"${edited_pkgs[@]}"}
 	st=("${PIPESTATUS[@]}")
 	set -e
