@@ -188,6 +188,24 @@ limitations under the License.
 // threshold or the generation). It wraps freely, and readers compare it
 // for inequality only.
 //
+// # Reading the header
+//
+// A reader checks the header before its seqlock copy of the body, and
+// seq does not guard the header. A header check that reports truncated
+// (a bodySize smaller than the reader's known minor needs) is therefore
+// retryable within a bound: the SDK readers re-read the header up to 64
+// times before they give up, because a writer resuming over a page of
+// another minor rewrites the header word by word while readers run.
+//
+// The writer's store order on resume keeps every intermediate header
+// readable. The abiMinor word is stored before bodySize when the body
+// shrinks (a rollback from a newer minor with a larger body), so a reader
+// never sees an old, larger minor with the new, smaller body. The bodySize
+// word is stored first when the body grows (an upgrade), so a reader never
+// sees the new minor with the old, smaller body. The magic word is stored
+// last, so a page whose header is mid-rewrite is not yet recognised as
+// this ABI at all.
+//
 // # Conformance
 //
 // The contract is platform-neutral so another producer, on any platform, can

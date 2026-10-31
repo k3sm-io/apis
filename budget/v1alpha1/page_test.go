@@ -923,21 +923,22 @@ func TestPageWriter(t *testing.T) {
 	publish(warn, 16, 4)
 }
 
-// TestResumeHeaderRewriteIsSeqGuarded checks that a reader loading the
+// TestResumeHeaderStoreOrder checks that a reader loading the
 // header between any two of Resume's stores never sees an abiMinor and a
 // bodySize that disagree. Readers check the header before their seqlock
 // copy, so the guard is the store order, not seq: in a rollback (a page of
 // a newer minor, with a larger body, resumed by this one) the abiMinor
 // word goes first, and in an upgrade the bodySize word does. The reader
-// here knows a hypothetical minor 2 that appends four words, as a newer
+// here knows hypothetical minors 2 and 3 that append more words, as a newer
 // SDK would.
-func TestResumeHeaderRewriteIsSeqGuarded(t *testing.T) {
+func TestResumeHeaderStoreOrder(t *testing.T) {
 	t.Parallel()
 	le := binary.LittleEndian
 	bodyOf := map[uint16]uint32{
 		0: uint32(pageOffset("capacity.cpuPerformanceCores") - PageHeaderSize),
 		1: uint32(pageBodySize()),
 		2: uint32(pageBodySize() + 32),
+		3: uint32(pageBodySize() + 96),
 	}
 	minorOff, sizeOff := pageOffset("abiMinor"), pageOffset("bodySize")
 	cases := []struct {
@@ -945,6 +946,7 @@ func TestResumeHeaderRewriteIsSeqGuarded(t *testing.T) {
 		minor uint16
 	}{
 		{"rollback from a newer minor", 2},
+		{"rollback from an unknown future minor with a larger body", 3},
 		{"upgrade from minor 0", 0},
 		{"same minor", PageABIMinor},
 	}
