@@ -1,12 +1,5 @@
 {
   "description": "An output event whose Output is a number is malformed: the stream should red, and the other results are still reported.",
-  "diverges": {
-    "python": {
-      "note": "results_from_go_json concatenates a non-string Output and raises TypeError; the CLI exits 1 with a traceback, not a report",
-      "tests": {},
-      "verdict": "crash"
-    }
-  },
   "edited": [],
   "tests": {
     "k3sm.io/apis/net/v1::TestA": "passed"
