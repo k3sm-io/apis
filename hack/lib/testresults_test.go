@@ -25,6 +25,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -230,5 +232,132 @@ func TestCommittedRegistryIsValid(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("committed registry: %v\n%s", err, out)
+	}
+}
+
+// corpusDir is the quarantine corpus shared with the other copy of these rules:
+// each case is a go test -json stream, a registry, and the expected verdicts.
+const corpusDir = "testdata/quarantine-corpus"
+
+// corpusCase is one case's expected.json.
+type corpusCase struct {
+	Description string            `json:"description"`
+	Tier        string            `json:"tier"`
+	Today       string            `json:"today"`
+	Edited      []string          `json:"edited"`
+	Tests       map[string]string `json:"tests"`
+	Verdict     string            `json:"verdict"`
+	// Diverges records, per implementation ("go" or "python"), a known
+	// disagreement listed in DISAGREEMENTS.md: that implementation's actual
+	// verdicts, which its test pins until the disagreement is resolved.
+	Diverges map[string]struct {
+		Verdict string            `json:"verdict"`
+		Tests   map[string]string `json:"tests"`
+		Note    string            `json:"note"`
+	} `json:"diverges"`
+}
+
+// resultLineRE matches a per-result report line: RED or QUARANTINED, the test
+// id (which may hold a space in a build ImportPath), then the reason.
+var resultLineRE = regexp.MustCompile(`^(RED|QUARANTINED) (.+?::\S*): (.*)$`)
+
+// corpusVerdicts reads the report: the per-test verdicts for every test named in
+// a result line. An expired entry's line is about the registry, not a result.
+func corpusVerdicts(out string) map[string]string {
+	got := map[string]string{}
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(l, "RED registry:") || strings.HasPrefix(l, "RED test stream:") {
+			continue
+		}
+		m := resultLineRE.FindStringSubmatch(l)
+		if m == nil || strings.HasPrefix(m[3], "quarantine expired") {
+			continue
+		}
+		v := "failed"
+		if m[1] == "QUARANTINED" {
+			v = "excused"
+		}
+		got[m[2]] = v
+	}
+	return got
+}
+
+// TestQuarantineCorpusParity runs every shared corpus case through this copy of
+// the rules and checks the overall verdict and each test's verdict.
+func TestQuarantineCorpusParity(t *testing.T) {
+	bin := binary(t)
+	dirs, err := os.ReadDir(corpusDir)
+	if err != nil {
+		t.Fatalf("read corpus: %v", err)
+	}
+	n := 0
+	for _, d := range dirs {
+		if !d.IsDir() {
+			continue
+		}
+		n++
+		dir := filepath.Join(corpusDir, d.Name())
+		t.Run(d.Name(), func(t *testing.T) {
+			raw, err := os.ReadFile(filepath.Join(dir, "expected.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var c corpusCase
+			if err := json.Unmarshal(raw, &c); err != nil {
+				t.Fatalf("expected.json: %v", err)
+			}
+			wantVerdict, wantTests := c.Verdict, c.Tests
+			if dv, ok := c.Diverges["go"]; ok {
+				t.Logf("known disagreement (DISAGREEMENTS.md): %s", dv.Note)
+				wantVerdict, wantTests = dv.Verdict, dv.Tests
+			}
+			stream, err := os.Open(filepath.Join(dir, "stream.jsonl"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stream.Close()
+			args := append([]string{"-registry", filepath.Join(dir, "quarantine.txt"), "-tier", c.Tier, "-today", c.Today}, c.Edited...)
+			cmd := exec.Command(bin, args...)
+			cmd.Stdin = stream
+			var out bytes.Buffer
+			cmd.Stdout, cmd.Stderr = &out, &out
+			code := 0
+			if err := cmd.Run(); err != nil {
+				var ee *exec.ExitError
+				if !errors.As(err, &ee) {
+					t.Fatalf("run: %v", err)
+				}
+				code = ee.ExitCode()
+			}
+			verdict := map[int]string{0: "green", 1: "red", 3: "excused"}[code]
+			if verdict != wantVerdict {
+				t.Errorf("verdict %q (exit %d), want %q\n%s", verdict, code, wantVerdict, out.String())
+			}
+			got := corpusVerdicts(out.String())
+			ids := make([]string, 0, len(wantTests))
+			for id := range wantTests {
+				ids = append(ids, id)
+			}
+			sort.Strings(ids)
+			for _, id := range ids {
+				g := got[id]
+				if g == "" {
+					g = "passed"
+				}
+				if g != wantTests[id] {
+					t.Errorf("%s: %s, want %s", id, g, wantTests[id])
+				}
+				delete(got, id)
+			}
+			for id, v := range got {
+				t.Errorf("%s: %s, but expected.json does not name it", id, v)
+			}
+			if t.Failed() {
+				t.Logf("report:\n%s", out.String())
+			}
+		})
+	}
+	if n < 7 {
+		t.Fatalf("corpus holds %d cases; at least 7 are required", n)
 	}
 }

@@ -1,0 +1,21 @@
+{
+  "description": "Two registry entries separated by a lone carriage return. The registry is LF-delimited (CRLF tolerated), so this is one malformed line: red.",
+  "diverges": {
+    "python": {
+      "note": "parse_registry uses str.splitlines, which also breaks on \\r, \\v, \\f, \\x1c-\\x1e, \\x85, \\u2028, \\u2029",
+      "tests": {
+        "k3sm.io/apis/net/v1::TestA": "passed",
+        "k3sm.io/apis/net/v1::TestB": "passed"
+      },
+      "verdict": "green"
+    }
+  },
+  "edited": [],
+  "tests": {
+    "k3sm.io/apis/net/v1::TestA": "passed",
+    "k3sm.io/apis/net/v1::TestB": "passed"
+  },
+  "tier": "affected",
+  "today": "2026-10-30",
+  "verdict": "red"
+}
