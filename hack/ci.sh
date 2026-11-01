@@ -30,7 +30,7 @@ if [ -n "$edited_file" ]; then
 fi
 
 CGO=0   # apis is pure Go
-STATICCHECK_VERSION=2026.2.1   # keep equal to the install pin in docs/GO-STANDARDS.md §Commit gates
+STATICCHECK_VERSION=2026.2.2   # keep equal to the install pin in docs/GO-STANDARDS.md §Commit gates
 GOVULNCHECK_VERSION=v1.9.0   # the govulncheck the gate requires; keep equal across the k3sm repos and the k3sm repository's hack/etcd-wrapper.sh
 
 echo "==> [apis] gofmt"
