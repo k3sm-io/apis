@@ -352,6 +352,15 @@ message GuestContainerStats {
   // live memory).
   uint64 memory_working_set_bytes = 3;
 
+  // memory_high_events is the container cgroup's memory.events `high` counter:
+  // the number of times usage went over memory.high and the kernel throttled
+  // the cgroup by forcing reclaim. It is monotonic over the container leaf's
+  // life, so a reader takes the difference of two samples to see throttling
+  // in that interval. 0 is a real reading (never throttled, or no memory.high
+  // set), not an unknown: a container whose memory.events cannot be read is
+  // omitted from the response like any other unreadable sample.
+  uint64 memory_high_events = 4;
+
   reserved 100 to 149;
 }
 
