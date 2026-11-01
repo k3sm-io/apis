@@ -12,7 +12,10 @@
 # tool_version_matches (the one version detection gen.sh and ci.sh both call).
 
 # Pinned toolchain versions (keep in lockstep with go.mod + buf.gen.yaml).
-BUF_VERSION=v1.73.0
+# buf v1.74.0 release asset buf-Darwin-arm64, sha256 from the release's sha256.txt:
+#   602d73e39a8835efd29a02ba6db6060ae86e4a0df19b8ac4403032b5deae3569
+# (gen.sh installs buf with `go install`, which the module checksum database verifies.)
+BUF_VERSION=v1.74.0
 PROTOC_GEN_GO_VERSION=v1.36.12
 PROTOC_GEN_GO_GRPC_VERSION=v1.6.2
 
@@ -26,7 +29,7 @@ export PATH
 # tool_version_matches <cmd> <pinned> — succeeds iff `<cmd> --version` exits 0 and
 # the LAST whitespace-separated field of its stdout equals <pinned>, with a leading
 # `v` stripped from both sides. That one normalization covers the three real
-# shapes: `protoc-gen-go v1.36.12`, `protoc-gen-go-grpc 1.6.2`, buf's bare `1.73.0`.
+# shapes: `protoc-gen-go v1.36.12`, `protoc-gen-go-grpc 1.6.2`, buf's bare `1.74.0`.
 # An absent command, a non-zero exit, or empty output is "no match" — the verdict
 # fails toward reinstall (gen.sh) or a WARN (ci.sh), never toward silent trust.
 # It is a version-STRING check, not a binary-identity or integrity check: a binary
