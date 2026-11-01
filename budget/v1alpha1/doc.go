@@ -203,10 +203,13 @@ limitations under the License.
 // never sees an old, larger minor with the new, smaller body. The bodySize
 // word is stored first when the body grows (an upgrade), so a reader never
 // sees the new minor with the old, smaller body. The magic word is stored
-// last. A page that is first created is not recognised as this ABI until
-// that store. On a same-major resume the magic word already holds, so the
-// page stays recognised while the other header words are rewritten, which
-// is why readers retry.
+// last. Over a fresh page, or one whose header is not valid for this ABI
+// major, the bodySize word goes first and the magic is not valid until
+// that last store, so a page that is first created is not recognised as
+// this ABI until then. Over a valid page the old magic is the same bytes
+// and stands throughout, so the page stays recognised while the other
+// header words are rewritten; a reader checks a mid-rewrite header as this
+// ABI and relies on the store order above, which is why readers retry.
 //
 // # Conformance
 //

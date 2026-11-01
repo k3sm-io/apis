@@ -923,32 +923,209 @@ func TestPageWriter(t *testing.T) {
 	publish(warn, 16, 4)
 }
 
-// TestResumeHeaderStoreOrder checks that a reader loading the
-// header between any two of Resume's stores never sees an abiMinor and a
-// bodySize that disagree. Readers check the header before their seqlock
-// copy, so the guard is the store order, not seq: in a rollback (a page of
-// a newer minor, with a larger body, resumed by this one) the abiMinor
-// word goes first, and in an upgrade the bodySize word does. The reader
-// here knows hypothetical minors 2 and 3 that append more words, as a newer
-// SDK would.
-func TestResumeHeaderStoreOrder(t *testing.T) {
-	t.Parallel()
-	le := binary.LittleEndian
-	bodyOf := map[uint16]uint32{
+// resumeBodyOf is the bodySize of each minor the resume tests' reader
+// knows: this package's minors 0 and 1, and hypothetical minors 2 and 3
+// that append more words, as a newer SDK would know them.
+func resumeBodyOf() map[uint16]uint32 {
+	return map[uint16]uint32{
 		0: uint32(pageOffset("capacity.cpuPerformanceCores") - PageHeaderSize),
 		1: uint32(pageBodySize()),
 		2: uint32(pageBodySize() + 32),
 		3: uint32(pageBodySize() + 96),
 	}
+}
+
+// resumeHeaderPadding is a header byte offset inside the bodySize word that
+// no field occupies. The tests poison it in the old header so the bodySize
+// word's store is observable even when bodySize itself does not change.
+const resumeHeaderPadding = 20
+
+// TestResumeHeaderStoreOrder checks the order of Resume's header stores
+// and that a reader loading the header between any two of them never sees
+// an abiMinor and a bodySize that disagree while the magic is valid.
+// Readers check the header before their seqlock copy, so the guard is the
+// store order, not seq: over a valid page of a newer minor with a larger
+// body (a rollback) the abiMinor word goes first; over any other valid page
+// (an upgrade, or a minor whose body is the same size) the bodySize word
+// does. Over a fresh or invalid page the bodySize word also goes first,
+// and the magic, stored last, keeps every intermediate header unrecognised.
+func TestResumeHeaderStoreOrder(t *testing.T) {
+	t.Parallel()
+	le := binary.LittleEndian
+	bodyOf := resumeBodyOf()
 	minorOff, sizeOff := pageOffset("abiMinor"), pageOffset("bodySize")
+	minorWord, sizeWord := minorOff&^7, sizeOff&^7
+	// published leaves a valid page of this minor, seq 2, then sets the
+	// old header's abiMinor and bodySize.
+	published := func(minor uint16, body uint32) func(t *testing.T, page []byte) {
+		return func(t *testing.T, page []byte) {
+			w, err := NewPageWriter(page)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := w.Resume(); err != nil {
+				t.Fatal(err)
+			}
+			s := pageSampleSnapshot(PlatformDarwin)
+			if err := w.Publish(&s); err != nil {
+				t.Fatal(err)
+			}
+			le.PutUint16(page[minorOff:], minor)
+			le.PutUint32(page[sizeOff:], body)
+		}
+	}
 	cases := []struct {
-		name  string
-		minor uint16
+		name string
+		// old leaves the page as the previous writer left it.
+		old func(t *testing.T, page []byte)
+		// sizeFirst is whether the bodySize word is stored before the
+		// abiMinor word.
+		sizeFirst bool
+		// minorStored is whether the abiMinor word's store is observable,
+		// that is the old word differs from this minor's.
+		minorStored bool
+		// oldValid is whether the old header is valid for this ABI major;
+		// when it is not, the magic must stay invalid until the last store.
+		oldValid bool
+		// wantSeq is seq after the resume; Resume never stores it.
+		wantSeq uint64
 	}{
-		{"rollback from a newer minor", 2},
-		{"rollback from an unknown future minor with a larger body", 3},
-		{"upgrade from minor 0", 0},
-		{"same minor", PageABIMinor},
+		{"rollback from a newer minor", published(2, bodyOf[2]), false, true, true, 2},
+		{"rollback from an unknown future minor with a larger body", published(3, bodyOf[3]), false, true, true, 2},
+		{"upgrade from minor 0", published(0, bodyOf[0]), true, true, true, 2},
+		{"same minor", published(PageABIMinor, bodyOf[PageABIMinor]), true, false, true, 2},
+		{"another minor with the same body size", published(0, bodyOf[PageABIMinor]), true, true, true, 2},
+		{"fresh zero page", func(*testing.T, []byte) {}, true, true, false, 0},
+		{"invalid old magic over a newer minor with a larger body", func(t *testing.T, page []byte) {
+			published(2, bodyOf[2])(t, page)
+			page[0] ^= 0xff
+		}, true, true, false, 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			page := alignedPage()
+			tc.old(t, page)
+			page[resumeHeaderPadding] = 0xa5
+
+			load := pageWordLoader(page)
+			readHeader := func() [PageSeqOffset]byte {
+				var hdr [PageSeqOffset]byte
+				for off := 0; off < len(hdr); off += 8 {
+					le.PutUint64(hdr[off:], load(off))
+				}
+				return hdr
+			}
+			prev := readHeader()
+			w, err := NewPageWriter(page)
+			if err != nil {
+				t.Fatal(err)
+			}
+			stores := 0
+			// storedAt is the store index at which each header word changed.
+			storedAt := map[int]int{}
+			w.headerStored = func() {
+				stores++
+				hdr := readHeader()
+				for off := 0; off < len(hdr); off += 8 {
+					if le.Uint64(hdr[off:]) != le.Uint64(prev[off:]) {
+						storedAt[off] = stores
+					}
+				}
+				prev = hdr
+				if string(hdr[:len(PageMagic)]) != PageMagic {
+					return
+				}
+				if !tc.oldValid && stores < PageSeqOffset/8 {
+					t.Errorf("store %d: the magic is valid before the last store over an invalid page", stores)
+				}
+				minor, body := le.Uint16(hdr[minorOff:]), le.Uint32(hdr[sizeOff:])
+				known, ok := bodyOf[minor]
+				if !ok {
+					t.Errorf("store %d: abiMinor %d is neither the old nor the new minor", stores, minor)
+					return
+				}
+				if body < known {
+					t.Errorf("store %d: abiMinor %d with bodySize %d, below its %d: a reader reports truncated",
+						stores, minor, body, known)
+				}
+			}
+			if err := w.Resume(); err != nil {
+				t.Fatal(err)
+			}
+			if stores != PageSeqOffset/8 {
+				t.Fatalf("%d header stores observed, want %d: the check ran vacuously", stores, PageSeqOffset/8)
+			}
+			sizeAt, minorAt := storedAt[sizeWord], storedAt[minorWord]
+			if sizeAt == 0 {
+				t.Fatal("the bodySize word's store was not observed")
+			}
+			if tc.minorStored {
+				if minorAt == 0 {
+					t.Fatal("the abiMinor word's store was not observed")
+				}
+				if got := sizeAt < minorAt; got != tc.sizeFirst {
+					t.Errorf("bodySize word stored at %d, abiMinor word at %d: sizeFirst %v, want %v",
+						sizeAt, minorAt, got, tc.sizeFirst)
+				}
+			}
+			if at, ok := storedAt[0]; ok && at != PageSeqOffset/8 {
+				t.Errorf("magic word stored at %d, want the last store %d", at, PageSeqOffset/8)
+			}
+			var fresh [PageSize]byte
+			if err := encodeHeader(fresh[:]); err != nil {
+				t.Fatal(err)
+			}
+			if hdr := readHeader(); !bytes.Equal(hdr[:], fresh[:PageSeqOffset]) {
+				t.Fatalf("resumed header %x, want %x", hdr, fresh[:PageSeqOffset])
+			}
+			if seq := le.Uint64(page[PageSeqOffset:]); seq != tc.wantSeq {
+				t.Fatalf("seq %d after Resume, want %d", seq, tc.wantSeq)
+			}
+		})
+	}
+}
+
+// resumePair is one header observation: the abiMinor and bodySize words.
+type resumePair struct {
+	minor uint16
+	body  uint32
+}
+
+// TestResumeHeaderConcurrentReaders runs Resume against readers on other
+// goroutines that load the header word by word in ascending order with
+// sync/atomic, as an SDK reader does, for a rollback and an upgrade. Each
+// iteration restores the old header while the readers are parked, then
+// resumes while they read.
+//
+// Every header word changes at most once per Resume, so two consecutive
+// identical reads are a header the page really held, and that header must
+// be the old pair, the one intermediate pair the store order produces, or
+// the new pair. A single read is not a snapshot: in a rollback the abiMinor
+// word is both stored and loaded before the bodySize word, so one read can
+// pair the old, larger minor with the new, smaller body. Such a read reports
+// truncated, which the reader retries; the test bounds single reads to that
+// one torn pair. In an upgrade every single read is in the set.
+func TestResumeHeaderConcurrentReaders(t *testing.T) {
+	t.Parallel()
+	le := binary.LittleEndian
+	bodyOf := resumeBodyOf()
+	minorOff, sizeOff := pageOffset("abiMinor"), pageOffset("bodySize")
+	const iterations, readers = 500, 3
+	cases := []struct {
+		name string
+		old  uint16
+		// allowed is the old pair, the one intermediate pair the store
+		// order produces, and the new pair.
+		allowed []resumePair
+		// torn is the pair a single read may also see, outside allowed.
+		torn []resumePair
+	}{
+		{"rollback from a newer minor", 2, []resumePair{
+			{2, bodyOf[2]}, {PageABIMinor, bodyOf[2]}, {PageABIMinor, bodyOf[PageABIMinor]}},
+			[]resumePair{{2, bodyOf[PageABIMinor]}}},
+		{"upgrade from minor 0", 0, []resumePair{
+			{0, bodyOf[0]}, {0, bodyOf[PageABIMinor]}, {PageABIMinor, bodyOf[PageABIMinor]}}, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -965,47 +1142,76 @@ func TestResumeHeaderStoreOrder(t *testing.T) {
 			if err := w.Publish(&s); err != nil {
 				t.Fatal(err)
 			}
-			// The page as a writer of tc.minor left it.
-			le.PutUint16(page[minorOff:], tc.minor)
-			le.PutUint32(page[sizeOff:], bodyOf[tc.minor])
-
 			load := pageWordLoader(page)
-			read := func() (uint16, uint32) {
+			word := func(off int) *uint64 { return (*uint64)(unsafe.Pointer(&page[off])) }
+			// The old header words, as the old minor's writer stored them.
+			var oldHdr [PageSeqOffset]byte
+			for off := 0; off < len(oldHdr); off += 8 {
+				le.PutUint64(oldHdr[off:], load(off))
+			}
+			le.PutUint16(oldHdr[minorOff:], tc.old)
+			le.PutUint32(oldHdr[sizeOff:], bodyOf[tc.old])
+			allowed, single := map[resumePair]bool{}, map[resumePair]bool{}
+			for _, p := range tc.allowed {
+				allowed[p], single[p] = true, true
+			}
+			for _, p := range tc.torn {
+				single[p] = true
+			}
+			read := func() resumePair {
 				var hdr [PageSeqOffset]byte
 				for off := 0; off < len(hdr); off += 8 {
 					le.PutUint64(hdr[off:], load(off))
 				}
-				return le.Uint16(hdr[minorOff:]), le.Uint32(hdr[sizeOff:])
+				return resumePair{le.Uint16(hdr[minorOff:]), le.Uint32(hdr[sizeOff:])}
 			}
-			w2, err := NewPageWriter(page)
-			if err != nil {
-				t.Fatal(err)
-			}
-			stores := 0
-			w2.headerStored = func() {
-				stores++
-				minor, body := read()
-				known, ok := bodyOf[minor]
-				if !ok {
-					t.Errorf("store %d: abiMinor %d is neither the old nor the new minor", stores, minor)
-					return
+			var badSingle, badStable, stable atomic.Int64
+			for i := 0; i < iterations; i++ {
+				// Readers are parked here: no load races the restore.
+				for off := 0; off < len(oldHdr); off += 8 {
+					atomic.StoreUint64(word(off), le.Uint64(oldHdr[off:]))
 				}
-				if body < known {
-					t.Errorf("store %d: abiMinor %d with bodySize %d, below its %d: a reader reports truncated",
-						stores, minor, body, known)
+				var done atomic.Bool
+				var wg sync.WaitGroup
+				for r := 0; r < readers; r++ {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						for {
+							last := done.Load()
+							p, q := read(), read()
+							if !single[p] || !single[q] {
+								badSingle.Add(1)
+							}
+							if p == q {
+								stable.Add(1)
+								if !allowed[p] {
+									badStable.Add(1)
+								}
+							}
+							if last {
+								return
+							}
+						}
+					}()
 				}
+				if err := w.Resume(); err != nil {
+					t.Fatal(err)
+				}
+				done.Store(true)
+				wg.Wait()
 			}
-			if err := w2.Resume(); err != nil {
-				t.Fatal(err)
+			if n := badStable.Load(); n != 0 {
+				t.Errorf("%d stable reads outside the old to new set", n)
 			}
-			if stores != PageSeqOffset/8 {
-				t.Fatalf("%d header stores observed, want %d: the check ran vacuously", stores, PageSeqOffset/8)
+			if n := badSingle.Load(); n != 0 {
+				t.Errorf("%d single reads outside the old to new set and its torn pair", n)
 			}
-			if minor, body := read(); minor != PageABIMinor || body != bodyOf[PageABIMinor] {
-				t.Fatalf("resumed header abiMinor %d bodySize %d, want %d %d", minor, body, PageABIMinor, bodyOf[PageABIMinor])
+			if stable.Load() == 0 {
+				t.Fatal("no stable read: the check ran vacuously")
 			}
-			if seq := le.Uint64(page[PageSeqOffset:]); seq != 2 {
-				t.Fatalf("Resume moved seq to %d", seq)
+			if p := read(); p != (resumePair{PageABIMinor, bodyOf[PageABIMinor]}) {
+				t.Fatalf("resumed header %+v, want minor %d bodySize %d", p, PageABIMinor, bodyOf[PageABIMinor])
 			}
 		})
 	}
