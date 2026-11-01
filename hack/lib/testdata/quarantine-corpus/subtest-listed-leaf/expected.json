@@ -1,5 +1,5 @@
 {
-  "description": "The leaf is listed and fails with its signature; its unlisted parent fails only through it, so both are excused.",
+  "description": "The leaf is listed and fails with its signature; its unlisted parent writes nothing but the harness's framing, so it fails only through the leaf and both are excused.",
   "edited": [],
   "tests": {
     "k3sm.io/apis/net/v1::TestParent": "excused",
