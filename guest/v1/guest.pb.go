@@ -634,8 +634,16 @@ type GuestContainerStats struct {
 	// uses, not memory.current alone (page cache would otherwise be charged as
 	// live memory).
 	MemoryWorkingSetBytes uint64 `protobuf:"varint,3,opt,name=memory_working_set_bytes,json=memoryWorkingSetBytes,proto3" json:"memory_working_set_bytes,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// memory_high_events is the container cgroup's memory.events `high` counter:
+	// the number of times usage went over memory.high and the kernel throttled
+	// the cgroup by forcing reclaim. It is monotonic over the container leaf's
+	// life, so a reader takes the difference of two samples to see throttling
+	// in that interval. 0 is a real reading (never throttled, or no memory.high
+	// set), not an unknown: a container whose memory.events cannot be read is
+	// omitted from the response like any other unreadable sample.
+	MemoryHighEvents uint64 `protobuf:"varint,4,opt,name=memory_high_events,json=memoryHighEvents,proto3" json:"memory_high_events,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *GuestContainerStats) Reset() {
@@ -685,6 +693,13 @@ func (x *GuestContainerStats) GetCpuUsageUsec() uint64 {
 func (x *GuestContainerStats) GetMemoryWorkingSetBytes() uint64 {
 	if x != nil {
 		return x.MemoryWorkingSetBytes
+	}
+	return 0
+}
+
+func (x *GuestContainerStats) GetMemoryHighEvents() uint64 {
+	if x != nil {
+		return x.MemoryHighEvents
 	}
 	return 0
 }
@@ -1784,11 +1799,12 @@ const file_guest_v1_guest_proto_rawDesc = "" +
 	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12B\n" +
 	"\n" +
 	"containers\x18\x02 \x03(\v2\".k3sm.guest.v1.GuestContainerStatsR\n" +
-	"containersJ\x05\bd\x10\x96\x01\"\x99\x01\n" +
+	"containersJ\x05\bd\x10\x96\x01\"\xc7\x01\n" +
 	"\x13GuestContainerStats\x12\x1c\n" +
 	"\tcontainer\x18\x01 \x01(\tR\tcontainer\x12$\n" +
 	"\x0ecpu_usage_usec\x18\x02 \x01(\x04R\fcpuUsageUsec\x127\n" +
-	"\x18memory_working_set_bytes\x18\x03 \x01(\x04R\x15memoryWorkingSetBytesJ\x05\bd\x10\x96\x01\"9\n" +
+	"\x18memory_working_set_bytes\x18\x03 \x01(\x04R\x15memoryWorkingSetBytes\x12,\n" +
+	"\x12memory_high_events\x18\x04 \x01(\x04R\x10memoryHighEventsJ\x05\bd\x10\x96\x01\"9\n" +
 	"\vStopRequest\x12#\n" +
 	"\rgrace_seconds\x18\x01 \x01(\x05R\fgraceSecondsJ\x05\bd\x10\x96\x01\"\x15\n" +
 	"\fStopResponseJ\x05\bd\x10\x96\x01\"z\n" +
