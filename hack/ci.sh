@@ -30,7 +30,7 @@ if [ -n "$edited_file" ]; then
 fi
 
 CGO=0   # apis is pure Go
-STATICCHECK_VERSION=2026.2.1   # keep equal to the install pin in docs/GO-STANDARDS.md §Commit gates
+STATICCHECK_VERSION=2026.2.2   # keep equal to the install pin in docs/GO-STANDARDS.md §Commit gates
 GOVULNCHECK_VERSION=v1.9.0   # the govulncheck the gate requires; keep equal across the k3sm repos and the k3sm repository's hack/etcd-wrapper.sh
 
 echo "==> [apis] gofmt"
@@ -115,13 +115,20 @@ if [ -n "$go_pkgs" ]; then
 	# Suppress a finding with `//lint:ignore <Check> <reason>` on the preceding
 	# line. (`//nolint` is golangci-lint's spelling and is inert here.)
 	#
-	# Every candidate is probed and the first whose version matches exactly wins, so
-	# a stale copy earlier on PATH does not shadow a correct one in GOPATH/bin. No
-	# match is RED, never a skip.
+	# Candidates, in order: $(go env GOPATH)/bin/staticcheck-<pin> (the versioned
+	# name, so two pins can be installed side by side while the repos switch), then
+	# staticcheck on PATH, then $(go env GOPATH)/bin/staticcheck. Every candidate is
+	# probed and the first whose version matches exactly wins, so a stale copy does
+	# not shadow a correct one. No match is RED, never a skip.
 	sc=""; sc_seen=""
-	sc_cands="$(command -v staticcheck 2>/dev/null || true)"
-	sc_gopath_bin="$(go env GOPATH)/bin/staticcheck"
-	if [ -x "$sc_gopath_bin" ] && [ "$sc_gopath_bin" != "$sc_cands" ]; then sc_cands="${sc_cands}"$'\n'"${sc_gopath_bin}"; fi
+	sc_gopath="$(go env GOPATH)"
+	sc_hint="go install honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}; or, beside another pin: GOBIN=<tmp> go install honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION} && mv <tmp>/staticcheck ${sc_gopath}/bin/staticcheck-${STATICCHECK_VERSION}"
+	sc_cands=""
+	for c in "${sc_gopath}/bin/staticcheck-${STATICCHECK_VERSION}" "$(command -v staticcheck 2>/dev/null || true)" "${sc_gopath}/bin/staticcheck"; do
+		[ -n "$c" ] && [ -x "$c" ] || continue
+		case $'\n'"${sc_cands}"$'\n' in *$'\n'"${c}"$'\n'*) continue ;; esac
+		sc_cands="${sc_cands:+${sc_cands}$'\n'}${c}"
+	done
 	while IFS= read -r c; do
 		[ -n "$c" ] || continue
 		sc_ver="$("$c" -version 2>/dev/null | awk '{print $2}' || true)"
@@ -130,11 +137,11 @@ if [ -n "$go_pkgs" ]; then
 	done <<< "$sc_cands"
 	if [ -z "$sc" ]; then
 		if [ -z "$sc_seen" ]; then
-			echo "==> [apis] staticcheck: not installed; the gate needs ${STATICCHECK_VERSION} (go install honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION})" >&2
+			echo "==> [apis] staticcheck: not installed; the gate needs ${STATICCHECK_VERSION} (${sc_hint})" >&2
 		else
 			echo "==> [apis] staticcheck: no candidate matches; the gate needs ${STATICCHECK_VERSION}:" >&2
 			printf '%s' "$sc_seen" >&2
-			echo "    (go install honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION})" >&2
+			echo "    (${sc_hint})" >&2
 		fi
 		exit 1
 	fi
