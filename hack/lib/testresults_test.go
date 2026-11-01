@@ -128,6 +128,29 @@ var (
 		ev("pass", pkg, "TestParent/a", ""),
 		ev("fail", pkg, "TestParent", ""),
 		ev("fail", pkg, "", ""))
+	parentOwnFail = stream(
+		ev("run", pkg, "TestParent", ""),
+		ev("output", pkg, "TestParent", "=== RUN   TestParent\n"),
+		ev("output", pkg, "TestParent", "    x_test.go:12: parent setup broke\n"),
+		ev("run", pkg, "TestParent/a", ""),
+		ev("output", pkg, "TestParent/a", "=== RUN   TestParent/a\n"),
+		ev("output", pkg, "TestParent/a", sig+"\n"),
+		ev("output", pkg, "TestParent/a", "    --- FAIL: TestParent/a (0.00s)\n"),
+		ev("fail", pkg, "TestParent/a", ""),
+		ev("output", pkg, "TestParent", "--- FAIL: TestParent (0.01s)\n"),
+		ev("fail", pkg, "TestParent", ""),
+		ev("fail", pkg, "", ""))
+	parentFramingOnly = stream(
+		ev("run", pkg, "TestParent", ""),
+		ev("output", pkg, "TestParent", "=== RUN   TestParent\n"),
+		ev("run", pkg, "TestParent/a", ""),
+		ev("output", pkg, "TestParent/a", "=== RUN   TestParent/a\n"),
+		ev("output", pkg, "TestParent/a", sig+"\n"),
+		ev("output", pkg, "TestParent/a", "    --- FAIL: TestParent/a (0.00s)\n"),
+		ev("fail", pkg, "TestParent/a", ""),
+		ev("output", pkg, "TestParent", "--- FAIL: TestParent (0.01s)\n"),
+		ev("fail", pkg, "TestParent", ""),
+		ev("fail", pkg, "", ""))
 	pkgFail = stream(
 		ev("output", pkg, "", "panic: init\n"),
 		ev("fail", pkg, "", ""))
@@ -177,6 +200,20 @@ func TestTestResults(t *testing.T) {
 		{name: "a listed parent covers no subtest", registry: entryFor(pkg + "::TestParent"), input: subFlake, args: []string{"-tier", "fast"}, want: 1, wantOut: "RED " + pkg + "::TestParent/a: failed"},
 		{name: "a parent failing with no failing subtest reds", registry: entryFor(pkg + "::TestParent/a"), input: parentOnly, args: []string{"-tier", "fast"}, want: 1, wantOut: "RED " + pkg + "::TestParent: failed"},
 		{name: "parent rule does not apply in the full tier", registry: entryFor(pkg + "::TestParent/a"), input: subFlake, args: []string{"-tier", "full"}, want: 1},
+		{name: "an unlisted parent with its own failure line reds", registry: entryFor(pkg + "::TestParent/a"), input: parentOwnFail, args: []string{"-tier", "fast"}, want: 1, wantOut: "RED " + pkg + "::TestParent: failed"},
+		{name: "an unlisted parent with only harness framing is excused", registry: entryFor(pkg + "::TestParent/a"), input: parentFramingOnly, args: []string{"-tier", "fast"}, want: 3, wantOut: "failed only through quarantined subtests"},
+		{name: "a parent whose output repeats its subtest's lines is excused", registry: entryFor(pkg + "::TestParent/a"), input: strings.Replace(parentFramingOnly,
+			ev("output", pkg, "TestParent", "--- FAIL: TestParent (0.01s)\n"),
+			ev("output", pkg, "TestParent", sig+"\n")+"\n"+ev("output", pkg, "TestParent", "--- FAIL: TestParent (0.01s)\n"), 1), args: []string{"-tier", "fast"}, want: 3},
+		{name: "an unlisted parent with a race report of its own reds", registry: entryFor(pkg + "::TestParent/a"), input: strings.Replace(parentFramingOnly,
+			ev("output", pkg, "TestParent", "--- FAIL: TestParent (0.01s)\n"),
+			ev("output", pkg, "TestParent", "WARNING: DATA RACE\n")+"\n"+ev("output", pkg, "TestParent", "--- FAIL: TestParent (0.01s)\n"), 1), args: []string{"-tier", "fast"}, want: 1, wantOut: "race or sanitizer report"},
+		{name: "a sig naming a different test is accepted", registry: strings.Replace(entryFor(pkg+"::TestX"), sig, "--- FAIL: TestOtherThing", 1), input: green, args: []string{"-tier", "fast"}, want: 0},
+		{name: "a sig equal to the test id is refused", registry: strings.Replace(entryFor(pkg+"::TestFlake"), sig, pkg+"::TestFlake", 1), input: green, args: []string{"-tier", "fast"}, want: 1, wantOut: "harness"},
+		{name: "a sig inside the test id is refused", registry: strings.Replace(entryFor(pkg+"::TestFlakeOverLoopback"), sig, "TestFlakeOverLoop", 1), input: green, args: []string{"-tier", "fast"}, want: 1, wantOut: "harness"},
+		{name: "a sig that is the RUN line is refused", registry: strings.Replace(entryFor(pkg+"::TestFlake"), sig, "=== RUN   TestFlake", 1), input: green, args: []string{"-tier", "fast"}, want: 1, wantOut: "harness"},
+		{name: "a sig that is the FAIL line is refused", registry: strings.Replace(entryFor(pkg+"::TestFlake"), sig, "--- FAIL: TestFlake (0.01s)", 1), input: green, args: []string{"-tier", "fast"}, want: 1, wantOut: "harness"},
+		{name: "a sig that is a subtest FAIL line is refused", registry: strings.Replace(entryFor(pkg+"::TestParent/a"), sig, "--- FAIL: TestParent/a", 1), input: green, args: []string{"-tier", "fast"}, want: 1, wantOut: "harness"},
 		{name: "package failure outside a test reds", input: pkgFail, args: []string{"-tier", "fast"}, want: 1, wantOut: pkg + "::(package)"},
 		{name: "a build failure reds", input: buildFail, args: []string{"-tier", "fast"}, want: 1, wantOut: "::(build)"},
 		{name: "a test with no result reds", input: noResult, args: []string{"-tier", "fast"}, want: 1, wantOut: "no result"},
@@ -186,34 +223,75 @@ func TestTestResults(t *testing.T) {
 		{name: "an unknown tier is a usage error", input: green, args: []string{"-tier", "medium"}, want: 2},
 	}
 	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) { runCase(t, bin, tc.registry, tc.input, tc.args, tc.want, tc.wantOut) })
+	}
+}
+
+// TestQuarantineNeverExcusesAPackageRace pins that a race or sanitizer report in a
+// package's output outside any test reds, whatever the registry excuses.
+func TestQuarantineNeverExcusesAPackageRace(t *testing.T) {
+	bin := binary(t)
+	pkgRace := func(pkgAction string) string {
+		return stream(
+			ev("run", pkg, "TestFlake", ""),
+			ev("output", pkg, "TestFlake", "    x_test.go:9: "+sig+"\n"),
+			ev("output", pkg, "TestFlake", "--- FAIL: TestFlake (0.01s)\n"),
+			ev("fail", pkg, "TestFlake", ""),
+			ev("output", pkg, "", "==================\nWARNING: DATA RACE\nWrite at 0x00c000 by goroutine 7:\n"),
+			ev("output", pkg, "", "FAIL\t"+pkg+"\t0.1s\n"),
+			ev(pkgAction, pkg, "", ""))
+	}
+	cases := []struct {
+		name, registry, input string
+		want                  int
+		wantOut               string
+	}{
+		{name: "a package race beside a quarantined failure reds", registry: entryFor(pkg + "::TestFlake"), input: pkgRace("fail"), want: 1, wantOut: pkg + "::(package)"},
+		{name: "the red names the race", registry: entryFor(pkg + "::TestFlake"), input: pkgRace("fail"), want: 1, wantOut: "race or sanitizer report"},
+		{name: "a package race reds even when the package passes", registry: entryFor(pkg + "::TestFlake"), input: pkgRace("pass"), want: 1, wantOut: pkg + "::(package)"},
+		{name: "a sanitizer report in package output reds", registry: entryFor(pkg + "::TestFlake"), input: strings.Replace(pkgRace("fail"), "WARNING: DATA RACE", "ERROR: AddressSanitizer: heap-use-after-free", 1), want: 1, wantOut: pkg + "::(package)"},
+		{name: "a package race with every test passing reds", registry: "", input: stream(
+			ev("run", pkg, "TestOK", ""),
+			ev("pass", pkg, "TestOK", ""),
+			ev("output", pkg, "", "WARNING: DATA RACE\n"),
+			ev("pass", pkg, "", "")), want: 1, wantOut: pkg + "::(package)"},
+	}
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			reg := filepath.Join(dir, "quarantine.txt")
-			if tc.registry != "-" {
-				if err := os.WriteFile(reg, []byte(tc.registry), 0o600); err != nil {
-					t.Fatal(err)
-				}
-			}
-			args := append([]string{"-registry", reg, "-today", today}, tc.args...)
-			cmd := exec.Command(bin, args...)
-			cmd.Stdin = strings.NewReader(tc.input)
-			var out bytes.Buffer
-			cmd.Stdout, cmd.Stderr = &out, &out
-			got := 0
-			if err := cmd.Run(); err != nil {
-				var ee *exec.ExitError
-				if !errors.As(err, &ee) {
-					t.Fatalf("run: %v", err)
-				}
-				got = ee.ExitCode()
-			}
-			if got != tc.want {
-				t.Fatalf("exit %d, want %d\n%s", got, tc.want, out.String())
-			}
-			if tc.wantOut != "" && !strings.Contains(out.String(), tc.wantOut) {
-				t.Fatalf("output lacks %q\n%s", tc.wantOut, out.String())
-			}
+			runCase(t, bin, tc.registry, tc.input, []string{"-tier", "fast"}, tc.want, tc.wantOut)
 		})
+	}
+}
+
+// runCase writes the registry ("-" writes none), runs the binary over input, and
+// checks the exit status and an output substring.
+func runCase(t *testing.T, bin, registry, input string, extra []string, want int, wantOut string) {
+	t.Helper()
+	dir := t.TempDir()
+	reg := filepath.Join(dir, "quarantine.txt")
+	if registry != "-" {
+		if err := os.WriteFile(reg, []byte(registry), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	args := append([]string{"-registry", reg, "-today", today}, extra...)
+	cmd := exec.Command(bin, args...)
+	cmd.Stdin = strings.NewReader(input)
+	var out bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &out
+	got := 0
+	if err := cmd.Run(); err != nil {
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) {
+			t.Fatalf("run: %v", err)
+		}
+		got = ee.ExitCode()
+	}
+	if got != want {
+		t.Fatalf("exit %d, want %d\n%s", got, want, out.String())
+	}
+	if wantOut != "" && !strings.Contains(out.String(), wantOut) {
+		t.Fatalf("output lacks %q\n%s", wantOut, out.String())
 	}
 }
 
