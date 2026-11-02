@@ -115,36 +115,11 @@ if [ -n "$go_pkgs" ]; then
 	# Suppress a finding with `//lint:ignore <Check> <reason>` on the preceding
 	# line. (`//nolint` is golangci-lint's spelling and is inert here.)
 	#
-	# Candidates, in order: $(go env GOPATH)/bin/staticcheck-<pin> (the versioned
-	# name, so two pins can be installed side by side while the repos switch), then
-	# staticcheck on PATH, then $(go env GOPATH)/bin/staticcheck. Every candidate is
-	# probed and the first whose version matches exactly wins, so a stale copy does
-	# not shadow a correct one. No match is RED, never a skip.
-	sc=""; sc_seen=""
-	sc_gopath="$(go env GOPATH)"
-	sc_hint="go install honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}; or, beside another pin: GOBIN=<tmp> go install honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION} && mv <tmp>/staticcheck ${sc_gopath}/bin/staticcheck-${STATICCHECK_VERSION}"
-	sc_cands=""
-	for c in "${sc_gopath}/bin/staticcheck-${STATICCHECK_VERSION}" "$(command -v staticcheck 2>/dev/null || true)" "${sc_gopath}/bin/staticcheck"; do
-		[ -n "$c" ] && [ -x "$c" ] || continue
-		case $'\n'"${sc_cands}"$'\n' in *$'\n'"${c}"$'\n'*) continue ;; esac
-		sc_cands="${sc_cands:+${sc_cands}$'\n'}${c}"
-	done
-	while IFS= read -r c; do
-		[ -n "$c" ] || continue
-		sc_ver="$("$c" -version 2>/dev/null | awk '{print $2}' || true)"
-		sc_seen="${sc_seen}  ${c}: ${sc_ver:-unknown}"$'\n'
-		if [ -z "$sc" ] && [ "$sc_ver" = "$STATICCHECK_VERSION" ]; then sc="$c"; fi
-	done <<< "$sc_cands"
-	if [ -z "$sc" ]; then
-		if [ -z "$sc_seen" ]; then
-			echo "==> [apis] staticcheck: not installed; the gate needs ${STATICCHECK_VERSION} (${sc_hint})" >&2
-		else
-			echo "==> [apis] staticcheck: no candidate matches; the gate needs ${STATICCHECK_VERSION}:" >&2
-			printf '%s' "$sc_seen" >&2
-			echo "    (${sc_hint})" >&2
-		fi
-		exit 1
-	fi
+	# Candidate order and the named red live in hack/lib/staticcheck-pick.sh, where
+	# hack/lib/staticcheck_pick_test.go pins them.
+	# shellcheck source=lib/staticcheck-pick.sh
+	source hack/lib/staticcheck-pick.sh
+	pick_staticcheck || exit 1
 	echo "==> [apis] staticcheck ${STATICCHECK_VERSION} (non-test)"; CGO_ENABLED=$CGO "$sc" -tests=false ./...
 else
 	echo "==> [apis] (no Go packages yet — skipping vet/build/test)"
