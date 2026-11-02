@@ -197,16 +197,29 @@ limitations under the License.
 // times before they give up, because a writer resuming over a page of
 // another minor rewrites the header word by word while readers run.
 //
-// The writer's store order on resume keeps every intermediate header
-// readable. The abiMinor word is stored before bodySize when the body
-// shrinks (a rollback from a newer minor with a larger body), so a reader
-// never sees an old, larger minor with the new, smaller body. The bodySize
-// word is stored first when the body grows (an upgrade), so a reader never
-// sees the new minor with the old, smaller body. The magic word is stored
-// last. A page that is first created is not recognised as this ABI until
-// that store. On a same-major resume the magic word already holds, so the
-// page stays recognised while the other header words are rewritten, which
-// is why readers retry.
+// The writer's store order on resume keeps every header the page holds
+// between two stores valid: its bodySize is at least the body size of its
+// abiMinor. The abiMinor word is stored before the bodySize word when the
+// body shrinks (a rollback from a newer minor with a larger body), and the
+// bodySize word first when the body grows or stays (an upgrade). The
+// abiMinor and bodySize words are two loads for a reader as they are two
+// stores for the writer, so one read is not a snapshot of the header:
+//
+//   - A single read during a rollback can see the old, larger minor with
+//     the new, smaller body, because the reader loads the abiMinor word
+//     before the bodySize word, the same order the writer stores them in.
+//     That read reports truncated, and the reader retries it.
+//   - Each header word changes at most once in a resume, so two identical
+//     consecutive reads are a header the page really held: the old pair,
+//     the one intermediate pair the store order produces, or the new pair.
+//
+// The magic word is stored last. Over a fresh page, or one whose header is
+// not valid for this ABI major, the bodySize word goes first and the magic
+// is not valid until that last store, so a page that is first created is
+// not recognised as this ABI until then. Over a valid page the
+// old magic is the same bytes and stands throughout, so a reader checks a
+// mid-rewrite header as this ABI and relies on the store order and the
+// retry above.
 //
 // # Conformance
 //

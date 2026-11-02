@@ -788,13 +788,19 @@ func (w *PageWriter) word(off int) *uint64 { return (*uint64)(unsafe.Pointer(&w.
 //
 // Readers check the header before their seqlock copy and do not check it
 // again, so the header rewrite is not under the seqlock; instead the store
-// order keeps every intermediate header valid. A header is valid when its
-// bodySize is at least the body size of its abiMinor. The abiMinor word and
-// the bodySize word are separate stores, so the one that keeps the pair
-// valid goes first: bodySize when the body grows or stays (a newer minor
-// over an older one), abiMinor when it shrinks (an older minor over a
-// newer one, a rollback). Either intermediate pair then has a bodySize at
-// least that of its minor.
+// order keeps every header the page holds between two stores valid. A
+// header is valid when its bodySize is at least the body size of its
+// abiMinor. The abiMinor word and the bodySize word are separate stores,
+// so the one that keeps the pair valid goes first: bodySize when the body
+// grows or stays (a newer minor over an older one), abiMinor when it
+// shrinks (an older minor over a newer one, a rollback). Either
+// intermediate pair then has a bodySize at least that of its minor.
+//
+// A reader loads the two words separately too, so a single read during a
+// rollback can see the old, larger minor with the new, smaller body; it
+// reports truncated and the reader retries. Two identical consecutive reads
+// only ever see the old pair, the intermediate pair, or the new pair, since
+// each header word changes at most once in a resume.
 func (w *PageWriter) Resume() error {
 	var hdr [PageSeqOffset]byte
 	for off := 0; off < len(hdr); off += 8 {
