@@ -213,13 +213,20 @@ limitations under the License.
 //     consecutive reads are a header the page really held: the old pair,
 //     the one intermediate pair the store order produces, or the new pair.
 //
-// The magic word is stored last. Over a fresh page, or one whose header is
-// not valid for this ABI major, the bodySize word goes first and the magic
-// is not valid until that last store, so a page that is first created is
-// not recognised as this ABI until then. Over a valid page the
-// old magic is the same bytes and stands throughout, so a reader checks a
-// mid-rewrite header as this ABI and relies on the store order and the
-// retry above.
+// A reader recognises a header as this ABI by the magic (word 0) and by
+// abiMajor and headerSize, which share word 8 with abiMinor. The magic
+// word is stored last. Over a fresh page, or one whose header is not valid
+// for this ABI major, the bodySize word goes first. When the old magic is
+// not valid, the header is not recognised until that last store, so a page
+// that is first created is not recognised as this ABI until then. When the
+// old magic is intact but the old abiMajor or headerSize is another value,
+// the magic stays valid throughout and word 8 is the guard: it holds the
+// old abiMajor and headerSize until its own store, which comes after the
+// bodySize word, so the first header recognised already pairs this minor
+// with its body size. Over a valid page the old magic and word 8's abiMajor
+// and headerSize are the same values and stand throughout, so a reader
+// checks a mid-rewrite header as this ABI and relies on the store order
+// and the retry above.
 //
 // # Conformance
 //
