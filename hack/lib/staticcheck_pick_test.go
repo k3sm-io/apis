@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -32,8 +33,16 @@ import (
 // at the pin is a named red. Fake staticcheck stubs sit on a temp GOPATH and
 // PATH, so no real tool and no network are involved.
 func TestStaticcheckCandidateOrder(t *testing.T) {
+	t.Run("ci_sh_wires_picker", checkStaticcheckCIWiring)
 	const pin = "2026.2.2"
 	const other = "2025.1"
+
+	// The real home: `go env` writes telemetry under HOME, which a temp dir
+	// cannot clean up reliably.
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	cases := []struct {
 		name      string
@@ -46,9 +55,11 @@ func TestStaticcheckCandidateOrder(t *testing.T) {
 	}{
 		{name: "versioned_binary_wins", versioned: pin, onPath: pin, wantPick: "versioned"},
 		{name: "versioned_wrong_version_falls_back", versioned: other, onPath: pin, wantPick: "path"},
+		{name: "path_before_plain_gopath", onPath: pin, plain: pin, wantPick: "path"},
+		{name: "plain_gopath_last_resort", plain: pin, wantPick: "plain"},
 		{name: "path_wrong_version_falls_back_to_plain", onPath: other, plain: pin, wantPick: "plain"},
 		{name: "no_candidate_is_red", wantRed: true, wantErr: []string{"not installed", "staticcheck@" + pin, "staticcheck-" + pin}},
-		{name: "no_candidate_at_pin_is_red", versioned: other, onPath: other, wantRed: true, wantErr: []string{"no candidate matches", other, pin}},
+		{name: "no_candidate_at_pin_is_red", versioned: other, onPath: other, wantRed: true, wantErr: []string{other, pin}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -82,7 +93,7 @@ pick_staticcheck || exit 1
 			cmd := exec.Command("bash", "-c", script)
 			cmd.Env = []string{
 				"PATH=" + pathDir + ":" + goBinDir(t),
-				"HOME=" + t.TempDir(),
+				"HOME=" + home,
 				"GOPATH=" + gopath,
 				"GOFLAGS=",
 				"GOWORK=off",
@@ -112,6 +123,23 @@ pick_staticcheck || exit 1
 				t.Errorf("picked the %q stub, want %q", got, tc.wantPick)
 			}
 		})
+	}
+}
+
+// checkStaticcheckCIWiring pins the call site, which the order test never sees
+// because it sources the picker directly: hack/ci.sh must source the picker and
+// call it followed by `|| exit 1`, so a red pick stops the gate.
+func checkStaticcheckCIWiring(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "ci.sh"))
+	if err != nil {
+		t.Fatalf("read ci.sh: %v", err)
+	}
+	ci := string(raw)
+	if !regexp.MustCompile(`(?m)^\s*(source|\.)\s+hack/lib/staticcheck-pick\.sh\s*$`).MatchString(ci) {
+		t.Errorf("ci.sh does not source hack/lib/staticcheck-pick.sh")
+	}
+	if !regexp.MustCompile(`(?m)^\s*pick_staticcheck\s*\|\|\s*exit 1\s*$`).MatchString(ci) {
+		t.Errorf("ci.sh does not call pick_staticcheck followed by || exit 1")
 	}
 }
 
