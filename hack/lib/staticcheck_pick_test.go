@@ -84,16 +84,18 @@ pick_staticcheck || exit 1
 "$sc" run
 `
 			cmd := exec.Command("bash", "-c", script)
-			cmd.Env = []string{
-				"PATH=" + pathDir + ":" + goBinDir(t),
-				"HOME=" + telemetryOffHome(t),
-				"GOPATH=" + gopath,
+			root := t.TempDir()
+			goBin := goBinDir(t)
+			cmd.Env = append(hermeticGoEnv(t, root),
+				"PATH="+pathDir+":"+goBin,
+				"GOPATH="+gopath,
 				"GOFLAGS=",
 				"GOWORK=off",
 				"GOTOOLCHAIN=local",
 				"GOPROXY=off",
-				"PICK=" + pickScript(t),
-			}
+				"PICK="+pickScript(t),
+			)
+			assertGoStateInside(t, filepath.Join(goBin, "go"), cmd.Env, root, gopath)
 			var stdout, stderr strings.Builder
 			cmd.Stdout, cmd.Stderr = &stdout, &stderr
 			err := cmd.Run()
@@ -170,16 +172,68 @@ func pickScript(t *testing.T) string {
 	return p
 }
 
-// telemetryOffHome returns a temp HOME whose Go telemetry mode is off, for a
+// hermeticGoEnv returns the child environment entries that keep go's state
+// under root: HOME (with telemetry off, see telemetryOffHome), GOENV, GOCACHE
+// and TMPDIR all sit inside it, so the child cannot read or write the real
+// home, the developer's go env file or the shared build cache. GOTELEMETRY=off
+// is set as well, though go ignores it in the environment; the mode file under
+// HOME is the switch, and GOTELEMETRYDIR follows HOME (assertGoStateInside
+// checks where go resolves it).
+func hermeticGoEnv(t *testing.T, root string) []string {
+	t.Helper()
+	home := filepath.Join(root, "home")
+	telemetryOffHome(t, home)
+	return []string{
+		"HOME=" + home,
+		"GOENV=" + filepath.Join(root, "goenv", "env"),
+		"GOCACHE=" + filepath.Join(root, "gocache"),
+		"GOTELEMETRY=off",
+		"TMPDIR=" + root,
+	}
+}
+
+// assertGoStateInside runs `go env` under env and fails the case unless every
+// place go would write state resolves inside root (GOMODCACHE may also sit in
+// the case's gopath). It asks go itself, so a location derived from another
+// variable (GOTELEMETRYDIR from HOME, GOMODCACHE from GOPATH) is checked as
+// go computes it, not as the test spelled it.
+func assertGoStateInside(t *testing.T, goTool string, env []string, root, gopath string) {
+	t.Helper()
+	vars := []string{"GOENV", "GOCACHE", "GOTELEMETRYDIR", "GOMODCACHE", "GOTMPDIR"}
+	cmd := exec.Command(goTool, append([]string{"env"}, vars...)...)
+	cmd.Env = env
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("go env under the hermetic env: %v", err)
+	}
+	inside := func(v, dir string) bool {
+		return v == dir || strings.HasPrefix(v, dir+string(filepath.Separator))
+	}
+	for i, v := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+		if i >= len(vars) {
+			t.Fatalf("go env printed more lines than asked for:\n%s", out)
+		}
+		if v == "" && vars[i] == "GOTMPDIR" {
+			continue // unset: go uses TMPDIR, which is root
+		}
+		if inside(v, root) || (vars[i] == "GOMODCACHE" && inside(v, gopath)) {
+			continue
+		}
+		t.Errorf("go resolves %s=%q outside the case root %q", vars[i], v, root)
+	}
+}
+
+// telemetryOffHome makes home a HOME whose Go telemetry mode is off, for a
 // child that runs go. In the default local mode every go invocation under a
 // fresh HOME starts a telemetry sidecar in its own session (setsid, so the test
 // cannot wait for it) that keeps writing under HOME/Library/Application
 // Support/go after go exits, and t.TempDir cleanup then races it ("directory
 // not empty"). GOTELEMETRY is read-only in the environment; the mode file is the
-// switch, and with it off go opens no counter file and starts no sidecar.
-func telemetryOffHome(t *testing.T) string {
+// switch, and with it off go opens no counter file and starts no sidecar. home
+// must lie inside a t.TempDir created before this call.
+func telemetryOffHome(t *testing.T, home string) {
 	t.Helper()
-	home := t.TempDir()
 	dir := filepath.Join(home, "Library", "Application Support", "go", "telemetry")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -188,8 +242,9 @@ func telemetryOffHome(t *testing.T) string {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		// Registered after t.TempDir, so it runs before the removal: anything
-		// beside the mode file means go ignored it and a late writer may exist.
+		// Registered after the enclosing t.TempDir, so it runs before the
+		// removal: anything beside the mode file means go ignored it and a
+		// late writer may exist.
 		ents, err := os.ReadDir(dir)
 		if err != nil {
 			t.Errorf("read telemetry dir: %v", err)
@@ -201,5 +256,4 @@ func telemetryOffHome(t *testing.T) string {
 			}
 		}
 	})
-	return home
 }
