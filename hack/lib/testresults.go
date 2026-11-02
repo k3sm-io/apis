@@ -488,7 +488,11 @@ func evaluate(registry string, results []result, tier string, edited []string, t
 	// reverse: a listed parent covers no subtest, a parent failing with no failing
 	// subtest stays red, and so does a parent whose own output carries any line
 	// besides the harness's framing (it may have failed on its own as well), or a race
-	// or sanitizer report.
+	// or sanitizer report. go test attributes each output line to the test it belongs
+	// to (the Test field), so a parent's own t.Error lands in its output even after its
+	// subtests ran. The blind spot: a parent that fails through t.Fail or t.FailNow with
+	// no output line, or whose only line repeats a subtest's line verbatim, leaves
+	// nothing to attribute and reads as covered.
 	for _, u := range unlisted {
 		if rm := raceMarker(outputs[u.test]); rm != "" {
 			out[u.idx] = fmt.Sprintf("RED %s: failed with a race or sanitizer report (%q); quarantine never applies", u.test, rm)
@@ -631,7 +635,11 @@ func (c *collector) line(n int, raw string) {
 		t.output += ev.Output
 		c.text = append(c.text, ev.Output)
 	case "pass", "skip":
-		t.status = ev.Action
+		// A fail is sticky per test id: with -count>1 or a rerun, a later pass or
+		// skip of the same id never turns an earlier failure green.
+		if t.status != "fail" {
+			t.status = ev.Action
+		}
 	case "fail":
 		t.status = "fail"
 		c.pkgHasFail[ev.Package] = true
