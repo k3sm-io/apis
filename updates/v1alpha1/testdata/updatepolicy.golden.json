@@ -1,0 +1,14 @@
+{
+  "kind": "UpdatePolicy",
+  "apiVersion": "updates.k3sm.io/v1alpha1",
+  "metadata": {
+    "name": "cluster",
+    "generation": 2,
+    "labels": {
+      "a": "b"
+    }
+  },
+  "spec": {
+    "channel": "rc"
+  }
+}

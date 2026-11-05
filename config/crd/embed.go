@@ -46,6 +46,10 @@ limitations under the License.
 // updates.k3sm.io/v1alpha1 request to move the whole cluster to one release;
 // k3sm's update controller ensures it through its accessor.
 //
+// The UpdatePolicy manifest (updates.k3sm.io_updatepolicies.yaml) is the alpha
+// updates.k3sm.io/v1alpha1 singleton holding the release channel a cluster
+// follows; it is ensured beside the Update manifest and carries no labels.
+//
 // The two budget.k3sm.io manifests (NodeBudget and NodeBudgetPolicy) are the
 // alpha budget.k3sm.io/v1alpha1 node budget contract: the per-node published
 // budget and the one policy object. Neither carries labels.
@@ -162,6 +166,23 @@ var updateCRDYAML string
 // It returns a fresh copy on every call, for the same reason as MLXModelCRD.
 func UpdateCRD() []byte {
 	return []byte(updateCRDYAML)
+}
+
+// UpdatePolicyCRDName is the metadata.name of the UpdatePolicy
+// CustomResourceDefinition (the <plural>.<group> form the API server
+// addresses it by). Published so a consumer waiting on or reading back the
+// CRD does not spell the string.
+const UpdatePolicyCRDName = "updatepolicies.updates.k3sm.io"
+
+//go:embed updates.k3sm.io_updatepolicies.yaml
+var updatePolicyCRDYAML string
+
+// UpdatePolicyCRD returns the updates.k3sm.io/v1alpha1 UpdatePolicy
+// CustomResourceDefinition manifest as YAML bytes, ready to apply.
+//
+// It returns a fresh copy on every call, for the same reason as MLXModelCRD.
+func UpdatePolicyCRD() []byte {
+	return []byte(updatePolicyCRDYAML)
 }
 
 // NodeBudgetCRDName is the metadata.name of the NodeBudget

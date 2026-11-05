@@ -1,0 +1,63 @@
+# UpdatePolicy CRD (updates.k3sm.io/v1alpha1): the release channel a cluster
+# follows.
+#
+# Hand-authored (apis runs no controller-gen) to match the Go type in
+# k3sm.io/apis/updates/v1alpha1 (updatepolicy.go). ALPHA: a SINGLE version
+# v1alpha1 is both served and stored, and its shape may change incompatibly
+# until it graduates.
+#
+# Scope is Cluster and the object is spec only (no status subresource). It is
+# a singleton: the CEL rule on the root schema refuses any name but "cluster".
+# spec.channel is a closed enum defaulted to stable, and spec defaults to {} so
+# the channel default applies when spec is omitted. No object at all also means
+# stable, which is the reader's rule, not this schema's. Setting the channel
+# changes what is offered and never starts a roll; only an Update does that.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: updatepolicies.updates.k3sm.io
+spec:
+  group: updates.k3sm.io
+  scope: Cluster
+  names:
+    kind: UpdatePolicy
+    listKind: UpdatePolicyList
+    plural: updatepolicies
+    singular: updatepolicy
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      additionalPrinterColumns:
+        - name: Channel
+          type: string
+          jsonPath: .spec.channel
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: UpdatePolicy is the cluster's standing choice of release channel, the singleton named cluster. It decides which release is offered and never starts a roll.
+          x-kubernetes-validations:
+            - rule: "self.metadata.name == 'cluster'"
+              message: the UpdatePolicy must be named cluster
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              description: Spec is the chosen channel.
+              default: {}
+              properties:
+                channel:
+                  type: string
+                  description: Channel is the release channel the cluster follows. stable offers the newest final release; rc offers the highest of the finals and release candidates by semver precedence.
+                  default: stable
+                  enum:
+                    - stable
+                    - rc

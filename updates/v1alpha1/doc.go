@@ -15,7 +15,8 @@ limitations under the License.
 */
 
 // Package updatesv1alpha1 holds the updates.k3sm.io/v1alpha1 API: the Update
-// custom resource, the request to move a whole k3sm cluster to one release.
+// custom resource, the request to move a whole k3sm cluster to one release, and
+// the UpdatePolicy custom resource, the release channel the cluster follows.
 //
 // An Update is a cluster-scoped, kine-stored, apiserver-served object. Its spec
 // names the release tag to install (Version), how the roll proceeds across the
@@ -65,6 +66,17 @@ limitations under the License.
 // generation), the same shape mlx/v1alpha1's MLXModel and net/v1alpha1's
 // Interconnect use. The CRD manifest is k3sm.io/apis/config/crd
 // (updates.k3sm.io_updates.yaml), hand-authored to match these types.
+//
+// # The release channel: UpdatePolicy
+//
+// An UpdatePolicy is a cluster-scoped, spec-only singleton named
+// UpdatePolicyName ("cluster"). Its one field, Spec.Channel, is the closed enum
+// stable or rc, defaulted to stable by the CRD; no object also means stable. A
+// CEL rule on the CRD refuses any other name, because a spec-only kind has no
+// status to report a NotTheSingleton condition in. Unlike Update it is not a
+// request: the channel changes which release is offered and never starts a
+// roll. It is the CRD manifest updates.k3sm.io_updatepolicies.yaml. Readers
+// that may not read the object read AnnotationReleaseChannel on a Node.
 //
 // # Stability: alpha
 //

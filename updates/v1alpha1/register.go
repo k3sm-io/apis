@@ -22,11 +22,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// GroupName is the API group of the updates.k3sm.io CRDs (Update).
+// GroupName is the API group of the updates.k3sm.io CRDs (Update and
+// UpdatePolicy).
 const GroupName = "updates.k3sm.io"
 
-// SchemeGroupVersion is the GroupVersion the Update types register under
-// (updates.k3sm.io/v1alpha1, the single served + stored version).
+// SchemeGroupVersion is the GroupVersion the updates.k3sm.io types register
+// under (updates.k3sm.io/v1alpha1, the single served + stored version).
 var SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: "v1alpha1"}
 
 // SchemeBuilder collects the functions that register the
@@ -44,7 +45,7 @@ func Resource(resource string) schema.GroupResource {
 }
 
 func addKnownTypes(s *runtime.Scheme) error {
-	s.AddKnownTypes(SchemeGroupVersion, &Update{}, &UpdateList{})
+	s.AddKnownTypes(SchemeGroupVersion, &Update{}, &UpdateList{}, &UpdatePolicy{}, &UpdatePolicyList{})
 	metav1.AddToGroupVersion(s, SchemeGroupVersion)
 	return nil
 }
