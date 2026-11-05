@@ -41,4 +41,10 @@ const (
 	// AnnotationUpdatePhase is the Node annotation carrying the node's current
 	// step of the update, an UpdateNodePhase value.
 	AnnotationUpdatePhase = "k3sm.io/update-phase"
+
+	// AnnotationReleaseChannel is the Node annotation carrying the release
+	// channel, an UpdateChannel value, that the release published alongside it
+	// was computed under. A reader that may not read the UpdatePolicy reads
+	// this instead.
+	AnnotationReleaseChannel = "k3sm.io/release-channel"
 )

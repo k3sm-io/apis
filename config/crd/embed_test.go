@@ -597,6 +597,7 @@ func TestNoGlobEmbed(t *testing.T) {
 		"helm.k3sm.io_helmcharts.yaml":           false,
 		"helm.k3sm.io_helmchartconfigs.yaml":     false,
 		"updates.k3sm.io_updates.yaml":           false,
+		"updates.k3sm.io_updatepolicies.yaml":    false,
 		"budget.k3sm.io_nodebudgets.yaml":        false,
 		"budget.k3sm.io_nodebudgetpolicies.yaml": false,
 	}
@@ -685,6 +686,15 @@ func TestNoGlobEmbed(t *testing.T) {
 	}
 	if !strings.Contains(string(UpdateCRD()), UpdateCRDName) {
 		t.Error("UpdateCRD does not return the Update CRD")
+	}
+	if strings.Contains(string(UpdateCRD()), UpdatePolicyCRDName) {
+		t.Error("UpdateCRD returns the UpdatePolicy CRD")
+	}
+	if !strings.Contains(string(UpdatePolicyCRD()), UpdatePolicyCRDName) {
+		t.Error("UpdatePolicyCRD does not return the UpdatePolicy CRD")
+	}
+	if strings.Contains(string(UpdatePolicyCRD()), UpdateCRDName) {
+		t.Error("UpdatePolicyCRD returns the Update CRD")
 	}
 	if !strings.Contains(string(NodeBudgetCRD()), NodeBudgetCRDName) {
 		t.Error("NodeBudgetCRD does not return the NodeBudget CRD")
@@ -842,6 +852,7 @@ func TestEmbeddedCRDSetHasNoDirectLink(t *testing.T) {
 		"HelmChartCRD":        HelmChartCRD(),
 		"HelmChartConfigCRD":  HelmChartConfigCRD(),
 		"UpdateCRD":           UpdateCRD(),
+		"UpdatePolicyCRD":     UpdatePolicyCRD(),
 		"NodeBudgetCRD":       NodeBudgetCRD(),
 		"NodeBudgetPolicyCRD": NodeBudgetPolicyCRD(),
 	} {

@@ -4,7 +4,7 @@
 for Apple Silicon. It holds the gRPC protobufs, the Kubernetes custom resource types, and the
 small set of plain Go types that cross a repository boundary somewhere in the system: the
 runtime API a node daemon serves, the pod and image message shapes both ends of that API agree
-on, the custom resources (`MeshPeer`, `Interconnect`, `MLXModel`, `HelmChart`, `HelmChartConfig`, `Update`, `NodeBudget`, `NodeBudgetPolicy`), and the service-proxy and DNS-shim
+on, the custom resources (`MeshPeer`, `Interconnect`, `MLXModel`, `HelmChart`, `HelmChartConfig`, `Update`, `UpdatePolicy`, `NodeBudget`, `NodeBudgetPolicy`), and the service-proxy and DNS-shim
 configuration structs. Every other k3sm repository imports this module, and this module imports
 none of them. That keeps the dependency graph free of cycles: a shared type placed here can be
 used by any repository, while a type placed in one of the other repositories and needed by a
@@ -38,8 +38,8 @@ additive change before this module's own version is bumped in their `go.mod`.
 | `helm/v1` | The `HelmChart` and `HelmChartConfig` custom resources (`helm.k3sm.io/v1`, namespaced), mirroring k3s's `helm.cattle.io/v1` field for field. |
 | `budget/v1alpha1` | The `NodeBudget` and `NodeBudgetPolicy` custom resources (`budget.k3sm.io/v1alpha1`, both cluster-scoped): the node budget contract, how much more work a node can take and what it has shed. Marked alpha: fields here may change incompatibly between releases. |
 | `mlx/v1alpha1` | The `MLXModel` custom resource (`mlx.k3sm.io/v1alpha1`) for native Apple-Silicon model serving, plus the `mlx.k3sm.io/*` label and resource-name constants a node advertises. Marked alpha: fields here may change incompatibly between releases. |
-| `updates/v1alpha1` | The `Update` custom resource (`updates.k3sm.io/v1alpha1`), cluster-scoped, that asks for every node to move to one k3sm release: the release tag, the roll strategy (workers before the server, how many nodes at once, whether to drain), the checksum and signature checks the download must pass, whether a downgrade is allowed, and a cancel switch, with per-node progress in its status. Marked alpha: fields here may change incompatibly between releases. |
-| `config/crd` | The CustomResourceDefinition manifests for all eight custom resources (`MLXModel`, `MeshPeer`, `Interconnect`, `HelmChart`, `HelmChartConfig`, `Update`, `NodeBudget`, `NodeBudgetPolicy`), embedded into the Go package at build time with the standard library's `embed` directive and exposed through named accessors so a consumer applies the exact bytes checked in here. |
+| `updates/v1alpha1` | The `Update` custom resource (`updates.k3sm.io/v1alpha1`), cluster-scoped, that asks for every node to move to one k3sm release: the release tag, the roll strategy (workers before the server, how many nodes at once, whether to drain), the checksum and signature checks the download must pass, whether a downgrade is allowed, and a cancel switch, with per-node progress in its status. Also the `UpdatePolicy` custom resource, a cluster-scoped singleton named `cluster` holding the release channel the cluster follows (`stable` or `rc`, default `stable`), and the Node annotation that publishes it. Marked alpha: fields here may change incompatibly between releases. |
+| `config/crd` | The CustomResourceDefinition manifests for all nine custom resources (`MLXModel`, `MeshPeer`, `Interconnect`, `HelmChart`, `HelmChartConfig`, `Update`, `UpdatePolicy`, `NodeBudget`, `NodeBudgetPolicy`), embedded into the Go package at build time with the standard library's `embed` directive and exposed through named accessors so a consumer applies the exact bytes checked in here. |
 | `k3smtest` | A capability taxonomy and a `SkipUnless` test helper shared by the other repositories' test suites, so a test can name what it needs (root, a second machine, network egress, and so on) instead of each repository inventing its own vocabulary. |
 | `k3smtest/runtimecontract` | The runtime contract suite, which the runtime daemon and every fake of it run to check the node to runtime seam once. It imports gRPC, so it lives apart from `k3smtest`, whose importers stay free of that dependency. |
 | `buf.yaml`, `buf.gen.yaml`, `buf/baseline.binpb` | The protobuf toolchain configuration and the wire-compatibility baseline (see Building below). |
@@ -105,7 +105,7 @@ stable node- and scheduler-facing identifiers even while the field shapes are no
 
 Custom resources are served and stored at a single version today: `v1` for `MeshPeer`,
 `HelmChart` and `HelmChartConfig`; `v1alpha1` for `MLXModel`, `Interconnect`, `Update`,
-`NodeBudget` and `NodeBudgetPolicy`. Within a served version, payload evolution rides an explicit
+`UpdatePolicy`, `NodeBudget` and `NodeBudgetPolicy`. Within a served version, payload evolution rides an explicit
 schema version field on the object's spec rather than a new API version.
 
 ## Contributing
