@@ -360,6 +360,31 @@ func corpusVerdicts(out string) map[string]string {
 	return got
 }
 
+// TestFailEchoesOnlyTheFailingRun pins the echo under -count=2: a repeated failure
+// prints each run's output once, so the first run's lines do not appear again.
+func TestFailEchoesOnlyTheFailingRun(t *testing.T) {
+	input := stream(
+		ev("run", pkg, "TestFlake", ""),
+		ev("output", pkg, "TestFlake", "first run line\n"),
+		ev("fail", pkg, "TestFlake", ""),
+		ev("run", pkg, "TestFlake", ""),
+		ev("output", pkg, "TestFlake", "second run line\n"),
+		ev("fail", pkg, "TestFlake", ""),
+		ev("fail", pkg, "", ""))
+	cmd := exec.Command(binary(t), "-registry", filepath.Join(t.TempDir(), "absent"), "-tier", "full", "-today", today)
+	cmd.Stdin = strings.NewReader(input)
+	out, err := cmd.CombinedOutput()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 1 {
+		t.Fatalf("run: %v, want exit 1\n%s", err, out)
+	}
+	for _, line := range []string{"first run line\n", "second run line\n"} {
+		if n := bytes.Count(out, []byte(line)); n != 1 {
+			t.Errorf("%q printed %d times, want once\n%s", line, n, out)
+		}
+	}
+}
+
 // TestQuarantineCorpusParity runs every shared corpus case through this copy of
 // the rules and checks the overall verdict and each test's verdict.
 func TestQuarantineCorpusParity(t *testing.T) {
