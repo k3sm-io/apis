@@ -118,7 +118,7 @@ func TestContainerImagePlatformCarve(t *testing.T) {
 
 	t.Run("the reserved band is re-narrowed and keeps its ceiling", func(t *testing.T) {
 		// The band was `reserved 100, 102 to 149` while 100 was held for this
-		// carve. Claiming it must leave exactly `reserved 102 to 149`: 100 must no
+		// carve. Claiming it must leave the band narrowed to its unallocated tail (now `reserved 103 to 149` after memory_limit_bytes = 102): 100 must no
 		// longer be reserved (a number cannot be both allocated and reserved), and
 		// the 149 ceiling must survive so a later carve cannot eat the headroom.
 		rr := md.ReservedRanges()
@@ -126,17 +126,17 @@ func TestContainerImagePlatformCarve(t *testing.T) {
 		found := false
 		for i := range rr.Len() {
 			r := rr.Get(i) // [start, end) — end is exclusive
-			if r[1]-1 >= 102 {
+			if r[1]-1 >= 103 {
 				lo, hi, found = r[0], r[1]-1, true
 			}
 		}
 		if !found {
 			t.Fatal("Container has no reserved range above the allocated fields; the 149 ceiling was dropped")
 		}
-		if lo != 102 || hi != 149 {
-			t.Errorf("reserved range = %d..%d, want 102..149", lo, hi)
+		if lo != 103 || hi != 149 {
+			t.Errorf("reserved range = %d..%d, want 103..149", lo, hi)
 		}
-		for _, n := range []protoreflect.FieldNumber{100, 101} {
+		for _, n := range []protoreflect.FieldNumber{100, 101, 102} {
 			if rr.Has(n) {
 				t.Errorf("field %d is both allocated and reserved", n)
 			}

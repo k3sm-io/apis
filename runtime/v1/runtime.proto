@@ -748,9 +748,17 @@ message Container {
   // (the restart_policy precedent).
   ImagePullPolicy image_pull_policy = 101;
 
-  // 100..101 are allocated above; 102..149 stay reserved for future
+  // memory_limit_bytes is the container's own memory limit in bytes
+  // (corev1 resources.limits.memory, resolved). 0 means this container has no
+  // limit of its own (only the pod-level PodBox.memory_limit_bytes applies).
+  // The memory.high throttle threshold is NOT carried on the wire: runtimed
+  // derives it from this limit at 90 percent, so a second field would let the
+  // two disagree. Absent reads as 0 in both skew directions (additive).
+  int64 memory_limit_bytes = 102;
+
+  // 100..102 are allocated above; 103..149 stay reserved for future
   // per-container additions; the band's 149 ceiling is preserved (additive).
-  reserved 102 to 149;
+  reserved 103 to 149;
 }
 
 // ContainerRestartPolicy mirrors corev1 container-level restartPolicy (KEP-753
@@ -1684,6 +1692,14 @@ message MemoryStats {
   uint64 usage_bytes = 3;
   // rss_bytes is the resident set size, when available.
   uint64 rss_bytes = 4;
+  // memory_high_events is the cumulative count of times the container's usage
+  // crossed its memory.high threshold (90 percent of
+  // Container.memory_limit_bytes, derived by runtimed). Monotonic for the
+  // container's lifetime; 0 when there is no limit or no event yet.
+  uint64 memory_high_events = 100;
+
+  // 100 is allocated above; 101..149 stay reserved (149 ceiling preserved).
+  reserved 101 to 149;
 }
 
 // ---------------------------------------------------------------------------
