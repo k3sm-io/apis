@@ -359,15 +359,17 @@ message WasmSignature {
 
 // Volume is a named pod-level volume with exactly one source set. Mirrors a
 // subset of corev1.Volume (configMap / secret / emptyDir / downwardAPI /
-// projected); the source union is modeled as optional message fields, matching
-// the ContainerState pointer-union precedent.
+// projected / persistentVolumeClaim / hostPath / image); the source union is
+// modeled as optional message fields, matching the ContainerState
+// pointer-union precedent.
 message Volume {
   // name is the volume name, referenced by VolumeMount.name. Unique within the
   // pod.
   string name = 1;
 
-  // config_map, secret, empty_dir, downward_api, projected, and
-  // persistent_volume_claim are the source union: exactly one is set.
+  // config_map, secret, empty_dir, downward_api, projected,
+  // persistent_volume_claim, host_path, and image are the source union:
+  // exactly one is set.
   ConfigMapVolumeSource config_map = 2;
   SecretVolumeSource secret = 3;
   EmptyDirVolumeSource empty_dir = 4;
@@ -399,6 +401,15 @@ message Volume {
   // attacker-shaped input. The shape lives here; every decision lives in the
   // runtime that reads it.
   HostPathVolumeSource host_path = 8;
+
+  // image mounts an OCI artifact from the cluster registry read-only. Added
+  // later as the next free sequential source number (2..8 were taken).
+  // Mirrors corev1.Volume.Image (the KEP-4639 image volume), plus the
+  // per-rank paths subset k3sm adds.
+  //
+  // Skew: a runtime that predates this field sees a Volume with no known
+  // source set and must refuse the pod, never mount nothing in its place.
+  ImageVolumeSource image = 9;
 }
 
 // ConfigMapVolumeSource mounts a ConfigMap as files. Mirrors
@@ -558,6 +569,37 @@ message HostPathVolumeSource {
   // whose empty value is meaningful, and an enum would have to invent a
   // zero-value distinction upstream does not have.
   string type = 2;
+}
+
+// ImageVolumeSource mounts an OCI artifact (a platform-less manifest, for
+// example a ModelPack model) read-only into a pod. Mirrors
+// corev1.ImageVolumeSource (reference + pullPolicy) and adds paths.
+//
+// Shape only, as for HostPathVolumeSource. Which registry host a reference may
+// name, which artifact and layer media types are acceptable, and whether a
+// file path is safe are runtime decisions: the provider and the runtime each
+// apply the shared rules in k3sm.io/apis/artifact/v1, and neither trusts what
+// the pod spec asserts about itself. The artifact is fetched by
+// Images.PullArtifact before CreatePod; CreatePod only mounts an artifact
+// already present on the node.
+message ImageVolumeSource {
+  // reference is the OCI reference of the artifact
+  // (registry/repo:tag or registry/repo@sha256:<hex>).
+  string reference = 1;
+
+  // pull_policy carries corev1 pull-policy semantics, reusing the existing
+  // ImagePullPolicy enum (corev1 spells it as a string).
+  ImagePullPolicy pull_policy = 2;
+
+  // paths, when non-empty, is the subset of the artifact's file paths (the
+  // layers' org.cncf.model.filepath values) to fetch and expose; empty means
+  // the whole artifact. Filled by the provider from the
+  // k3sm.io/artifact-paths pod annotation. Each path obeys
+  // artifactv1.ValidatePath and the set obeys artifactv1.ValidatePathSet; a
+  // path the manifest does not carry refuses the pod. A runtime that cannot
+  // honour a subset must refuse a non-empty paths, never mount the whole
+  // artifact in its place.
+  repeated string paths = 3;
 }
 
 // PodSecurityContext is the pod-scoped privilege configuration. fs_group lives

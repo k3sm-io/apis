@@ -40,9 +40,9 @@ import (
 //
 // The gate pins five structural facts and one textual one:
 //
-//   - the service exists at k3sm.runtime.v1.Images with EXACTLY ten methods —
-//     the five store verbs it opened with plus the five image primitives
-//     (pull / tag / untag / inspect / save) — each bound to its OWN request and
+//   - the service exists at k3sm.runtime.v1.Images with EXACTLY eleven methods —
+//     the five store verbs it opened with, the five image primitives
+//     (pull / tag / untag / inspect / save), and the artifact pull — each bound to its OWN request and
 //     response type, so a later carve cannot quietly re-home a verb onto a
 //     sibling's message;
 //   - the streaming shapes: LoadImage is client-streaming (ingest) and
@@ -69,7 +69,7 @@ import (
 func TestImagesServiceSurface(t *testing.T) {
 	fd := File_runtime_v1_images_proto
 
-	t.Run("the service lives in the runtime package with exactly ten methods", func(t *testing.T) {
+	t.Run("the service lives in the runtime package with exactly eleven methods", func(t *testing.T) {
 		// Same package as runtime.proto: the CRI split is service-level, never a
 		// second proto package or import path.
 		siblingPkg := (&Descriptor{}).ProtoReflect().Descriptor().ParentFile().Package()
@@ -90,6 +90,7 @@ func TestImagesServiceSurface(t *testing.T) {
 			"PruneImages": false, "LoadImage": false,
 			"PullImage": false, "TagImage": false, "UntagImage": false,
 			"InspectImage": false, "SaveImage": false,
+			"PullArtifact": false,
 		}
 		ms := sd.Methods()
 		if ms.Len() != len(want) {
@@ -99,7 +100,7 @@ func TestImagesServiceSurface(t *testing.T) {
 			name := string(ms.Get(i).Name())
 			seen, known := want[name]
 			if !known {
-				t.Errorf("unexpected method %s on Images (the surface is exactly ten verbs)", name)
+				t.Errorf("unexpected method %s on Images (the surface is exactly eleven verbs)", name)
 				continue
 			}
 			if seen {
@@ -131,6 +132,7 @@ func TestImagesServiceSurface(t *testing.T) {
 			{"TagImage", false, false},
 			{"UntagImage", false, false},
 			{"InspectImage", false, false},
+			{"PullArtifact", false, false},
 			// The two asymmetries in the file, and they point opposite ways.
 			// Ingest: the client streams an archive and the server answers once —
 			// there is nothing to say until the ingest commits. Export: the
@@ -155,13 +157,13 @@ func TestImagesServiceSurface(t *testing.T) {
 		}
 
 		// The generated grpc.ServiceDesc is what a daemon actually registers, so
-		// pin it too: eight unary handlers plus the two streams, one in each
+		// pin it too: nine unary handlers plus the two streams, one in each
 		// direction.
 		if got, want := Images_ServiceDesc.ServiceName, "k3sm.runtime.v1.Images"; got != want {
 			t.Errorf("Images_ServiceDesc.ServiceName = %q, want %q", got, want)
 		}
-		if got := len(Images_ServiceDesc.Methods); got != 8 {
-			t.Errorf("Images_ServiceDesc has %d unary methods, want 8", got)
+		if got := len(Images_ServiceDesc.Methods); got != 9 {
+			t.Errorf("Images_ServiceDesc has %d unary methods, want 9", got)
 		}
 		if got := len(Images_ServiceDesc.Streams); got != 2 {
 			t.Fatalf("Images_ServiceDesc has %d streams, want 2 (LoadImage, SaveImage)", got)
@@ -204,6 +206,7 @@ func TestImagesServiceSurface(t *testing.T) {
 			{"UntagImage", "UntagImageRequest", "UntagImageResponse"},
 			{"InspectImage", "InspectImageRequest", "InspectImageResponse"},
 			{"SaveImage", "SaveImageRequest", "SaveImageResponse"},
+			{"PullArtifact", "PullArtifactRequest", "PullArtifactResponse"},
 		}
 		if len(cases) != sd.Methods().Len() {
 			t.Errorf("the identity table covers %d verbs, the service has %d", len(cases), sd.Methods().Len())
@@ -517,6 +520,7 @@ func newMessages() []proto.Message {
 		&UntagImageRequest{}, &UntagImageResponse{},
 		&InspectImageRequest{}, &InspectImageResponse{}, &ImageConfig{},
 		&SaveImageRequest{}, &SaveImageResponse{},
+		&PullArtifactRequest{}, &PullArtifactResponse{},
 	}
 }
 
@@ -615,5 +619,14 @@ func populatedMessages() []proto.Message {
 		&SaveImageResponse{Chunk: []byte("layout bytes")},
 		// The terminal frame: no chunk, digest + the server's own byte count.
 		&SaveImageResponse{Digest: "sha256:aaaa", SentBytes: 1024},
+		&PullArtifactRequest{
+			Reference:        "registry.k3sm.local/models/m@sha256:aaaa",
+			PullPolicy:       ImagePullPolicy_IMAGE_PULL_POLICY_IF_NOT_PRESENT,
+			Paths:            []string{"config.json", "model.safetensors"},
+			ArtifactPolicy:   ArtifactPolicy_ARTIFACT_POLICY_IMAGE_VOLUME,
+			Namespace:        "default",
+			ImagePullSecrets: []*LocalObjectReference{{Name: "regcred"}},
+		},
+		&PullArtifactResponse{ManifestDigest: "sha256:aaaa", LayerDigests: []string{"sha256:bbbb", "sha256:cccc"}},
 	}
 }
