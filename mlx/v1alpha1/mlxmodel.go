@@ -89,12 +89,15 @@ type MLXModelSpec struct {
 	// repository's default branch, which is MUTABLE — two replicas admitted at
 	// different times can then serve different weights under one object. Status
 	// reports what was actually resolved (ResolvedRevision) so that drift is at
-	// least observable.
+	// least observable. Refused when Artifact is set: the artifact digest is
+	// the pin (a CEL rule on the CRD).
 	Revision string `json:"revision,omitempty"`
 
 	// Quantization is the quantization variant to serve (e.g. "4bit"), when the
 	// repository offers a choice and the reference does not already name one.
-	// Empty means whatever the referenced repository provides.
+	// Empty means whatever the referenced repository provides. Refused when
+	// Artifact is set, until artifact variants give it a meaning (a CEL rule
+	// on the CRD).
 	Quantization string `json:"quantization,omitempty"`
 
 	// Memory is the unified memory the served model needs. Required, and NOT a

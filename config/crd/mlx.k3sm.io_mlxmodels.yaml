@@ -71,6 +71,13 @@ spec:
               x-kubernetes-validations:
                 - rule: 'has(self.model) != has(self.artifact)'
                   message: exactly one of spec.model and spec.artifact must be set
+                # With artifact set the manifest digest is the pin, so revision
+                # has no meaning; quantization has none until variants give it
+                # one. Both are refused rather than silently ignored.
+                - rule: '!has(self.artifact) || !has(self.revision)'
+                  message: spec.revision must not be set with spec.artifact (the artifact digest is the pin)
+                - rule: '!has(self.artifact) || !has(self.quantization)'
+                  message: spec.quantization must not be set with spec.artifact
               properties:
                 model:
                   type: string

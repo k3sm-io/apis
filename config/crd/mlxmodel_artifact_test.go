@@ -20,12 +20,17 @@ import (
 	"testing"
 )
 
-// modelXorArtifactRule and modelXorArtifactMessage are the exact CEL rule and
-// message on spec that make spec.model and spec.artifact mutually exclusive
-// and one of them required.
+// The exact CEL rules and messages on spec, in manifest order: spec.model and
+// spec.artifact are mutually exclusive and one is required; with artifact set,
+// revision is refused (the digest is the pin) and quantization is refused
+// (until variants give it a meaning).
 const (
-	modelXorArtifactRule    = "has(self.model) != has(self.artifact)"
-	modelXorArtifactMessage = "exactly one of spec.model and spec.artifact must be set"
+	modelXorArtifactRule       = "has(self.model) != has(self.artifact)"
+	modelXorArtifactMessage    = "exactly one of spec.model and spec.artifact must be set"
+	artifactNoRevisionRule     = "!has(self.artifact) || !has(self.revision)"
+	artifactNoRevisionMessage  = "spec.revision must not be set with spec.artifact (the artifact digest is the pin)"
+	artifactNoQuantizationRule = "!has(self.artifact) || !has(self.quantization)"
+	artifactNoQuantizationMsg  = "spec.quantization must not be set with spec.artifact"
 )
 
 // TestMLXModelArtifactFieldCEL asserts the manifest declares spec.artifact and
@@ -93,20 +98,27 @@ func TestMLXModelArtifactFieldCEL(t *testing.T) {
 		}
 	})
 
-	t.Run("spec carries exactly the model-xor-artifact rule", func(t *testing.T) {
+	t.Run("spec carries exactly the three artifact rules", func(t *testing.T) {
+		want := []struct{ rule, message string }{
+			{modelXorArtifactRule, modelXorArtifactMessage},
+			{artifactNoRevisionRule, artifactNoRevisionMessage},
+			{artifactNoQuantizationRule, artifactNoQuantizationMsg},
+		}
 		rules, ok := spec["x-kubernetes-validations"].([]any)
-		if !ok || len(rules) != 1 {
-			t.Fatalf("spec.x-kubernetes-validations = %v, want exactly the model-xor-artifact rule", spec["x-kubernetes-validations"])
+		if !ok || len(rules) != len(want) {
+			t.Fatalf("spec.x-kubernetes-validations = %v, want exactly %d rules", spec["x-kubernetes-validations"], len(want))
 		}
-		rule, ok := rules[0].(map[string]any)
-		if !ok {
-			t.Fatalf("spec rule is %T, want a mapping", rules[0])
-		}
-		if got, _ := rule["rule"].(string); got != modelXorArtifactRule {
-			t.Errorf("spec rule = %q, want %q", got, modelXorArtifactRule)
-		}
-		if got, _ := rule["message"].(string); got != modelXorArtifactMessage {
-			t.Errorf("spec message = %q, want %q", got, modelXorArtifactMessage)
+		for i, w := range want {
+			rule, ok := rules[i].(map[string]any)
+			if !ok {
+				t.Fatalf("spec rule %d is %T, want a mapping", i, rules[i])
+			}
+			if got, _ := rule["rule"].(string); got != w.rule {
+				t.Errorf("spec rule %d = %q, want %q", i, got, w.rule)
+			}
+			if got, _ := rule["message"].(string); got != w.message {
+				t.Errorf("spec message %d = %q, want %q", i, got, w.message)
+			}
 		}
 		// The rule must sit on spec, not the root: at the root has(self.model)
 		// is always false and the rule would refuse every Hub model.
@@ -130,23 +142,33 @@ func TestMLXModelArtifactFieldCEL(t *testing.T) {
 		}
 	})
 
-	t.Run("the rule admits exactly one of model and artifact", func(t *testing.T) {
-		// has(self.model) != has(self.artifact), applied by hand; the subtest
+	t.Run("the rules admit exactly one of model and artifact, and refuse revision and quantization with artifact", func(t *testing.T) {
+		// The three rules, applied by hand in their conjunction; the subtest
 		// above pins that this is the shipped text.
-		admits := func(model, artifact bool) bool { return model != artifact }
+		admits := func(model, artifact, revision, quantization bool) bool {
+			return model != artifact &&
+				(!artifact || !revision) &&
+				(!artifact || !quantization)
+		}
 		for _, tc := range []struct {
-			name            string
-			model, artifact bool
-			want            bool
+			name                                    string
+			model, artifact, revision, quantization bool
+			want                                    bool
 		}{
-			{"model only (the Hub path)", true, false, true},
-			{"artifact only (the store path)", false, true, true},
-			{"both set", true, true, false},
-			{"neither set", false, false, false},
+			{"model only (the Hub path)", true, false, false, false, true},
+			{"artifact only (the store path)", false, true, false, false, true},
+			{"both set", true, true, false, false, false},
+			{"neither set", false, false, false, false, false},
+			{"model with revision and quantization", true, false, true, true, true},
+			{"artifact with revision (the digest is the pin)", false, true, true, false, false},
+			{"artifact with quantization (no meaning until variants)", false, true, false, true, false},
+			{"artifact with revision and quantization", false, true, true, true, false},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				if got := admits(tc.model, tc.artifact); got != tc.want {
-					t.Errorf("admits(model=%v, artifact=%v) = %v, want %v", tc.model, tc.artifact, got, tc.want)
+				got := admits(tc.model, tc.artifact, tc.revision, tc.quantization)
+				if got != tc.want {
+					t.Errorf("admits(model=%v, artifact=%v, revision=%v, quantization=%v) = %v, want %v",
+						tc.model, tc.artifact, tc.revision, tc.quantization, got, tc.want)
 				}
 			})
 		}
