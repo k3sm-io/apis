@@ -252,6 +252,32 @@ service Images {
   rpc SaveImage(SaveImageRequest) returns (stream SaveImageResponse) {
     option deprecated = true;
   }
+
+  // PullArtifact fetches a platform-less OCI artifact (a ModelPack model, a
+  // wasm module) from the cluster registry into the node cache. It is a
+  // SECOND entry point beside PullImage, never a relaxation of it: the image
+  // path keeps refusing an artifact, and this path refuses an image (an OCI
+  // image config is in no artifact allow-set). The provider calls it before
+  // CreatePod and posts progress as Pod Events; CreatePod only mounts an
+  // artifact already present.
+  //
+  // Idempotent: a second call for an artifact already committed fetches no
+  // byte and returns the same digests. Resumable per layer: a partial blob,
+  // keyed by its digest, survives an error and a daemon restart, and the next
+  // call continues it rather than starting over. Each layer is re-hashed
+  // against its descriptor digest before it is committed, and the artifact is
+  // recorded only after every requested layer is committed.
+  //
+  // Fail closed: the manifest's artifactType and every layer media type must
+  // be in the allow-set artifact_policy names; tar layers are refused; a bare
+  // index is refused; a reference naming a host other than the cluster
+  // registry is refused; a pull that would breach the node's free-space floor
+  // is refused before any byte is written. Each refusal is a status, never a
+  // partial mount.
+  //
+  // Skew: a daemon that predates this RPC returns UNIMPLEMENTED, and the
+  // provider fails the pod rather than falling back to CreatePod.
+  rpc PullArtifact(PullArtifactRequest) returns (PullArtifactResponse);
 }
 
 // ---------------------------------------------------------------------------
@@ -818,6 +844,70 @@ message SaveImageResponse {
   // chunk, so a client never has to infer failure from a stream that merely
   // stopped.
   google.rpc.Status error = 4;
+
+  reserved 100 to 149;
+}
+
+// ---------------------------------------------------------------------------
+// PullArtifact
+// ---------------------------------------------------------------------------
+
+// ArtifactPolicy names the consumer an artifact is fetched for, and so the
+// closed allow-set of manifest artifact types and layer media types the daemon
+// accepts. It is an enum, never a free list, so a caller cannot widen what
+// the root daemon accepts by naming a media type. The sets themselves live in
+// k3sm.io/apis/artifact/v1, the one home both sides read.
+enum ArtifactPolicy {
+  // UNSPECIFIED is refused: there is no default consumer.
+  ARTIFACT_POLICY_UNSPECIFIED = 0;
+  // IMAGE_VOLUME is a pod image volume: the model and wasm types only
+  // (artifactv1.ImageVolumeAllowSet). Guest kernel and initramfs artifacts use
+  // an internal entry point and are deliberately not reachable from here.
+  ARTIFACT_POLICY_IMAGE_VOLUME = 1;
+}
+
+// PullArtifactRequest names the artifact, the layers wanted, the consumer
+// policy, and the pull credentials.
+message PullArtifactRequest {
+  // reference is the OCI reference (registry/repo:tag or
+  // registry/repo@sha256:<hex>). It must name the cluster registry host.
+  string reference = 1;
+
+  // pull_policy carries corev1 pull-policy semantics, reusing the existing
+  // ImagePullPolicy enum, as ImageVolumeSource.pull_policy does.
+  ImagePullPolicy pull_policy = 2;
+
+  // paths, when non-empty, is the subset of file paths (the layers'
+  // org.cncf.model.filepath values) to fetch; empty fetches every layer. The
+  // same value as ImageVolumeSource.paths, under the same rules.
+  repeated string paths = 3;
+
+  // artifact_policy selects the allow-set. UNSPECIFIED is refused.
+  ArtifactPolicy artifact_policy = 4;
+
+  // namespace and image_pull_secrets are the pod's pull credentials, in the
+  // same shape PodBox carries them (PodBox.namespace,
+  // PodBox.image_pull_secrets): references the daemon resolves and confines
+  // to the pull client, never secret bytes on this wire.
+  string namespace = 5;
+  repeated LocalObjectReference image_pull_secrets = 6;
+
+  reserved 100 to 149;
+}
+
+// PullArtifactResponse reports what the pull resolved to and committed.
+message PullArtifactResponse {
+  // manifest_digest is the resolved manifest digest, "sha256:<hex>". A caller
+  // mounts by this digest, never by the tag it asked for.
+  string manifest_digest = 1;
+
+  // layer_digests are the digests of the layers committed to the node cache
+  // for this request (the requested subset when paths was set), each
+  // "sha256:<hex>", in manifest order.
+  repeated string layer_digests = 2;
+
+  // error carries a structured failure (empty on success).
+  google.rpc.Status error = 3;
 
   reserved 100 to 149;
 }

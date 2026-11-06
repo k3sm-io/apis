@@ -1,0 +1,2 @@
+go test fuzz v1
+string("model-00001-of-00002.safetensors")

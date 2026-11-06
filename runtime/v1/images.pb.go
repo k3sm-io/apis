@@ -155,6 +155,61 @@ func (LoadImageFormat) EnumDescriptor() ([]byte, []int) {
 	return file_runtime_v1_images_proto_rawDescGZIP(), []int{1}
 }
 
+// ArtifactPolicy names the consumer an artifact is fetched for, and so the
+// closed allow-set of manifest artifact types and layer media types the daemon
+// accepts. It is an enum, never a free list, so a caller cannot widen what
+// the root daemon accepts by naming a media type. The sets themselves live in
+// k3sm.io/apis/artifact/v1, the one home both sides read.
+type ArtifactPolicy int32
+
+const (
+	// UNSPECIFIED is refused: there is no default consumer.
+	ArtifactPolicy_ARTIFACT_POLICY_UNSPECIFIED ArtifactPolicy = 0
+	// IMAGE_VOLUME is a pod image volume: the model and wasm types only
+	// (artifactv1.ImageVolumeAllowSet). Guest kernel and initramfs artifacts use
+	// an internal entry point and are deliberately not reachable from here.
+	ArtifactPolicy_ARTIFACT_POLICY_IMAGE_VOLUME ArtifactPolicy = 1
+)
+
+// Enum value maps for ArtifactPolicy.
+var (
+	ArtifactPolicy_name = map[int32]string{
+		0: "ARTIFACT_POLICY_UNSPECIFIED",
+		1: "ARTIFACT_POLICY_IMAGE_VOLUME",
+	}
+	ArtifactPolicy_value = map[string]int32{
+		"ARTIFACT_POLICY_UNSPECIFIED":  0,
+		"ARTIFACT_POLICY_IMAGE_VOLUME": 1,
+	}
+)
+
+func (x ArtifactPolicy) Enum() *ArtifactPolicy {
+	p := new(ArtifactPolicy)
+	*p = x
+	return p
+}
+
+func (x ArtifactPolicy) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ArtifactPolicy) Descriptor() protoreflect.EnumDescriptor {
+	return file_runtime_v1_images_proto_enumTypes[2].Descriptor()
+}
+
+func (ArtifactPolicy) Type() protoreflect.EnumType {
+	return &file_runtime_v1_images_proto_enumTypes[2]
+}
+
+func (x ArtifactPolicy) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ArtifactPolicy.Descriptor instead.
+func (ArtifactPolicy) EnumDescriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{2}
+}
+
 // ListImagesRequest selects which stored images to return. An empty request
 // lists everything.
 type ListImagesRequest struct {
@@ -1882,6 +1937,171 @@ func (x *SaveImageResponse) GetError() *status.Status {
 	return nil
 }
 
+// PullArtifactRequest names the artifact, the layers wanted, the consumer
+// policy, and the pull credentials.
+type PullArtifactRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// reference is the OCI reference (registry/repo:tag or
+	// registry/repo@sha256:<hex>). It must name the cluster registry host.
+	Reference string `protobuf:"bytes,1,opt,name=reference,proto3" json:"reference,omitempty"`
+	// pull_policy carries corev1 pull-policy semantics, reusing the existing
+	// ImagePullPolicy enum, as ImageVolumeSource.pull_policy does.
+	PullPolicy ImagePullPolicy `protobuf:"varint,2,opt,name=pull_policy,json=pullPolicy,proto3,enum=k3sm.runtime.v1.ImagePullPolicy" json:"pull_policy,omitempty"`
+	// paths, when non-empty, is the subset of file paths (the layers'
+	// org.cncf.model.filepath values) to fetch; empty fetches every layer. The
+	// same value as ImageVolumeSource.paths, under the same rules.
+	Paths []string `protobuf:"bytes,3,rep,name=paths,proto3" json:"paths,omitempty"`
+	// artifact_policy selects the allow-set. UNSPECIFIED is refused.
+	ArtifactPolicy ArtifactPolicy `protobuf:"varint,4,opt,name=artifact_policy,json=artifactPolicy,proto3,enum=k3sm.runtime.v1.ArtifactPolicy" json:"artifact_policy,omitempty"`
+	// namespace and image_pull_secrets are the pod's pull credentials, in the
+	// same shape PodBox carries them (PodBox.namespace,
+	// PodBox.image_pull_secrets): references the daemon resolves and confines
+	// to the pull client, never secret bytes on this wire.
+	Namespace        string                  `protobuf:"bytes,5,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	ImagePullSecrets []*LocalObjectReference `protobuf:"bytes,6,rep,name=image_pull_secrets,json=imagePullSecrets,proto3" json:"image_pull_secrets,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *PullArtifactRequest) Reset() {
+	*x = PullArtifactRequest{}
+	mi := &file_runtime_v1_images_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PullArtifactRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PullArtifactRequest) ProtoMessage() {}
+
+func (x *PullArtifactRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_images_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PullArtifactRequest.ProtoReflect.Descriptor instead.
+func (*PullArtifactRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *PullArtifactRequest) GetReference() string {
+	if x != nil {
+		return x.Reference
+	}
+	return ""
+}
+
+func (x *PullArtifactRequest) GetPullPolicy() ImagePullPolicy {
+	if x != nil {
+		return x.PullPolicy
+	}
+	return ImagePullPolicy_IMAGE_PULL_POLICY_UNSPECIFIED
+}
+
+func (x *PullArtifactRequest) GetPaths() []string {
+	if x != nil {
+		return x.Paths
+	}
+	return nil
+}
+
+func (x *PullArtifactRequest) GetArtifactPolicy() ArtifactPolicy {
+	if x != nil {
+		return x.ArtifactPolicy
+	}
+	return ArtifactPolicy_ARTIFACT_POLICY_UNSPECIFIED
+}
+
+func (x *PullArtifactRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *PullArtifactRequest) GetImagePullSecrets() []*LocalObjectReference {
+	if x != nil {
+		return x.ImagePullSecrets
+	}
+	return nil
+}
+
+// PullArtifactResponse reports what the pull resolved to and committed.
+type PullArtifactResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// manifest_digest is the resolved manifest digest, "sha256:<hex>". A caller
+	// mounts by this digest, never by the tag it asked for.
+	ManifestDigest string `protobuf:"bytes,1,opt,name=manifest_digest,json=manifestDigest,proto3" json:"manifest_digest,omitempty"`
+	// layer_digests are the digests of the layers committed to the node cache
+	// for this request (the requested subset when paths was set), each
+	// "sha256:<hex>", in manifest order.
+	LayerDigests []string `protobuf:"bytes,2,rep,name=layer_digests,json=layerDigests,proto3" json:"layer_digests,omitempty"`
+	// error carries a structured failure (empty on success).
+	Error         *status.Status `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PullArtifactResponse) Reset() {
+	*x = PullArtifactResponse{}
+	mi := &file_runtime_v1_images_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PullArtifactResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PullArtifactResponse) ProtoMessage() {}
+
+func (x *PullArtifactResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_images_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PullArtifactResponse.ProtoReflect.Descriptor instead.
+func (*PullArtifactResponse) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *PullArtifactResponse) GetManifestDigest() string {
+	if x != nil {
+		return x.ManifestDigest
+	}
+	return ""
+}
+
+func (x *PullArtifactResponse) GetLayerDigests() []string {
+	if x != nil {
+		return x.LayerDigests
+	}
+	return nil
+}
+
+func (x *PullArtifactResponse) GetError() *status.Status {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
 var File_runtime_v1_images_proto protoreflect.FileDescriptor
 
 const file_runtime_v1_images_proto_rawDesc = "" +
@@ -1999,7 +2219,19 @@ const file_runtime_v1_images_proto_rawDesc = "" +
 	"\x06digest\x18\x02 \x01(\tR\x06digest\x12\x1d\n" +
 	"\n" +
 	"sent_bytes\x18\x03 \x01(\x03R\tsentBytes\x12(\n" +
-	"\x05error\x18\x04 \x01(\v2\x12.google.rpc.StatusR\x05errorJ\x05\bd\x10\x96\x01*\xb6\x01\n" +
+	"\x05error\x18\x04 \x01(\v2\x12.google.rpc.StatusR\x05errorJ\x05\bd\x10\x96\x01\"\xd0\x02\n" +
+	"\x13PullArtifactRequest\x12\x1c\n" +
+	"\treference\x18\x01 \x01(\tR\treference\x12A\n" +
+	"\vpull_policy\x18\x02 \x01(\x0e2 .k3sm.runtime.v1.ImagePullPolicyR\n" +
+	"pullPolicy\x12\x14\n" +
+	"\x05paths\x18\x03 \x03(\tR\x05paths\x12H\n" +
+	"\x0fartifact_policy\x18\x04 \x01(\x0e2\x1f.k3sm.runtime.v1.ArtifactPolicyR\x0eartifactPolicy\x12\x1c\n" +
+	"\tnamespace\x18\x05 \x01(\tR\tnamespace\x12S\n" +
+	"\x12image_pull_secrets\x18\x06 \x03(\v2%.k3sm.runtime.v1.LocalObjectReferenceR\x10imagePullSecretsJ\x05\bd\x10\x96\x01\"\x95\x01\n" +
+	"\x14PullArtifactResponse\x12'\n" +
+	"\x0fmanifest_digest\x18\x01 \x01(\tR\x0emanifestDigest\x12#\n" +
+	"\rlayer_digests\x18\x02 \x03(\tR\flayerDigests\x12(\n" +
+	"\x05error\x18\x03 \x01(\v2\x12.google.rpc.StatusR\x05errorJ\x05\bd\x10\x96\x01*\xb6\x01\n" +
 	"\x0fPruneSkipReason\x12!\n" +
 	"\x1dPRUNE_SKIP_REASON_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bPRUNE_SKIP_REASON_REACHABLE\x10\x01\x12\x1c\n" +
@@ -2009,7 +2241,10 @@ const file_runtime_v1_images_proto_rawDesc = "" +
 	"\x0fLoadImageFormat\x12!\n" +
 	"\x1dLOAD_IMAGE_FORMAT_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dLOAD_IMAGE_FORMAT_DOCKER_SAVE\x10\x01\x12 \n" +
-	"\x1cLOAD_IMAGE_FORMAT_OCI_LAYOUT\x10\x022\x8b\a\n" +
+	"\x1cLOAD_IMAGE_FORMAT_OCI_LAYOUT\x10\x02*S\n" +
+	"\x0eArtifactPolicy\x12\x1f\n" +
+	"\x1bARTIFACT_POLICY_UNSPECIFIED\x10\x00\x12 \n" +
+	"\x1cARTIFACT_POLICY_IMAGE_VOLUME\x10\x012\xe8\a\n" +
 	"\x06Images\x12U\n" +
 	"\n" +
 	"ListImages\x12\".k3sm.runtime.v1.ListImagesRequest\x1a#.k3sm.runtime.v1.ListImagesResponse\x12X\n" +
@@ -2022,7 +2257,8 @@ const file_runtime_v1_images_proto_rawDesc = "" +
 	"\n" +
 	"UntagImage\x12\".k3sm.runtime.v1.UntagImageRequest\x1a#.k3sm.runtime.v1.UntagImageResponse\"\x03\x88\x02\x01\x12[\n" +
 	"\fInspectImage\x12$.k3sm.runtime.v1.InspectImageRequest\x1a%.k3sm.runtime.v1.InspectImageResponse\x12Y\n" +
-	"\tSaveImage\x12!.k3sm.runtime.v1.SaveImageRequest\x1a\".k3sm.runtime.v1.SaveImageResponse\"\x03\x88\x02\x010\x01B\xa3\x01\n" +
+	"\tSaveImage\x12!.k3sm.runtime.v1.SaveImageRequest\x1a\".k3sm.runtime.v1.SaveImageResponse\"\x03\x88\x02\x010\x01\x12[\n" +
+	"\fPullArtifact\x12$.k3sm.runtime.v1.PullArtifactRequest\x1a%.k3sm.runtime.v1.PullArtifactResponseB\xa3\x01\n" +
 	"\x13com.k3sm.runtime.v1B\vImagesProtoP\x01Z!k3sm.io/apis/runtime/v1;runtimev1\xa2\x02\x03KRX\xaa\x02\x0fK3sm.Runtime.V1\xca\x02\x0fK3sm\\Runtime\\V1\xe2\x02\x1bK3sm\\Runtime\\V1\\GPBMetadata\xea\x02\x11K3sm::Runtime::V1b\x06proto3"
 
 var (
@@ -2037,105 +2273,115 @@ func file_runtime_v1_images_proto_rawDescGZIP() []byte {
 	return file_runtime_v1_images_proto_rawDescData
 }
 
-var file_runtime_v1_images_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_runtime_v1_images_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_runtime_v1_images_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_runtime_v1_images_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_runtime_v1_images_proto_goTypes = []any{
 	(PruneSkipReason)(0),          // 0: k3sm.runtime.v1.PruneSkipReason
 	(LoadImageFormat)(0),          // 1: k3sm.runtime.v1.LoadImageFormat
-	(*ListImagesRequest)(nil),     // 2: k3sm.runtime.v1.ListImagesRequest
-	(*ListImagesResponse)(nil),    // 3: k3sm.runtime.v1.ListImagesResponse
-	(*Image)(nil),                 // 4: k3sm.runtime.v1.Image
-	(*ImageFsInfoRequest)(nil),    // 5: k3sm.runtime.v1.ImageFsInfoRequest
-	(*ImageFsInfoResponse)(nil),   // 6: k3sm.runtime.v1.ImageFsInfoResponse
-	(*FilesystemUsage)(nil),       // 7: k3sm.runtime.v1.FilesystemUsage
-	(*RemoveImageRequest)(nil),    // 8: k3sm.runtime.v1.RemoveImageRequest
-	(*RemoveImageResponse)(nil),   // 9: k3sm.runtime.v1.RemoveImageResponse
-	(*PruneImagesRequest)(nil),    // 10: k3sm.runtime.v1.PruneImagesRequest
-	(*PruneImagesResponse)(nil),   // 11: k3sm.runtime.v1.PruneImagesResponse
-	(*SkippedBlob)(nil),           // 12: k3sm.runtime.v1.SkippedBlob
-	(*LoadImageRequest)(nil),      // 13: k3sm.runtime.v1.LoadImageRequest
-	(*LoadImageResponse)(nil),     // 14: k3sm.runtime.v1.LoadImageResponse
-	(*PullImageRequest)(nil),      // 15: k3sm.runtime.v1.PullImageRequest
-	(*PullImageResponse)(nil),     // 16: k3sm.runtime.v1.PullImageResponse
-	(*TagImageRequest)(nil),       // 17: k3sm.runtime.v1.TagImageRequest
-	(*TagImageResponse)(nil),      // 18: k3sm.runtime.v1.TagImageResponse
-	(*UntagImageRequest)(nil),     // 19: k3sm.runtime.v1.UntagImageRequest
-	(*UntagImageResponse)(nil),    // 20: k3sm.runtime.v1.UntagImageResponse
-	(*InspectImageRequest)(nil),   // 21: k3sm.runtime.v1.InspectImageRequest
-	(*InspectImageResponse)(nil),  // 22: k3sm.runtime.v1.InspectImageResponse
-	(*ImageConfig)(nil),           // 23: k3sm.runtime.v1.ImageConfig
-	(*SaveImageRequest)(nil),      // 24: k3sm.runtime.v1.SaveImageRequest
-	(*SaveImageResponse)(nil),     // 25: k3sm.runtime.v1.SaveImageResponse
-	nil,                           // 26: k3sm.runtime.v1.ImageConfig.LabelsEntry
-	(*Platform)(nil),              // 27: k3sm.runtime.v1.Platform
-	(*status.Status)(nil),         // 28: google.rpc.Status
-	(*Descriptor)(nil),            // 29: k3sm.runtime.v1.Descriptor
-	(*ImageManifest)(nil),         // 30: k3sm.runtime.v1.ImageManifest
-	(*timestamppb.Timestamp)(nil), // 31: google.protobuf.Timestamp
-	(ImagePullPolicy)(0),          // 32: k3sm.runtime.v1.ImagePullPolicy
+	(ArtifactPolicy)(0),           // 2: k3sm.runtime.v1.ArtifactPolicy
+	(*ListImagesRequest)(nil),     // 3: k3sm.runtime.v1.ListImagesRequest
+	(*ListImagesResponse)(nil),    // 4: k3sm.runtime.v1.ListImagesResponse
+	(*Image)(nil),                 // 5: k3sm.runtime.v1.Image
+	(*ImageFsInfoRequest)(nil),    // 6: k3sm.runtime.v1.ImageFsInfoRequest
+	(*ImageFsInfoResponse)(nil),   // 7: k3sm.runtime.v1.ImageFsInfoResponse
+	(*FilesystemUsage)(nil),       // 8: k3sm.runtime.v1.FilesystemUsage
+	(*RemoveImageRequest)(nil),    // 9: k3sm.runtime.v1.RemoveImageRequest
+	(*RemoveImageResponse)(nil),   // 10: k3sm.runtime.v1.RemoveImageResponse
+	(*PruneImagesRequest)(nil),    // 11: k3sm.runtime.v1.PruneImagesRequest
+	(*PruneImagesResponse)(nil),   // 12: k3sm.runtime.v1.PruneImagesResponse
+	(*SkippedBlob)(nil),           // 13: k3sm.runtime.v1.SkippedBlob
+	(*LoadImageRequest)(nil),      // 14: k3sm.runtime.v1.LoadImageRequest
+	(*LoadImageResponse)(nil),     // 15: k3sm.runtime.v1.LoadImageResponse
+	(*PullImageRequest)(nil),      // 16: k3sm.runtime.v1.PullImageRequest
+	(*PullImageResponse)(nil),     // 17: k3sm.runtime.v1.PullImageResponse
+	(*TagImageRequest)(nil),       // 18: k3sm.runtime.v1.TagImageRequest
+	(*TagImageResponse)(nil),      // 19: k3sm.runtime.v1.TagImageResponse
+	(*UntagImageRequest)(nil),     // 20: k3sm.runtime.v1.UntagImageRequest
+	(*UntagImageResponse)(nil),    // 21: k3sm.runtime.v1.UntagImageResponse
+	(*InspectImageRequest)(nil),   // 22: k3sm.runtime.v1.InspectImageRequest
+	(*InspectImageResponse)(nil),  // 23: k3sm.runtime.v1.InspectImageResponse
+	(*ImageConfig)(nil),           // 24: k3sm.runtime.v1.ImageConfig
+	(*SaveImageRequest)(nil),      // 25: k3sm.runtime.v1.SaveImageRequest
+	(*SaveImageResponse)(nil),     // 26: k3sm.runtime.v1.SaveImageResponse
+	(*PullArtifactRequest)(nil),   // 27: k3sm.runtime.v1.PullArtifactRequest
+	(*PullArtifactResponse)(nil),  // 28: k3sm.runtime.v1.PullArtifactResponse
+	nil,                           // 29: k3sm.runtime.v1.ImageConfig.LabelsEntry
+	(*Platform)(nil),              // 30: k3sm.runtime.v1.Platform
+	(*status.Status)(nil),         // 31: google.rpc.Status
+	(*Descriptor)(nil),            // 32: k3sm.runtime.v1.Descriptor
+	(*ImageManifest)(nil),         // 33: k3sm.runtime.v1.ImageManifest
+	(*timestamppb.Timestamp)(nil), // 34: google.protobuf.Timestamp
+	(ImagePullPolicy)(0),          // 35: k3sm.runtime.v1.ImagePullPolicy
+	(*LocalObjectReference)(nil),  // 36: k3sm.runtime.v1.LocalObjectReference
 }
 var file_runtime_v1_images_proto_depIdxs = []int32{
-	27, // 0: k3sm.runtime.v1.ListImagesRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	4,  // 1: k3sm.runtime.v1.ListImagesResponse.images:type_name -> k3sm.runtime.v1.Image
-	28, // 2: k3sm.runtime.v1.ListImagesResponse.error:type_name -> google.rpc.Status
-	29, // 3: k3sm.runtime.v1.Image.manifest_descriptor:type_name -> k3sm.runtime.v1.Descriptor
-	30, // 4: k3sm.runtime.v1.Image.manifest:type_name -> k3sm.runtime.v1.ImageManifest
-	7,  // 5: k3sm.runtime.v1.ImageFsInfoResponse.filesystems:type_name -> k3sm.runtime.v1.FilesystemUsage
-	28, // 6: k3sm.runtime.v1.ImageFsInfoResponse.error:type_name -> google.rpc.Status
-	31, // 7: k3sm.runtime.v1.FilesystemUsage.timestamp:type_name -> google.protobuf.Timestamp
-	27, // 8: k3sm.runtime.v1.RemoveImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	28, // 9: k3sm.runtime.v1.RemoveImageResponse.error:type_name -> google.rpc.Status
-	12, // 10: k3sm.runtime.v1.PruneImagesResponse.skipped:type_name -> k3sm.runtime.v1.SkippedBlob
-	28, // 11: k3sm.runtime.v1.PruneImagesResponse.error:type_name -> google.rpc.Status
+	30, // 0: k3sm.runtime.v1.ListImagesRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	5,  // 1: k3sm.runtime.v1.ListImagesResponse.images:type_name -> k3sm.runtime.v1.Image
+	31, // 2: k3sm.runtime.v1.ListImagesResponse.error:type_name -> google.rpc.Status
+	32, // 3: k3sm.runtime.v1.Image.manifest_descriptor:type_name -> k3sm.runtime.v1.Descriptor
+	33, // 4: k3sm.runtime.v1.Image.manifest:type_name -> k3sm.runtime.v1.ImageManifest
+	8,  // 5: k3sm.runtime.v1.ImageFsInfoResponse.filesystems:type_name -> k3sm.runtime.v1.FilesystemUsage
+	31, // 6: k3sm.runtime.v1.ImageFsInfoResponse.error:type_name -> google.rpc.Status
+	34, // 7: k3sm.runtime.v1.FilesystemUsage.timestamp:type_name -> google.protobuf.Timestamp
+	30, // 8: k3sm.runtime.v1.RemoveImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	31, // 9: k3sm.runtime.v1.RemoveImageResponse.error:type_name -> google.rpc.Status
+	13, // 10: k3sm.runtime.v1.PruneImagesResponse.skipped:type_name -> k3sm.runtime.v1.SkippedBlob
+	31, // 11: k3sm.runtime.v1.PruneImagesResponse.error:type_name -> google.rpc.Status
 	0,  // 12: k3sm.runtime.v1.SkippedBlob.reason:type_name -> k3sm.runtime.v1.PruneSkipReason
 	1,  // 13: k3sm.runtime.v1.LoadImageRequest.format:type_name -> k3sm.runtime.v1.LoadImageFormat
-	4,  // 14: k3sm.runtime.v1.LoadImageResponse.images:type_name -> k3sm.runtime.v1.Image
-	28, // 15: k3sm.runtime.v1.LoadImageResponse.error:type_name -> google.rpc.Status
-	27, // 16: k3sm.runtime.v1.PullImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	32, // 17: k3sm.runtime.v1.PullImageRequest.policy:type_name -> k3sm.runtime.v1.ImagePullPolicy
-	4,  // 18: k3sm.runtime.v1.PullImageResponse.image:type_name -> k3sm.runtime.v1.Image
-	28, // 19: k3sm.runtime.v1.PullImageResponse.error:type_name -> google.rpc.Status
-	27, // 20: k3sm.runtime.v1.TagImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	4,  // 21: k3sm.runtime.v1.TagImageResponse.image:type_name -> k3sm.runtime.v1.Image
-	28, // 22: k3sm.runtime.v1.TagImageResponse.error:type_name -> google.rpc.Status
-	27, // 23: k3sm.runtime.v1.UntagImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	4,  // 24: k3sm.runtime.v1.UntagImageResponse.removed:type_name -> k3sm.runtime.v1.Image
-	28, // 25: k3sm.runtime.v1.UntagImageResponse.error:type_name -> google.rpc.Status
-	27, // 26: k3sm.runtime.v1.InspectImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	4,  // 27: k3sm.runtime.v1.InspectImageResponse.image:type_name -> k3sm.runtime.v1.Image
-	23, // 28: k3sm.runtime.v1.InspectImageResponse.config:type_name -> k3sm.runtime.v1.ImageConfig
-	28, // 29: k3sm.runtime.v1.InspectImageResponse.error:type_name -> google.rpc.Status
-	27, // 30: k3sm.runtime.v1.ImageConfig.platform:type_name -> k3sm.runtime.v1.Platform
-	31, // 31: k3sm.runtime.v1.ImageConfig.created:type_name -> google.protobuf.Timestamp
-	26, // 32: k3sm.runtime.v1.ImageConfig.labels:type_name -> k3sm.runtime.v1.ImageConfig.LabelsEntry
-	27, // 33: k3sm.runtime.v1.SaveImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	5,  // 14: k3sm.runtime.v1.LoadImageResponse.images:type_name -> k3sm.runtime.v1.Image
+	31, // 15: k3sm.runtime.v1.LoadImageResponse.error:type_name -> google.rpc.Status
+	30, // 16: k3sm.runtime.v1.PullImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	35, // 17: k3sm.runtime.v1.PullImageRequest.policy:type_name -> k3sm.runtime.v1.ImagePullPolicy
+	5,  // 18: k3sm.runtime.v1.PullImageResponse.image:type_name -> k3sm.runtime.v1.Image
+	31, // 19: k3sm.runtime.v1.PullImageResponse.error:type_name -> google.rpc.Status
+	30, // 20: k3sm.runtime.v1.TagImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	5,  // 21: k3sm.runtime.v1.TagImageResponse.image:type_name -> k3sm.runtime.v1.Image
+	31, // 22: k3sm.runtime.v1.TagImageResponse.error:type_name -> google.rpc.Status
+	30, // 23: k3sm.runtime.v1.UntagImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	5,  // 24: k3sm.runtime.v1.UntagImageResponse.removed:type_name -> k3sm.runtime.v1.Image
+	31, // 25: k3sm.runtime.v1.UntagImageResponse.error:type_name -> google.rpc.Status
+	30, // 26: k3sm.runtime.v1.InspectImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	5,  // 27: k3sm.runtime.v1.InspectImageResponse.image:type_name -> k3sm.runtime.v1.Image
+	24, // 28: k3sm.runtime.v1.InspectImageResponse.config:type_name -> k3sm.runtime.v1.ImageConfig
+	31, // 29: k3sm.runtime.v1.InspectImageResponse.error:type_name -> google.rpc.Status
+	30, // 30: k3sm.runtime.v1.ImageConfig.platform:type_name -> k3sm.runtime.v1.Platform
+	34, // 31: k3sm.runtime.v1.ImageConfig.created:type_name -> google.protobuf.Timestamp
+	29, // 32: k3sm.runtime.v1.ImageConfig.labels:type_name -> k3sm.runtime.v1.ImageConfig.LabelsEntry
+	30, // 33: k3sm.runtime.v1.SaveImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
 	1,  // 34: k3sm.runtime.v1.SaveImageRequest.format:type_name -> k3sm.runtime.v1.LoadImageFormat
-	28, // 35: k3sm.runtime.v1.SaveImageResponse.error:type_name -> google.rpc.Status
-	2,  // 36: k3sm.runtime.v1.Images.ListImages:input_type -> k3sm.runtime.v1.ListImagesRequest
-	5,  // 37: k3sm.runtime.v1.Images.ImageFsInfo:input_type -> k3sm.runtime.v1.ImageFsInfoRequest
-	8,  // 38: k3sm.runtime.v1.Images.RemoveImage:input_type -> k3sm.runtime.v1.RemoveImageRequest
-	10, // 39: k3sm.runtime.v1.Images.PruneImages:input_type -> k3sm.runtime.v1.PruneImagesRequest
-	13, // 40: k3sm.runtime.v1.Images.LoadImage:input_type -> k3sm.runtime.v1.LoadImageRequest
-	15, // 41: k3sm.runtime.v1.Images.PullImage:input_type -> k3sm.runtime.v1.PullImageRequest
-	17, // 42: k3sm.runtime.v1.Images.TagImage:input_type -> k3sm.runtime.v1.TagImageRequest
-	19, // 43: k3sm.runtime.v1.Images.UntagImage:input_type -> k3sm.runtime.v1.UntagImageRequest
-	21, // 44: k3sm.runtime.v1.Images.InspectImage:input_type -> k3sm.runtime.v1.InspectImageRequest
-	24, // 45: k3sm.runtime.v1.Images.SaveImage:input_type -> k3sm.runtime.v1.SaveImageRequest
-	3,  // 46: k3sm.runtime.v1.Images.ListImages:output_type -> k3sm.runtime.v1.ListImagesResponse
-	6,  // 47: k3sm.runtime.v1.Images.ImageFsInfo:output_type -> k3sm.runtime.v1.ImageFsInfoResponse
-	9,  // 48: k3sm.runtime.v1.Images.RemoveImage:output_type -> k3sm.runtime.v1.RemoveImageResponse
-	11, // 49: k3sm.runtime.v1.Images.PruneImages:output_type -> k3sm.runtime.v1.PruneImagesResponse
-	14, // 50: k3sm.runtime.v1.Images.LoadImage:output_type -> k3sm.runtime.v1.LoadImageResponse
-	16, // 51: k3sm.runtime.v1.Images.PullImage:output_type -> k3sm.runtime.v1.PullImageResponse
-	18, // 52: k3sm.runtime.v1.Images.TagImage:output_type -> k3sm.runtime.v1.TagImageResponse
-	20, // 53: k3sm.runtime.v1.Images.UntagImage:output_type -> k3sm.runtime.v1.UntagImageResponse
-	22, // 54: k3sm.runtime.v1.Images.InspectImage:output_type -> k3sm.runtime.v1.InspectImageResponse
-	25, // 55: k3sm.runtime.v1.Images.SaveImage:output_type -> k3sm.runtime.v1.SaveImageResponse
-	46, // [46:56] is the sub-list for method output_type
-	36, // [36:46] is the sub-list for method input_type
-	36, // [36:36] is the sub-list for extension type_name
-	36, // [36:36] is the sub-list for extension extendee
-	0,  // [0:36] is the sub-list for field type_name
+	31, // 35: k3sm.runtime.v1.SaveImageResponse.error:type_name -> google.rpc.Status
+	35, // 36: k3sm.runtime.v1.PullArtifactRequest.pull_policy:type_name -> k3sm.runtime.v1.ImagePullPolicy
+	2,  // 37: k3sm.runtime.v1.PullArtifactRequest.artifact_policy:type_name -> k3sm.runtime.v1.ArtifactPolicy
+	36, // 38: k3sm.runtime.v1.PullArtifactRequest.image_pull_secrets:type_name -> k3sm.runtime.v1.LocalObjectReference
+	31, // 39: k3sm.runtime.v1.PullArtifactResponse.error:type_name -> google.rpc.Status
+	3,  // 40: k3sm.runtime.v1.Images.ListImages:input_type -> k3sm.runtime.v1.ListImagesRequest
+	6,  // 41: k3sm.runtime.v1.Images.ImageFsInfo:input_type -> k3sm.runtime.v1.ImageFsInfoRequest
+	9,  // 42: k3sm.runtime.v1.Images.RemoveImage:input_type -> k3sm.runtime.v1.RemoveImageRequest
+	11, // 43: k3sm.runtime.v1.Images.PruneImages:input_type -> k3sm.runtime.v1.PruneImagesRequest
+	14, // 44: k3sm.runtime.v1.Images.LoadImage:input_type -> k3sm.runtime.v1.LoadImageRequest
+	16, // 45: k3sm.runtime.v1.Images.PullImage:input_type -> k3sm.runtime.v1.PullImageRequest
+	18, // 46: k3sm.runtime.v1.Images.TagImage:input_type -> k3sm.runtime.v1.TagImageRequest
+	20, // 47: k3sm.runtime.v1.Images.UntagImage:input_type -> k3sm.runtime.v1.UntagImageRequest
+	22, // 48: k3sm.runtime.v1.Images.InspectImage:input_type -> k3sm.runtime.v1.InspectImageRequest
+	25, // 49: k3sm.runtime.v1.Images.SaveImage:input_type -> k3sm.runtime.v1.SaveImageRequest
+	27, // 50: k3sm.runtime.v1.Images.PullArtifact:input_type -> k3sm.runtime.v1.PullArtifactRequest
+	4,  // 51: k3sm.runtime.v1.Images.ListImages:output_type -> k3sm.runtime.v1.ListImagesResponse
+	7,  // 52: k3sm.runtime.v1.Images.ImageFsInfo:output_type -> k3sm.runtime.v1.ImageFsInfoResponse
+	10, // 53: k3sm.runtime.v1.Images.RemoveImage:output_type -> k3sm.runtime.v1.RemoveImageResponse
+	12, // 54: k3sm.runtime.v1.Images.PruneImages:output_type -> k3sm.runtime.v1.PruneImagesResponse
+	15, // 55: k3sm.runtime.v1.Images.LoadImage:output_type -> k3sm.runtime.v1.LoadImageResponse
+	17, // 56: k3sm.runtime.v1.Images.PullImage:output_type -> k3sm.runtime.v1.PullImageResponse
+	19, // 57: k3sm.runtime.v1.Images.TagImage:output_type -> k3sm.runtime.v1.TagImageResponse
+	21, // 58: k3sm.runtime.v1.Images.UntagImage:output_type -> k3sm.runtime.v1.UntagImageResponse
+	23, // 59: k3sm.runtime.v1.Images.InspectImage:output_type -> k3sm.runtime.v1.InspectImageResponse
+	26, // 60: k3sm.runtime.v1.Images.SaveImage:output_type -> k3sm.runtime.v1.SaveImageResponse
+	28, // 61: k3sm.runtime.v1.Images.PullArtifact:output_type -> k3sm.runtime.v1.PullArtifactResponse
+	51, // [51:62] is the sub-list for method output_type
+	40, // [40:51] is the sub-list for method input_type
+	40, // [40:40] is the sub-list for extension type_name
+	40, // [40:40] is the sub-list for extension extendee
+	0,  // [0:40] is the sub-list for field type_name
 }
 
 func init() { file_runtime_v1_images_proto_init() }
@@ -2149,8 +2395,8 @@ func file_runtime_v1_images_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_runtime_v1_images_proto_rawDesc), len(file_runtime_v1_images_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   25,
+			NumEnums:      3,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -284,9 +284,11 @@ func TestMLXModelCRDValidatesDistributed(t *testing.T) {
 		t.Errorf("spec.distributed message = %q, want %q", got, distributedRanksMessage)
 	}
 
-	// Required spec fields: model and memory. Memory carries no default on
-	// purpose — a guessed one schedules successfully and then fails at load time
-	// on the node, the worst place to learn the number was wrong.
+	// Required spec fields: memory. Memory carries no default on purpose — a
+	// guessed one schedules successfully and then fails at load time on the
+	// node, the worst place to learn the number was wrong. model is not in the
+	// list: it is required only when artifact is absent, which is a CEL rule
+	// (TestMLXModelArtifactFieldCEL).
 	req, ok := specProp["required"].([]any)
 	if !ok {
 		t.Fatal("spec.required is missing")
@@ -297,10 +299,11 @@ func TestMLXModelCRDValidatesDistributed(t *testing.T) {
 			got[s] = true
 		}
 	}
-	for _, want := range []string{"model", "memory"} {
-		if !got[want] {
-			t.Errorf("spec.required does not include %q", want)
-		}
+	if !got["memory"] {
+		t.Error("spec.required does not include \"memory\"")
+	}
+	if got["model"] {
+		t.Error("spec.required includes \"model\"; an artifact-only model must be admissible")
 	}
 }
 

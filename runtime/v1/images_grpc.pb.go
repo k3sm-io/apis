@@ -42,6 +42,7 @@ const (
 	Images_UntagImage_FullMethodName   = "/k3sm.runtime.v1.Images/UntagImage"
 	Images_InspectImage_FullMethodName = "/k3sm.runtime.v1.Images/InspectImage"
 	Images_SaveImage_FullMethodName    = "/k3sm.runtime.v1.Images/SaveImage"
+	Images_PullArtifact_FullMethodName = "/k3sm.runtime.v1.Images/PullArtifact"
 )
 
 // ImagesClient is the client API for Images service.
@@ -262,6 +263,31 @@ type ImagesClient interface {
 	// the daemon is the sole writer of the store: the daemon generally cannot
 	// write into an operator's home and must not try.
 	SaveImage(ctx context.Context, in *SaveImageRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SaveImageResponse], error)
+	// PullArtifact fetches a platform-less OCI artifact (a ModelPack model, a
+	// wasm module) from the cluster registry into the node cache. It is a
+	// SECOND entry point beside PullImage, never a relaxation of it: the image
+	// path keeps refusing an artifact, and this path refuses an image (an OCI
+	// image config is in no artifact allow-set). The provider calls it before
+	// CreatePod and posts progress as Pod Events; CreatePod only mounts an
+	// artifact already present.
+	//
+	// Idempotent: a second call for an artifact already committed fetches no
+	// byte and returns the same digests. Resumable per layer: a partial blob,
+	// keyed by its digest, survives an error and a daemon restart, and the next
+	// call continues it rather than starting over. Each layer is re-hashed
+	// against its descriptor digest before it is committed, and the artifact is
+	// recorded only after every requested layer is committed.
+	//
+	// Fail closed: the manifest's artifactType and every layer media type must
+	// be in the allow-set artifact_policy names; tar layers are refused; a bare
+	// index is refused; a reference naming a host other than the cluster
+	// registry is refused; a pull that would breach the node's free-space floor
+	// is refused before any byte is written. Each refusal is a status, never a
+	// partial mount.
+	//
+	// Skew: a daemon that predates this RPC returns UNIMPLEMENTED, and the
+	// provider fails the pod rather than falling back to CreatePod.
+	PullArtifact(ctx context.Context, in *PullArtifactRequest, opts ...grpc.CallOption) (*PullArtifactResponse, error)
 }
 
 type imagesClient struct {
@@ -388,6 +414,16 @@ func (c *imagesClient) SaveImage(ctx context.Context, in *SaveImageRequest, opts
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Images_SaveImageClient = grpc.ServerStreamingClient[SaveImageResponse]
+
+func (c *imagesClient) PullArtifact(ctx context.Context, in *PullArtifactRequest, opts ...grpc.CallOption) (*PullArtifactResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PullArtifactResponse)
+	err := c.cc.Invoke(ctx, Images_PullArtifact_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 // ImagesServer is the server API for Images service.
 // All implementations must embed UnimplementedImagesServer
@@ -607,6 +643,31 @@ type ImagesServer interface {
 	// the daemon is the sole writer of the store: the daemon generally cannot
 	// write into an operator's home and must not try.
 	SaveImage(*SaveImageRequest, grpc.ServerStreamingServer[SaveImageResponse]) error
+	// PullArtifact fetches a platform-less OCI artifact (a ModelPack model, a
+	// wasm module) from the cluster registry into the node cache. It is a
+	// SECOND entry point beside PullImage, never a relaxation of it: the image
+	// path keeps refusing an artifact, and this path refuses an image (an OCI
+	// image config is in no artifact allow-set). The provider calls it before
+	// CreatePod and posts progress as Pod Events; CreatePod only mounts an
+	// artifact already present.
+	//
+	// Idempotent: a second call for an artifact already committed fetches no
+	// byte and returns the same digests. Resumable per layer: a partial blob,
+	// keyed by its digest, survives an error and a daemon restart, and the next
+	// call continues it rather than starting over. Each layer is re-hashed
+	// against its descriptor digest before it is committed, and the artifact is
+	// recorded only after every requested layer is committed.
+	//
+	// Fail closed: the manifest's artifactType and every layer media type must
+	// be in the allow-set artifact_policy names; tar layers are refused; a bare
+	// index is refused; a reference naming a host other than the cluster
+	// registry is refused; a pull that would breach the node's free-space floor
+	// is refused before any byte is written. Each refusal is a status, never a
+	// partial mount.
+	//
+	// Skew: a daemon that predates this RPC returns UNIMPLEMENTED, and the
+	// provider fails the pod rather than falling back to CreatePod.
+	PullArtifact(context.Context, *PullArtifactRequest) (*PullArtifactResponse, error)
 	mustEmbedUnimplementedImagesServer()
 }
 
@@ -646,6 +707,9 @@ func (UnimplementedImagesServer) InspectImage(context.Context, *InspectImageRequ
 }
 func (UnimplementedImagesServer) SaveImage(*SaveImageRequest, grpc.ServerStreamingServer[SaveImageResponse]) error {
 	return status.Error(codes.Unimplemented, "method SaveImage not implemented")
+}
+func (UnimplementedImagesServer) PullArtifact(context.Context, *PullArtifactRequest) (*PullArtifactResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PullArtifact not implemented")
 }
 func (UnimplementedImagesServer) mustEmbedUnimplementedImagesServer() {}
 func (UnimplementedImagesServer) testEmbeddedByValue()                {}
@@ -830,6 +894,24 @@ func _Images_SaveImage_Handler(srv interface{}, stream grpc.ServerStream) error 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Images_SaveImageServer = grpc.ServerStreamingServer[SaveImageResponse]
 
+func _Images_PullArtifact_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PullArtifactRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ImagesServer).PullArtifact(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Images_PullArtifact_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ImagesServer).PullArtifact(ctx, req.(*PullArtifactRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Images_ServiceDesc is the grpc.ServiceDesc for Images service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -868,6 +950,10 @@ var Images_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "InspectImage",
 			Handler:    _Images_InspectImage_Handler,
+		},
+		{
+			MethodName: "PullArtifact",
+			Handler:    _Images_PullArtifact_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
