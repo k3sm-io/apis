@@ -16,6 +16,8 @@ limitations under the License.
 
 package runtimev1
 
+import "strings"
+
 // The k3sm.io/* node labels and pod annotations that parameterize this runtime
 // contract. They live in the runtime-area apis package — not in an area package
 // of their own and not in a consumer — because they are k3sm.io-domain keys that
@@ -146,3 +148,43 @@ const (
 	// LabelGPUMemoryGB, which is the part of this memory the GPU can use.
 	LabelMemoryGB = "k3sm.io/memory-gb"
 )
+
+// maxLabelValueLen is the Kubernetes label-value length limit.
+const maxLabelValueLen = 63
+
+// ChipSlug normalizes a raw GPUFacts chip fact into the value form of LabelChip and
+// LabelChipFamily, so "Apple M4 Max" becomes "apple-m4-max" and "M4" becomes "m4":
+//
+//  1. lowercase, by Unicode case folding;
+//  2. replace every run of characters outside [a-z0-9] with a single "-";
+//  3. trim any leading or trailing "-";
+//  4. truncate to 63 characters and trim any trailing "-" left behind.
+//
+// The result is always a valid label value, and it is empty when raw holds no
+// [a-z0-9] character. The function is deterministic, so every writer and reader of
+// a chip label gets the same bytes.
+func ChipSlug(raw string) string {
+	var b strings.Builder
+	pendingDash := false
+	for _, r := range strings.ToLower(raw) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			if pendingDash {
+				b.WriteByte('-')
+				pendingDash = false
+			}
+			b.WriteRune(r)
+			continue
+		}
+		// A run of non-alphanumerics collapses to ONE dash, and a dash is only
+		// emitted once an alphanumeric follows it, which trims the leading and
+		// trailing runs without a second pass.
+		if b.Len() > 0 {
+			pendingDash = true
+		}
+	}
+	s := b.String()
+	if len(s) > maxLabelValueLen {
+		s = strings.TrimRight(s[:maxLabelValueLen], "-")
+	}
+	return s
+}

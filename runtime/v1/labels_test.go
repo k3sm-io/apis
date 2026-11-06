@@ -138,3 +138,39 @@ func TestHardwareKeysArePinned(t *testing.T) {
 		t.Error("LabelMemoryGB and LabelGPUMemoryGB must be different keys")
 	}
 }
+
+// TestChipSlug pins the slug rule. The node advertiser and every selector agree on
+// a chip label's value only through this function, so each step of the rule has a
+// case, and each result has to be a label value the apiserver accepts.
+func TestChipSlug(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, raw, want string
+	}{
+		{"brand_with_spaces", "Apple M4 Max", "apple-m4-max"},
+		{"family", "M4", "m4"},
+		{"already_a_slug", "apple-m4-max", "apple-m4-max"},
+		{"leading_and_trailing_junk", "  Apple M4 Max!! ", "apple-m4-max"},
+		{"run_collapses_to_one_dash", "Apple   M4///Max", "apple-m4-max"},
+		{"non_ascii_becomes_a_separator", "Apple™ M4", "apple-m4"},
+		// Case folding is Unicode, not ASCII: these two fold into [a-z].
+		{"kelvin_sign_folds_to_k", "K9", "k9"},
+		{"dotted_capital_i_folds_to_i", "İx", "ix"},
+		{"empty", "", ""},
+		{"all_junk", " -- ", ""},
+		{"exactly_the_limit_kept", strings.Repeat("a", 63), strings.Repeat("a", 63)},
+		{"over_the_limit_truncated", strings.Repeat("a", 64), strings.Repeat("a", 63)},
+		{"truncation_trims_a_boundary_dash", strings.Repeat("a", 62) + " b", strings.Repeat("a", 62)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := ChipSlug(tc.raw)
+			if got != tc.want {
+				t.Errorf("ChipSlug(%q) = %q, want %q", tc.raw, got, tc.want)
+			}
+			if errs := validation.IsValidLabelValue(got); len(errs) != 0 {
+				t.Errorf("ChipSlug(%q) = %q is not a valid label value: %v", tc.raw, got, errs)
+			}
+		})
+	}
+}
