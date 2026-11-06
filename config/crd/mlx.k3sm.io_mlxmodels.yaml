@@ -93,9 +93,11 @@ spec:
                       type: string
                       description: Reference is the OCI reference of the artifact in the cluster registry, by tag or digest.
                       minLength: 1
+                      maxLength: 512
                     variant:
                       type: string
                       description: Variant selects one entry of an artifact index by its variant annotation (e.g. 4bit); empty means the reference names a single manifest.
+                      maxLength: 128
                 revision:
                   type: string
                   description: Revision pins the model to an exact immutable revision; empty means the repository's MUTABLE default branch (status.resolvedRevision records what was actually resolved).

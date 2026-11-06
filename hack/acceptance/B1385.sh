@@ -18,12 +18,14 @@
 #                                             no model key when artifact-only
 #                  TestMLXModelTypesMatchCRDSchema  the Go types and the shipped
 #                                             CRD schema agree both ways
+#                  TestArtifactRefBoundsMatchCRD  reference and variant maxLength
 #   config/crd     TestMLXModelArtifactFieldCEL  model out of spec.required, the
 #                                             exactly-one-of CEL rule on spec
 #                  TestMLXModelCRDValidatesDistributed  (updated: model optional)
-#   artifact/v1    the media types, the per-consumer allow-sets, ValidatePath,
-#                  ValidatePathSet, the annotation bounds, and FuzzValidatePath
-#                  over its committed seeds
+#   artifact/v1    the media types, the per-consumer allow-sets, AllowSetFor,
+#                  ValidatePath, ValidatePathSet, the annotation bounds, and
+#                  FuzzValidatePath and FuzzValidatePathSet over their
+#                  committed seeds
 # and then `buf breaking` against buf/baseline.binpb when the pinned buf is
 # installed (hack/gen.sh installs it); without it that step is reported SKIP.
 #
@@ -45,10 +47,15 @@ for f in artifact/v1/path.go artifact/v1/allowset.go artifact/v1/annotation.go \
 	config/crd/mlxmodel_artifact_test.go; do
 	[ -e "$f" ] || { echo "B1385: FAIL: $f is missing"; exit 1; }
 done
-seeds="artifact/v1/testdata/fuzz/FuzzValidatePath"
-[ -d "$seeds" ] || { echo "B1385: FAIL: $seeds is missing"; exit 1; }
-n="$(find "$seeds" -type f | wc -l | tr -d ' ')"
-[ "$n" -ge 10 ] || { echo "B1385: FAIL: only $n committed FuzzValidatePath seeds, want at least 10"; exit 1; }
+# check_seeds <fuzz target> <minimum> requires the committed seed corpus.
+check_seeds() {
+	local seeds="artifact/v1/testdata/fuzz/$1" n
+	[ -d "$seeds" ] || { echo "B1385: FAIL: $seeds is missing"; exit 1; }
+	n="$(find "$seeds" -type f | wc -l | tr -d ' ')"
+	[ "$n" -ge "$2" ] || { echo "B1385: FAIL: only $n committed $1 seeds, want at least $2"; exit 1; }
+}
+check_seeds FuzzValidatePath 29
+check_seeds FuzzValidatePathSet 4
 
 # run <package> <test>... runs exactly the named tests and requires each to pass.
 run() {
@@ -65,12 +72,12 @@ run() {
 }
 
 run ./runtime/v1/ TestImageVolumeSourceWire TestPullArtifactWire TestImagesServiceSurface
-run ./mlx/v1alpha1/ TestMLXModelArtifactJSON TestMLXModelTypesMatchCRDSchema
+run ./mlx/v1alpha1/ TestMLXModelArtifactJSON TestMLXModelTypesMatchCRDSchema TestArtifactRefBoundsMatchCRD
 run ./config/crd/ TestMLXModelArtifactFieldCEL TestMLXModelCRDValidatesDistributed
 run ./artifact/v1/ TestMediaTypeConstants TestArtifactType TestImageVolumeAllowSet \
 	TestGuestAllowSetIsSeparate TestNoAllowSetAdmitsTarCodeOrImageConfig \
 	TestAllowSetIsNotMutableThroughItsAccessors TestArtifactPathsAnnotationBounds \
-	TestValidatePath TestValidatePathSet FuzzValidatePath
+	TestAllowSetFor TestValidatePath TestValidatePathSet FuzzValidatePath FuzzValidatePathSet
 
 # shellcheck source=/dev/null
 . "$ROOT/hack/lib/buf-env.sh"

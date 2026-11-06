@@ -16,7 +16,17 @@ limitations under the License.
 
 package artifactv1
 
-import "slices"
+import (
+	"errors"
+	"fmt"
+	"slices"
+
+	runtimev1 "k3sm.io/apis/runtime/v1"
+)
+
+// ErrUnknownPolicy is an ArtifactPolicy with no allow-set: UNSPECIFIED, or a
+// value this build does not know. There is no default consumer.
+var ErrUnknownPolicy = errors.New("unknown artifact policy")
 
 // typeRule is what one accepted artifact type admits.
 type typeRule struct {
@@ -61,6 +71,20 @@ func GuestAllowSet() AllowSet {
 	return AllowSet{name: "guest", rules: []typeRule{
 		{artifactType: ArtifactTypeGuest, layers: []string{MediaTypeGuestKernel, MediaTypeGuestInitramfs}},
 	}}
+}
+
+// AllowSetFor returns the allow-set a PullArtifact request's artifact_policy
+// selects. UNSPECIFIED and any value this build does not know are refused
+// with ErrUnknownPolicy, never mapped to a default set. Guest artifacts have
+// no policy value: GuestAllowSet is reachable only from the internal entry
+// point.
+func AllowSetFor(policy runtimev1.ArtifactPolicy) (AllowSet, error) {
+	switch policy {
+	case runtimev1.ArtifactPolicy_ARTIFACT_POLICY_IMAGE_VOLUME:
+		return ImageVolumeAllowSet(), nil
+	default:
+		return AllowSet{}, fmt.Errorf("artifact policy %d (%s): %w", int32(policy), policy, ErrUnknownPolicy)
+	}
 }
 
 // Name returns the consumer name of the set ("image-volume", "guest"), for

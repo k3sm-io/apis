@@ -234,3 +234,38 @@ func matchSchema(t *testing.T, path string, s map[string]any, typ reflect.Type) 
 		}
 	}
 }
+
+// TestArtifactRefBoundsMatchCRD pins that the CRD's maxLength on
+// spec.artifact.reference and spec.artifact.variant equals the Go bounds.
+func TestArtifactRefBoundsMatchCRD(t *testing.T) {
+	t.Parallel()
+	var m map[string]any
+	if err := yaml.Unmarshal(crd.MLXModelCRD(), &m); err != nil {
+		t.Fatalf("decode the shipped MLXModel CRD: %v", err)
+	}
+	versions, _ := m["spec"].(map[string]any)["versions"].([]any)
+	if len(versions) != 1 {
+		t.Fatalf("CRD declares %d versions, want 1", len(versions))
+	}
+	art := schemaAt(t, versions[0].(map[string]any),
+		"schema", "openAPIV3Schema", "properties", "spec", "properties", "artifact", "properties")
+	for _, tc := range []struct {
+		field string
+		want  int64
+	}{
+		{"reference", MaxArtifactReferenceLength},
+		{"variant", MaxArtifactVariantLength},
+	} {
+		f, _ := art[tc.field].(map[string]any)
+		var got int64
+		switch v := f["maxLength"].(type) {
+		case int64:
+			got = v
+		case float64:
+			got = int64(v)
+		}
+		if got != tc.want {
+			t.Errorf("spec.artifact.%s maxLength = %v, want %d", tc.field, f["maxLength"], tc.want)
+		}
+	}
+}

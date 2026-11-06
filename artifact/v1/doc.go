@@ -25,8 +25,9 @@ limitations under the License.
 // and the drift would surface as an artifact one side accepts and the other
 // refuses, or worse, the reverse.
 //
-// The package is pure Go with no dependencies outside the standard library.
-// The media types are string constants: the modelpack/model-spec Go module is
+// The package is pure Go. Outside the standard library it imports only
+// k3sm.io/apis/runtime/v1, for the ArtifactPolicy enum AllowSetFor maps (the
+// runtime package does not import this one). The media types are string constants: the modelpack/model-spec Go module is
 // deliberately not imported for a handful of strings.
 //
 // # Trust

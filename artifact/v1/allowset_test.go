@@ -17,9 +17,12 @@ limitations under the License.
 package artifactv1
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"testing"
+
+	runtimev1 "k3sm.io/apis/runtime/v1"
 )
 
 // TestMediaTypeConstants pins the wire spellings. They are the strings in
@@ -165,5 +168,44 @@ func TestArtifactPathsAnnotationBounds(t *testing.T) {
 	}
 	if MaxPaths != MaxArtifactPathsAnnotationPaths {
 		t.Errorf("MaxPaths = %d, want the annotation bound %d", MaxPaths, MaxArtifactPathsAnnotationPaths)
+	}
+}
+
+// TestAllowSetFor pins the policy-to-set mapping: IMAGE_VOLUME is the
+// image-volume set, and UNSPECIFIED or an unknown value is refused, never
+// defaulted. No policy value reaches the guest set.
+func TestAllowSetFor(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		policy  runtimev1.ArtifactPolicy
+		wantSet string
+		wantErr error
+	}{
+		{"image volume", runtimev1.ArtifactPolicy_ARTIFACT_POLICY_IMAGE_VOLUME, ImageVolumeAllowSet().Name(), nil},
+		{"unspecified is refused", runtimev1.ArtifactPolicy_ARTIFACT_POLICY_UNSPECIFIED, "", ErrUnknownPolicy},
+		{"an unknown value is refused", runtimev1.ArtifactPolicy(2), "", ErrUnknownPolicy},
+		{"a negative value is refused", runtimev1.ArtifactPolicy(-1), "", ErrUnknownPolicy},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, err := AllowSetFor(tc.policy)
+			if !errors.Is(err, tc.wantErr) || (tc.wantErr == nil && err != nil) {
+				t.Fatalf("AllowSetFor(%v) error = %v, want %v", tc.policy, err, tc.wantErr)
+			}
+			if a.Name() != tc.wantSet {
+				t.Errorf("AllowSetFor(%v) = set %q, want %q", tc.policy, a.Name(), tc.wantSet)
+			}
+			if err != nil && len(a.ArtifactTypes()) != 0 {
+				t.Errorf("AllowSetFor(%v) refused but returned a non-empty set", tc.policy)
+			}
+			if a.AllowsType(ArtifactTypeGuest) {
+				t.Errorf("AllowSetFor(%v) reaches the guest type", tc.policy)
+			}
+		})
+	}
+	// Every enum value this build knows is covered: a new value added to the
+	// proto must be mapped (or deliberately refused) here, not fall through.
+	vals := runtimev1.ArtifactPolicy(0).Descriptor().Values()
+	if vals.Len() != 2 {
+		t.Errorf("ArtifactPolicy has %d values; extend AllowSetFor and this table", vals.Len())
 	}
 }

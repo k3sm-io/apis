@@ -28,6 +28,10 @@ const (
 	MaxPathDepth = 8
 	// MaxComponentBytes is the longest a single path component may be.
 	MaxComponentBytes = 255
+	// MaxPathBytes is the longest a whole path may be: MaxPathDepth components
+	// of MaxComponentBytes, each with its separator. It is checked first, so
+	// no other rule ever walks a longer input.
+	MaxPathBytes = MaxPathDepth * (MaxComponentBytes + 1)
 	// MaxPaths is the most paths one set may hold: an artifact carries at
 	// most this many layers, and the artifact-paths annotation at most this
 	// many paths.
@@ -49,6 +53,8 @@ var (
 	// ErrReservedComponent is a component starting ".." (the atomic-writer
 	// namespace) or "._" (AppleDouble metadata).
 	ErrReservedComponent = errors.New("artifact path has a component starting \"..\" or \"._\"")
+	// ErrPathTooLong is a path longer than MaxPathBytes.
+	ErrPathTooLong = errors.New("artifact path is too long")
 	// ErrPathDepth is a path with more than MaxPathDepth components.
 	ErrPathDepth = errors.New("artifact path is too deep")
 	// ErrComponentTooLong is a component longer than MaxComponentBytes.
@@ -74,7 +80,8 @@ var codeExtensions = []string{
 	".py", ".pyc", ".bin", ".pt", ".pth", ".pkl", ".pickle", ".ckpt", ".so", ".dylib",
 }
 
-// ValidatePath checks one artifact file path. A valid path is relative, made
+// ValidatePath checks one artifact file path. A valid path is at most
+// MaxPathBytes long (checked before anything else), relative, made
 // only of [A-Za-z0-9._-] components joined by single "/", at most
 // MaxPathDepth components of at most MaxComponentBytes bytes each, with no
 // empty, ".", or ".." component, no component starting ".." or "._", and a
@@ -84,6 +91,9 @@ var codeExtensions = []string{
 // distinct accepted paths name one file on APFS; ASCII case folding is the
 // only equivalence left, and ValidatePathSet refuses it.
 func ValidatePath(p string) error {
+	if len(p) > MaxPathBytes {
+		return fmt.Errorf("path of %d bytes, at most %d: %w", len(p), MaxPathBytes, ErrPathTooLong)
+	}
 	if p == "" {
 		return ErrEmptyPath
 	}

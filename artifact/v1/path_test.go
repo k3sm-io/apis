@@ -19,6 +19,7 @@ package artifactv1
 import (
 	"errors"
 	"path"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -40,7 +41,12 @@ func TestValidatePath(t *testing.T) {
 		{"max component", long, nil},
 		{"underscore and dash", "a_b-c.txt", nil},
 
+		{"MaxPathBytes-1, eight max components", strings.Repeat(long+"/", MaxPathDepth-1) + long, nil},
+
 		{"empty", "", ErrEmptyPath},
+		{"MaxPathBytes passes the cap, then fails as one long component", strings.Repeat("a", MaxPathBytes), ErrComponentTooLong},
+		{"MaxPathBytes+1", strings.Repeat("a", MaxPathBytes+1), ErrPathTooLong},
+		{"over MaxPathBytes, checked before the charset", strings.Repeat("/", MaxPathBytes+1), ErrPathTooLong},
 		{"absolute", "/etc/passwd", ErrAbsolutePath},
 		{"dotdot", "../x", ErrPathComponent},
 		{"inner dotdot", "a/../b", ErrPathComponent},
@@ -190,6 +196,55 @@ func FuzzValidatePath(f *testing.F) {
 		}
 		if err := ValidatePathSet([]string{p, p + "/x"}); err == nil {
 			t.Fatalf("set {%q, %q} accepted a file that is also a directory", p, p+"/x")
+		}
+	})
+}
+
+// FuzzValidatePathSet asserts that a set ValidatePathSet accepts is bounded,
+// made of valid paths, free of duplicates, case-fold collisions and
+// file-and-directory conflicts, and that the verdict does not depend on order.
+// The input is the set joined by newlines (a newline is outside the path
+// charset, so no valid path contains one). Seeds live in
+// testdata/fuzz/FuzzValidatePathSet.
+func FuzzValidatePathSet(f *testing.F) {
+	for _, s := range []string{"", "a.json\nb/c.json", "a/b\na/b/c", "Model.safetensors\nmodel.safetensors", "x\nx"} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, joined string) {
+		var paths []string
+		if joined != "" {
+			paths = strings.Split(joined, "\n")
+		}
+		err := ValidatePathSet(paths)
+		rev := slices.Clone(paths)
+		slices.Reverse(rev)
+		if errRev := ValidatePathSet(rev); (err == nil) != (errRev == nil) {
+			t.Fatalf("order-dependent verdict: forward %v, reversed %v", err, errRev)
+		}
+		if err != nil {
+			return
+		}
+		if len(paths) > MaxPaths {
+			t.Fatalf("accepted %d paths, at most %d", len(paths), MaxPaths)
+		}
+		folded := make(map[string]bool, len(paths))
+		for _, p := range paths {
+			if e := ValidatePath(p); e != nil {
+				t.Fatalf("accepted a set holding the invalid path %q: %v", p, e)
+			}
+			f := strings.ToLower(p)
+			if folded[f] {
+				t.Fatalf("accepted a duplicate or case-fold collision on %q", p)
+			}
+			folded[f] = true
+		}
+		for _, p := range paths {
+			f := strings.ToLower(p)
+			for i := range len(f) {
+				if f[i] == '/' && folded[f[:i]] {
+					t.Fatalf("accepted %q as a file and a directory of %q", f[:i], p)
+				}
+			}
 		}
 	})
 }
