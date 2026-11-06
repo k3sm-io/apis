@@ -2387,8 +2387,15 @@ type Container struct {
 	// consumer-first contract, and it is why every explicit policy is non-zero
 	// (the restart_policy precedent).
 	ImagePullPolicy ImagePullPolicy `protobuf:"varint,101,opt,name=image_pull_policy,json=imagePullPolicy,proto3,enum=k3sm.runtime.v1.ImagePullPolicy" json:"image_pull_policy,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// memory_limit_bytes is the container's own memory limit in bytes
+	// (corev1 resources.limits.memory, resolved). 0 means this container has no
+	// limit of its own (only the pod-level PodBox.memory_limit_bytes applies).
+	// The memory.high throttle threshold is NOT carried on the wire: runtimed
+	// derives it from this limit at 90 percent, so a second field would let the
+	// two disagree. Absent reads as 0 in both skew directions (additive).
+	MemoryLimitBytes int64 `protobuf:"varint,102,opt,name=memory_limit_bytes,json=memoryLimitBytes,proto3" json:"memory_limit_bytes,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *Container) Reset() {
@@ -2545,6 +2552,13 @@ func (x *Container) GetImagePullPolicy() ImagePullPolicy {
 		return x.ImagePullPolicy
 	}
 	return ImagePullPolicy_IMAGE_PULL_POLICY_UNSPECIFIED
+}
+
+func (x *Container) GetMemoryLimitBytes() int64 {
+	if x != nil {
+		return x.MemoryLimitBytes
+	}
+	return 0
 }
 
 // EnvVar is a single environment variable. Exactly one of value or value_from
@@ -5707,9 +5721,14 @@ type MemoryStats struct {
 	// usage_bytes is total current memory usage.
 	UsageBytes uint64 `protobuf:"varint,3,opt,name=usage_bytes,json=usageBytes,proto3" json:"usage_bytes,omitempty"`
 	// rss_bytes is the resident set size, when available.
-	RssBytes      uint64 `protobuf:"varint,4,opt,name=rss_bytes,json=rssBytes,proto3" json:"rss_bytes,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RssBytes uint64 `protobuf:"varint,4,opt,name=rss_bytes,json=rssBytes,proto3" json:"rss_bytes,omitempty"`
+	// memory_high_events is the cumulative count of times the container's usage
+	// crossed its memory.high threshold (90 percent of
+	// Container.memory_limit_bytes, derived by runtimed). Monotonic for the
+	// container's lifetime; 0 when there is no limit or no event yet.
+	MemoryHighEvents uint64 `protobuf:"varint,100,opt,name=memory_high_events,json=memoryHighEvents,proto3" json:"memory_high_events,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *MemoryStats) Reset() {
@@ -5766,6 +5785,13 @@ func (x *MemoryStats) GetUsageBytes() uint64 {
 func (x *MemoryStats) GetRssBytes() uint64 {
 	if x != nil {
 		return x.RssBytes
+	}
+	return 0
+}
+
+func (x *MemoryStats) GetMemoryHighEvents() uint64 {
+	if x != nil {
+		return x.MemoryHighEvents
 	}
 	return 0
 }
@@ -8127,7 +8153,7 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"runAsGroup\x12%\n" +
 	"\x0frun_as_non_root\x18\x04 \x01(\bR\frunAsNonRootJ\x05\bd\x10\x96\x01\"*\n" +
 	"\x14LocalObjectReference\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xfc\x06\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xaa\a\n" +
 	"\tContainer\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05image\x18\x02 \x01(\tR\x05image\x12\x18\n" +
@@ -8148,7 +8174,8 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\benv_from\x18\x0f \x03(\v2\x1e.k3sm.runtime.v1.EnvFromSourceR\aenvFrom\x12N\n" +
 	"\x0erestart_policy\x18\x10 \x01(\x0e2'.k3sm.runtime.v1.ContainerRestartPolicyR\rrestartPolicy\x12@\n" +
 	"\x0eimage_platform\x18d \x01(\v2\x19.k3sm.runtime.v1.PlatformR\rimagePlatform\x12L\n" +
-	"\x11image_pull_policy\x18e \x01(\x0e2 .k3sm.runtime.v1.ImagePullPolicyR\x0fimagePullPolicyJ\x05\bf\x10\x96\x01\"p\n" +
+	"\x11image_pull_policy\x18e \x01(\x0e2 .k3sm.runtime.v1.ImagePullPolicyR\x0fimagePullPolicy\x12,\n" +
+	"\x12memory_limit_bytes\x18f \x01(\x03R\x10memoryLimitBytesJ\x05\bg\x10\x96\x01\"p\n" +
 	"\x06EnvVar\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value\x12<\n" +
@@ -8390,13 +8417,14 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\bCPUStats\x128\n" +
 	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12(\n" +
 	"\x10usage_nano_cores\x18\x02 \x01(\x04R\x0eusageNanoCores\x125\n" +
-	"\x17usage_core_nano_seconds\x18\x03 \x01(\x04R\x14usageCoreNanoSeconds\"\xb1\x01\n" +
+	"\x17usage_core_nano_seconds\x18\x03 \x01(\x04R\x14usageCoreNanoSeconds\"\xe6\x01\n" +
 	"\vMemoryStats\x128\n" +
 	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12*\n" +
 	"\x11working_set_bytes\x18\x02 \x01(\x04R\x0fworkingSetBytes\x12\x1f\n" +
 	"\vusage_bytes\x18\x03 \x01(\x04R\n" +
 	"usageBytes\x12\x1b\n" +
-	"\trss_bytes\x18\x04 \x01(\x04R\brssBytes\"D\n" +
+	"\trss_bytes\x18\x04 \x01(\x04R\brssBytes\x12,\n" +
+	"\x12memory_high_events\x18d \x01(\x04R\x10memoryHighEventsJ\x05\be\x10\x96\x01\"D\n" +
 	"\x10CreatePodRequest\x12)\n" +
 	"\x03pod\x18\x01 \x01(\v2\x17.k3sm.runtime.v1.PodBoxR\x03podJ\x05\bd\x10\x96\x01\"\xbf\x01\n" +
 	"\x11CreatePodResponse\x122\n" +
