@@ -70,8 +70,20 @@ type MLXModel struct {
 // MLXModelSpec is the desired state of an MLX-served model.
 type MLXModelSpec struct {
 	// Model is the model repository reference to serve (e.g.
-	// "mlx-community/Llama-3.2-3B-Instruct-4bit"). Required.
-	Model string `json:"model"`
+	// "mlx-community/Llama-3.2-3B-Instruct-4bit"). Exactly one of Model and
+	// Artifact is set (a CEL rule on the CRD in k3sm.io/apis/config/crd).
+	//
+	// It is omitempty so an artifact-only object serializes without the key;
+	// an empty string would read as "set" to that rule. An operator that
+	// predates Artifact refuses an empty Model, so after a rollback an
+	// artifact model is refused, never rendered as a Hub model.
+	Model string `json:"model,omitempty"`
+
+	// Artifact names the model as an OCI artifact in the cluster registry
+	// instead of a Hub repository. Exactly one of Model and Artifact is set.
+	// Nil means the Hub path (Model). The operator resolves it to a manifest
+	// digest once per generation and records it in Status.ResolvedArtifact.
+	Artifact *ArtifactRef `json:"artifact,omitempty"`
 
 	// Revision pins the model to an exact immutable revision. Empty means the
 	// repository's default branch, which is MUTABLE — two replicas admitted at
@@ -299,6 +311,11 @@ type MLXModelStatus struct {
 	// to, which is the only record of what is really running.
 	ResolvedRevision string `json:"resolvedRevision,omitempty"`
 
+	// ResolvedArtifact is the manifest digest ("sha256:<hex>") Spec.Artifact
+	// resolved to for the observed generation, the digest every replica and
+	// rank is rendered against. Empty when Spec.Artifact is unset.
+	ResolvedArtifact string `json:"resolvedArtifact,omitempty"`
+
 	// Replicas is the total number of serving pods the operator observed for
 	// this model, regardless of readiness or pod-template revision.
 	Replicas int32 `json:"replicas,omitempty"`
@@ -387,6 +404,10 @@ func (in *MLXModelSpec) DeepCopyInto(out *MLXModelSpec) {
 	if in.Replicas != nil {
 		r := *in.Replicas
 		out.Replicas = &r
+	}
+	if in.Artifact != nil {
+		a := *in.Artifact
+		out.Artifact = &a
 	}
 	in.Runtime.DeepCopyInto(&out.Runtime)
 	if in.Cache != nil {
