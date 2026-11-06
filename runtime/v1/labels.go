@@ -16,6 +16,8 @@ limitations under the License.
 
 package runtimev1
 
+import "strings"
+
 // The k3sm.io/* node labels and pod annotations that parameterize this runtime
 // contract. They live in the runtime-area apis package — not in an area package
 // of their own and not in a consumer — because they are k3sm.io-domain keys that
@@ -103,3 +105,86 @@ const (
 	// hand-set, exactly like AnnotationInternetEgress.
 	AnnotationXcodeToolchain = "k3sm.io/xcode-toolchain"
 )
+
+// The hardware keys a node advertises and a pod requests or selects on. They name
+// the hardware unit, not the engine that happens to use it: one Metal device serves
+// every Metal stack on the host. The header above applies: additive only, and a key
+// is published here only once it has a real consumer.
+const (
+	// ResourceGPU is the extended resource a node advertises GPU capacity under
+	// and a pod requests. Its count is an admission cap, not an isolation
+	// boundary: pods holding units share the one GPU through Metal's own
+	// scheduling. A ResourceQuota caps it as "requests." + ResourceGPU.
+	ResourceGPU = "k3sm.io/gpu"
+
+	// LabelGPUPresent is the node label reporting that the node advertises a
+	// usable GPU. Its value is "true"; the label is otherwise absent, never
+	// present and "false". It is a distinct key from ResourceGPU because a label
+	// answers "does this node have one" for selectors, while the resource answers
+	// "how many are left" for the scheduler.
+	LabelGPUPresent = "k3sm.io/gpu.present"
+
+	// LabelGPUMemoryGB is the node label carrying the memory the GPU can use, in
+	// gibibytes, rounded down, as a decimal string with no unit suffix (the "gb"
+	// in the key does not mean decimal gigabytes). The value is the effective GPU
+	// ceiling, not a raw sysctl, and the label is absent when that is 0. It is
+	// advisory: the scheduler never reads it. It is not LabelMemoryGB, which is
+	// all of the node's unified memory.
+	LabelGPUMemoryGB = "k3sm.io/gpu-memory-gb"
+
+	// LabelChip is the node label carrying the exact chip as a ChipSlug of
+	// GPUFacts.chip_brand (e.g. "apple-m4-max"). The raw fact is not a valid label
+	// value, so a consumer must never compare the label against it.
+	LabelChip = "k3sm.io/chip"
+
+	// LabelChipFamily is the node label carrying the chip family as a ChipSlug of
+	// GPUFacts.chip_family (e.g. "m4"), for selecting a generation rather than an
+	// exact model.
+	LabelChipFamily = "k3sm.io/chip-family"
+
+	// LabelMemoryGB is the node label carrying the node's unified memory
+	// (GPUFacts.mem_bytes) in gibibytes, rounded down, as a decimal string with no
+	// unit suffix (the "gb" in the key does not mean decimal gigabytes). It is not
+	// LabelGPUMemoryGB, which is the part of this memory the GPU can use.
+	LabelMemoryGB = "k3sm.io/memory-gb"
+)
+
+// maxLabelValueLen is the Kubernetes label-value length limit.
+const maxLabelValueLen = 63
+
+// ChipSlug normalizes a raw GPUFacts chip fact into the value form of LabelChip and
+// LabelChipFamily, so "Apple M4 Max" becomes "apple-m4-max" and "M4" becomes "m4":
+//
+//  1. lowercase, by Unicode case folding;
+//  2. replace every run of characters outside [a-z0-9] with a single "-";
+//  3. trim any leading or trailing "-";
+//  4. truncate to 63 characters and trim any trailing "-" left behind.
+//
+// The result is always a valid label value, and it is empty when raw holds no
+// [a-z0-9] character. The function is deterministic, so every writer and reader of
+// a chip label gets the same bytes.
+func ChipSlug(raw string) string {
+	var b strings.Builder
+	pendingDash := false
+	for _, r := range strings.ToLower(raw) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			if pendingDash {
+				b.WriteByte('-')
+				pendingDash = false
+			}
+			b.WriteRune(r)
+			continue
+		}
+		// A run of non-alphanumerics collapses to ONE dash, and a dash is only
+		// emitted once an alphanumeric follows it, which trims the leading and
+		// trailing runs without a second pass.
+		if b.Len() > 0 {
+			pendingDash = true
+		}
+	}
+	s := b.String()
+	if len(s) > maxLabelValueLen {
+		s = strings.TrimRight(s[:maxLabelValueLen], "-")
+	}
+	return s
+}

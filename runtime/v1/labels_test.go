@@ -19,6 +19,8 @@ package runtimev1
 import (
 	"strings"
 	"testing"
+
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 // TestRosettaAndPlatformKeys pins the exact byte strings of the runtime-area
@@ -73,5 +75,102 @@ func TestRosettaAndPlatformKeys(t *testing.T) {
 	// could match by accident.
 	if LabelRosettaLinux == LabelRosetta+"/linux" {
 		t.Error("LabelRosettaLinux must be a sibling key, not a sub-path of LabelRosetta")
+	}
+}
+
+// TestHardwareKeysArePinned pins the exact byte strings of the hardware keys and
+// proves each is syntax a live apiserver accepts, with the same validation helpers
+// the apiserver uses. A hand-rolled shape check would only repeat this test's own
+// reading of the rule.
+//
+// The name check has a ceiling: it shows that requests.k3sm.io/gpu is well formed,
+// not that a live ResourceQuota counts it. Only a real quota can show that.
+func TestHardwareKeysArePinned(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name, got, want string
+		// values are the forms the key carries, each checked as a label value.
+		values []string
+	}{
+		{"ResourceGPU", ResourceGPU, "k3sm.io/gpu", []string{"1", "2"}},
+		{"LabelGPUPresent", LabelGPUPresent, "k3sm.io/gpu.present", []string{"true"}},
+		{"LabelGPUMemoryGB", LabelGPUMemoryGB, "k3sm.io/gpu-memory-gb", []string{"1", "48", "96"}},
+		{"LabelChip", LabelChip, "k3sm.io/chip", []string{"apple-m4-max"}},
+		{"LabelChipFamily", LabelChipFamily, "k3sm.io/chip-family", []string{"m4"}},
+		{"LabelMemoryGB", LabelMemoryGB, "k3sm.io/memory-gb", []string{"16", "128"}},
+	}
+	seen := make(map[string]string, len(cases))
+	for _, tc := range cases {
+		if other, dup := seen[tc.got]; dup {
+			t.Errorf("%s and %s are the same key %q", tc.name, other, tc.got)
+		}
+		seen[tc.got] = tc.name
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if tc.got != tc.want {
+				t.Errorf("%s = %q, want %q", tc.name, tc.got, tc.want)
+			}
+			if errs := validation.IsQualifiedName(tc.got); len(errs) != 0 {
+				t.Errorf("%s = %q is not a qualified name: %v", tc.name, tc.got, errs)
+			}
+			for _, v := range tc.values {
+				if errs := validation.IsValidLabelValue(v); len(errs) != 0 {
+					t.Errorf("%s value %q is not a valid label value: %v", tc.name, v, errs)
+				}
+			}
+		})
+	}
+
+	// A ResourceQuota caps an extended resource under the requests. form of its
+	// name, so that form is published syntax too.
+	const wantQuotaKey = "requests.k3sm.io/gpu"
+	quotaKey := "requests." + ResourceGPU
+	if quotaKey != wantQuotaKey {
+		t.Errorf("quota key = %q, want %q", quotaKey, wantQuotaKey)
+	}
+	if errs := validation.IsQualifiedName(quotaKey); len(errs) != 0 {
+		t.Errorf("quota key %q is not a qualified name: %v", quotaKey, errs)
+	}
+
+	// Named on their own because a selector can easily confuse them: the first is
+	// the whole of unified memory, the second is what the GPU can use.
+	if LabelMemoryGB == LabelGPUMemoryGB {
+		t.Error("LabelMemoryGB and LabelGPUMemoryGB must be different keys")
+	}
+}
+
+// TestChipSlug pins the slug rule. The node advertiser and every selector agree on
+// a chip label's value only through this function, so each step of the rule has a
+// case, and each result has to be a label value the apiserver accepts.
+func TestChipSlug(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, raw, want string
+	}{
+		{"brand_with_spaces", "Apple M4 Max", "apple-m4-max"},
+		{"family", "M4", "m4"},
+		{"already_a_slug", "apple-m4-max", "apple-m4-max"},
+		{"leading_and_trailing_junk", "  Apple M4 Max!! ", "apple-m4-max"},
+		{"run_collapses_to_one_dash", "Apple   M4///Max", "apple-m4-max"},
+		{"non_ascii_becomes_a_separator", "Apple™ M4", "apple-m4"},
+		// Case folding is Unicode, not ASCII: these two fold into [a-z].
+		{"kelvin_sign_folds_to_k", "K9", "k9"},
+		{"dotted_capital_i_folds_to_i", "İx", "ix"},
+		{"empty", "", ""},
+		{"all_junk", " -- ", ""},
+		{"exactly_the_limit_kept", strings.Repeat("a", 63), strings.Repeat("a", 63)},
+		{"over_the_limit_truncated", strings.Repeat("a", 64), strings.Repeat("a", 63)},
+		{"truncation_trims_a_boundary_dash", strings.Repeat("a", 62) + " b", strings.Repeat("a", 62)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := ChipSlug(tc.raw)
+			if got != tc.want {
+				t.Errorf("ChipSlug(%q) = %q, want %q", tc.raw, got, tc.want)
+			}
+			if errs := validation.IsValidLabelValue(got); len(errs) != 0 {
+				t.Errorf("ChipSlug(%q) = %q is not a valid label value: %v", tc.raw, got, errs)
+			}
+		})
 	}
 }
