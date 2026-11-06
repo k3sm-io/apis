@@ -75,9 +75,11 @@ const (
 // GPUFacts.chip_brand and chip_family are carried verbatim across the runtime
 // contract because they are raw host facts — "Apple M4 Max", spaces and all. A
 // Kubernetes label value may not contain spaces, so the label form is a slug
-// derived from the raw fact by the node advertiser, deterministically:
+// derived from the raw fact, deterministically. runtimev1.ChipSlug (package
+// k3sm.io/apis/runtime/v1) owns and implements this rule:
 //
-//  1. lowercase (ASCII);
+//  1. lowercase, by Unicode case folding (not ASCII only: the Kelvin sign and
+//     the dotted capital İ fold into [a-z], which TestChipSlug pins);
 //  2. replace every run of characters that are not [a-z0-9] with a single "-";
 //  3. trim any leading or trailing "-";
 //  4. truncate to 63 characters (the label-value limit), trimming any trailing
@@ -85,10 +87,7 @@ const (
 //
 // So "Apple M4 Max" becomes "apple-m4-max" and the family "M4" becomes "m4".
 //
-// The rule is documented rather than implemented here on purpose: the derivation
-// belongs to the single consumer that advertises the node (k3sm), which is also
-// the only place that holds the raw facts. What this module owns is the key, and
-// the guarantee that every consumer reading the label agrees on what shape the
-// value has. A consumer must never compare a label value against a raw
-// chip_brand — the raw fact is not the slug, and the comparison silently never
-// matches.
+// This package keeps only the old mlx.k3sm.io key strings above and has no slug
+// logic of its own; call runtimev1.ChipSlug to derive a value. A consumer must
+// never compare a label value against a raw chip_brand — the raw fact is not the
+// slug, and the comparison silently never matches.

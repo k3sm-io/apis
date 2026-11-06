@@ -79,8 +79,8 @@ func TestMLXKeys(t *testing.T) {
 // TestChipSlugRuleDocumented asserts the chip-slug normalization rule is stated
 // in this package.
 //
-// The rule is documented here and implemented by the node advertiser, so the
-// documentation IS the contract: GPUFacts.chip_brand is carried verbatim
+// The rule is documented here and implemented by runtimev1.ChipSlug, so the
+// documentation is part of the contract: GPUFacts.chip_brand is carried verbatim
 // ("Apple M4 Max") and is not a legal label value, while LabelChip's value is
 // the slug ("apple-m4-max"). A consumer that compares a label value against the
 // raw brand silently never matches. If this text goes missing, two independent
