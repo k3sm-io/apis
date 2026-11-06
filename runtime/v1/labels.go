@@ -103,3 +103,46 @@ const (
 	// hand-set, exactly like AnnotationInternetEgress.
 	AnnotationXcodeToolchain = "k3sm.io/xcode-toolchain"
 )
+
+// The hardware keys a node advertises and a pod requests or selects on. They name
+// the hardware unit, not the engine that happens to use it: one Metal device serves
+// every Metal stack on the host. The header above applies: additive only, and a key
+// is published here only once it has a real consumer.
+const (
+	// ResourceGPU is the extended resource a node advertises GPU capacity under
+	// and a pod requests. Its count is an admission cap, not an isolation
+	// boundary: pods holding units share the one GPU through Metal's own
+	// scheduling. A ResourceQuota caps it as "requests." + ResourceGPU.
+	ResourceGPU = "k3sm.io/gpu"
+
+	// LabelGPUPresent is the node label reporting that the node advertises a
+	// usable GPU. Its value is "true"; the label is otherwise absent, never
+	// present and "false". It is a distinct key from ResourceGPU because a label
+	// answers "does this node have one" for selectors, while the resource answers
+	// "how many are left" for the scheduler.
+	LabelGPUPresent = "k3sm.io/gpu.present"
+
+	// LabelGPUMemoryGB is the node label carrying the memory the GPU can use, in
+	// gibibytes, rounded down, as a decimal string with no unit suffix (the "gb"
+	// in the key does not mean decimal gigabytes). The value is the effective GPU
+	// ceiling, not a raw sysctl, and the label is absent when that is 0. It is
+	// advisory: the scheduler never reads it. It is not LabelMemoryGB, which is
+	// all of the node's unified memory.
+	LabelGPUMemoryGB = "k3sm.io/gpu-memory-gb"
+
+	// LabelChip is the node label carrying the exact chip as a ChipSlug of
+	// GPUFacts.chip_brand (e.g. "apple-m4-max"). The raw fact is not a valid label
+	// value, so a consumer must never compare the label against it.
+	LabelChip = "k3sm.io/chip"
+
+	// LabelChipFamily is the node label carrying the chip family as a ChipSlug of
+	// GPUFacts.chip_family (e.g. "m4"), for selecting a generation rather than an
+	// exact model.
+	LabelChipFamily = "k3sm.io/chip-family"
+
+	// LabelMemoryGB is the node label carrying the node's unified memory
+	// (GPUFacts.mem_bytes) in gibibytes, rounded down, as a decimal string with no
+	// unit suffix (the "gb" in the key does not mean decimal gigabytes). It is not
+	// LabelGPUMemoryGB, which is the part of this memory the GPU can use.
+	LabelMemoryGB = "k3sm.io/memory-gb"
+)
