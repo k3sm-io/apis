@@ -17,6 +17,8 @@ limitations under the License.
 package crd
 
 import (
+	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -25,12 +27,10 @@ import (
 // revision is refused (the digest is the pin) and quantization is refused
 // (until variants give it a meaning).
 const (
-	modelXorArtifactRule       = "has(self.model) != has(self.artifact)"
-	modelXorArtifactMessage    = "exactly one of spec.model and spec.artifact must be set"
-	artifactNoRevisionRule     = "!has(self.artifact) || !has(self.revision)"
-	artifactNoRevisionMessage  = "spec.revision must not be set with spec.artifact (the artifact digest is the pin)"
-	artifactNoQuantizationRule = "!has(self.artifact) || !has(self.quantization)"
-	artifactNoQuantizationMsg  = "spec.quantization must not be set with spec.artifact"
+	modelXorArtifactRule      = "has(self.model) != has(self.artifact)"
+	modelXorArtifactMessage   = "exactly one of spec.model and spec.artifact must be set"
+	artifactNoRevisionRule    = "!has(self.artifact) || !has(self.revision)"
+	artifactNoRevisionMessage = "spec.revision must not be set with spec.artifact (the artifact digest is the pin)"
 )
 
 // TestMLXModelArtifactFieldCEL asserts the manifest declares spec.artifact and
@@ -98,11 +98,10 @@ func TestMLXModelArtifactFieldCEL(t *testing.T) {
 		}
 	})
 
-	t.Run("spec carries exactly the three artifact rules", func(t *testing.T) {
+	t.Run("spec carries exactly the two artifact rules", func(t *testing.T) {
 		want := []struct{ rule, message string }{
 			{modelXorArtifactRule, modelXorArtifactMessage},
 			{artifactNoRevisionRule, artifactNoRevisionMessage},
-			{artifactNoQuantizationRule, artifactNoQuantizationMsg},
 		}
 		rules, ok := spec["x-kubernetes-validations"].([]any)
 		if !ok || len(rules) != len(want) {
@@ -142,13 +141,12 @@ func TestMLXModelArtifactFieldCEL(t *testing.T) {
 		}
 	})
 
-	t.Run("the rules admit exactly one of model and artifact, and refuse revision and quantization with artifact", func(t *testing.T) {
-		// The three rules, applied by hand in their conjunction; the subtest
+	t.Run("the rules admit exactly one of model and artifact, and refuse revision with artifact", func(t *testing.T) {
+		// The two rules, applied by hand in their conjunction; the subtest
 		// above pins that this is the shipped text.
 		admits := func(model, artifact, revision, quantization bool) bool {
 			return model != artifact &&
-				(!artifact || !revision) &&
-				(!artifact || !quantization)
+				(!artifact || !revision)
 		}
 		for _, tc := range []struct {
 			name                                    string
@@ -161,7 +159,7 @@ func TestMLXModelArtifactFieldCEL(t *testing.T) {
 			{"neither set", false, false, false, false, false},
 			{"model with revision and quantization", true, false, true, true, true},
 			{"artifact with revision (the digest is the pin)", false, true, true, false, false},
-			{"artifact with quantization (no meaning until variants)", false, true, false, true, false},
+			{"artifact with quantization (the variant selector)", false, true, false, true, true},
 			{"artifact with revision and quantization", false, true, true, true, false},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
@@ -173,4 +171,70 @@ func TestMLXModelArtifactFieldCEL(t *testing.T) {
 			})
 		}
 	})
+}
+
+// TestQuantizationAllowedWithArtifact asserts the shipped rules no longer
+// refuse spec.quantization with spec.artifact (it is the variant selector)
+// while spec.revision stays refused.
+func TestQuantizationAllowedWithArtifact(t *testing.T) {
+	t.Parallel()
+	m := decodeManifest(t, MLXModelCRD())
+	versions, _ := mapAt(t, m, "spec")["versions"].([]any)
+	if len(versions) == 0 {
+		t.Fatal("spec.versions is empty")
+	}
+	v, _ := versions[0].(map[string]any)
+	spec := mapAt(t, v, "schema", "openAPIV3Schema", "properties", "spec")
+	rules, _ := spec["x-kubernetes-validations"].([]any)
+	var texts []string
+	for _, r := range rules {
+		rm, _ := r.(map[string]any)
+		rule, _ := rm["rule"].(string)
+		texts = append(texts, rule)
+		if strings.Contains(rule, "quantization") {
+			t.Errorf("rule %q still constrains spec.quantization", rule)
+		}
+	}
+	found := false
+	for _, r := range texts {
+		if r == artifactNoRevisionRule {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("rules %v lack the artifact-refuses-revision rule", texts)
+	}
+}
+
+// TestQuantizationBound asserts spec.quantization is bounded to the variant
+// grammar and that the legitimate values fit it.
+func TestQuantizationBound(t *testing.T) {
+	t.Parallel()
+	m := decodeManifest(t, MLXModelCRD())
+	versions, _ := mapAt(t, m, "spec")["versions"].([]any)
+	if len(versions) == 0 {
+		t.Fatal("spec.versions is empty")
+	}
+	v, _ := versions[0].(map[string]any)
+	q := mapAt(t, v, "schema", "openAPIV3Schema", "properties", "spec", "properties", "quantization")
+	if n, _ := q["maxLength"].(int64); n != 128 {
+		if f, _ := q["maxLength"].(float64); f != 128 {
+			t.Errorf("quantization maxLength = %v, want 128", q["maxLength"])
+		}
+	}
+	pat, _ := q["pattern"].(string)
+	if pat != `^[A-Za-z0-9._-]+$` {
+		t.Fatalf("quantization pattern = %q", pat)
+	}
+	re := regexp.MustCompile(pat)
+	for _, ok := range []string{"4bit", "8bit", "bf16", "q4_k_m", "Q4.K-M"} {
+		if !re.MatchString(ok) {
+			t.Errorf("pattern refuses legitimate value %q", ok)
+		}
+	}
+	for _, bad := range []string{"", "4 bit", "a/b", "a:b", "4bit\n"} {
+		if re.MatchString(bad) {
+			t.Errorf("pattern admits %q", bad)
+		}
+	}
 }
