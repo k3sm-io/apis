@@ -93,11 +93,16 @@ type MLXModelSpec struct {
 	// the pin (a CEL rule on the CRD).
 	Revision string `json:"revision,omitempty"`
 
-	// Quantization is the quantization variant to serve (e.g. "4bit"), when the
-	// repository offers a choice and the reference does not already name one.
-	// Empty means whatever the referenced repository provides. Refused when
-	// Artifact is set, until artifact variants give it a meaning (a CEL rule
-	// on the CRD).
+	// Quantization is the quantization variant to serve (e.g. "4bit").
+	//
+	// With Model (the Hub path) it applies when the repository offers a choice
+	// and the reference does not already name one; empty means whatever the
+	// referenced repository provides.
+	//
+	// With Artifact it is the variant selector: it picks the entry of the OCI
+	// index whose "io.k3sm.model.variant" annotation equals it (e.g. 4bit,
+	// 8bit, bf16). An artifact that is a single manifest with Quantization set
+	// is refused at resolve time by the operator, not by a CEL rule.
 	Quantization string `json:"quantization,omitempty"`
 
 	// Memory is the unified memory the served model needs. Required, and NOT a
