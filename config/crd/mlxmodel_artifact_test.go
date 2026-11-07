@@ -17,6 +17,7 @@ limitations under the License.
 package crd
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -202,5 +203,38 @@ func TestQuantizationAllowedWithArtifact(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("rules %v lack the artifact-refuses-revision rule", texts)
+	}
+}
+
+// TestQuantizationBound asserts spec.quantization is bounded to the variant
+// grammar and that the legitimate values fit it.
+func TestQuantizationBound(t *testing.T) {
+	t.Parallel()
+	m := decodeManifest(t, MLXModelCRD())
+	versions, _ := mapAt(t, m, "spec")["versions"].([]any)
+	if len(versions) == 0 {
+		t.Fatal("spec.versions is empty")
+	}
+	v, _ := versions[0].(map[string]any)
+	q := mapAt(t, v, "schema", "openAPIV3Schema", "properties", "spec", "properties", "quantization")
+	if n, _ := q["maxLength"].(int64); n != 128 {
+		if f, _ := q["maxLength"].(float64); f != 128 {
+			t.Errorf("quantization maxLength = %v, want 128", q["maxLength"])
+		}
+	}
+	pat, _ := q["pattern"].(string)
+	if pat != `^[A-Za-z0-9._-]+$` {
+		t.Fatalf("quantization pattern = %q", pat)
+	}
+	re := regexp.MustCompile(pat)
+	for _, ok := range []string{"4bit", "8bit", "bf16", "q4_k_m", "Q4.K-M"} {
+		if !re.MatchString(ok) {
+			t.Errorf("pattern refuses legitimate value %q", ok)
+		}
+	}
+	for _, bad := range []string{"", "4 bit", "a/b", "a:b", "4bit\n"} {
+		if re.MatchString(bad) {
+			t.Errorf("pattern admits %q", bad)
+		}
 	}
 }

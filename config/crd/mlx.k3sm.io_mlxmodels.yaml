@@ -104,6 +104,8 @@ spec:
                 quantization:
                   type: string
                   description: 'Quantization is the quantization variant to serve (e.g. 4bit). With model it is chosen from the repository as before. With artifact it selects the index entry whose io.k3sm.model.variant annotation equals it; a single-manifest artifact with it set is refused at resolve time by the operator.'
+                  maxLength: 128
+                  pattern: '^[A-Za-z0-9._-]+$'
                 memory:
                   anyOf:
                     - type: integer

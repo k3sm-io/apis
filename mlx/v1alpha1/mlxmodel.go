@@ -103,6 +103,8 @@ type MLXModelSpec struct {
 	// index whose "io.k3sm.model.variant" annotation equals it (e.g. 4bit,
 	// 8bit, bf16). An artifact that is a single manifest with Quantization set
 	// is refused at resolve time by the operator, not by a CEL rule.
+	// +kubebuilder:validation:MaxLength=128
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9._-]+$`
 	Quantization string `json:"quantization,omitempty"`
 
 	// Memory is the unified memory the served model needs. Required, and NOT a
