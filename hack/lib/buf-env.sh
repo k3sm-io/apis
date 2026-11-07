@@ -12,10 +12,10 @@
 # tool_version_matches (the one version detection gen.sh and ci.sh both call).
 
 # Pinned toolchain versions (keep in lockstep with go.mod + buf.gen.yaml).
-# buf v1.74.0 release asset buf-Darwin-arm64, sha256 from the release's sha256.txt:
-#   602d73e39a8835efd29a02ba6db6060ae86e4a0df19b8ac4403032b5deae3569
+# buf v1.75.0 release asset buf-Darwin-arm64, sha256 from the release's sha256.txt:
+#   f71b009ebd8530b12fd85b060c6c245e15d6e5110ccc8da48d8b6fa71e59330b
 # (gen.sh installs buf with `go install`, which the module checksum database verifies.)
-BUF_VERSION=v1.74.0
+BUF_VERSION=v1.75.0
 PROTOC_GEN_GO_VERSION=v1.36.12
 PROTOC_GEN_GO_GRPC_VERSION=v1.6.2
 
