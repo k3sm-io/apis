@@ -116,11 +116,15 @@ service Images {
   //     retryable.
   //   - NOT_FOUND: no index entry, artifact record or released copy names the
   //     target. Not retryable.
-  //   - FAILED_PRECONDITION, nothing unlinked, in three cases: (a) the target
-  //     is in use by a pod, retryable once the pod is gone; (b) the reference
-  //     is ambiguous across several platform entries, retryable with a
-  //     platform; (c) the root set could not be read completely, retryable
-  //     after the root set is repaired. Each case carries a
+  //   - FAILED_PRECONDITION, in three cases: (a) the target is in use by a
+  //     pod, retryable once the pod is gone; (b) the reference is ambiguous
+  //     across several platform entries, retryable with a platform; (c) the
+  //     root set could not be read completely, retryable after the root set
+  //     is repaired. Cases (a) and (b) are decided before any unlink, so
+  //     nothing is unlinked. Case (c) is checked again before each removal
+  //     stage: detected before the first stage, nothing is unlinked; detected
+  //     later, it may follow removals already made, and a re-run converges.
+  //     Each case carries a
   //     google.rpc.ErrorInfo status detail with domain runtime.k3sm.io and
   //     reason IMAGE_IN_USE for (a), reason REFERENCE_AMBIGUOUS for (b) and
   //     reason ROOTS_INCOMPLETE for (c), so no caller matches on message text.
