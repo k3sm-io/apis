@@ -1053,8 +1053,9 @@ func (x *EvictImageRequest) GetForce() bool {
 }
 
 // EvictImageResponse reports the typed outcome of one eviction. removed_digests
-// and kept together are always the target's whole blob set, so a partial
-// eviction is never silent. The response does not say whether anything was
+// and kept together are every target blob the store holds, so a partial
+// eviction is never silent. A target blob the store does not hold at all is in
+// neither list. The response does not say whether anything was
 // unlinked: a caller knows from the force it sent, and without force the lists
 // are a plan.
 type EvictImageResponse struct {
@@ -1068,7 +1069,8 @@ type EvictImageResponse struct {
 	Kept []*EvictKeptBlob `protobuf:"bytes,3,rep,name=kept,proto3" json:"kept,omitempty"`
 	// reclaimed_bytes is the summed size of the removed files. It over-estimates
 	// the space returned when extents are shared (APFS clonefile), as
-	// PruneImagesResponse.reclaimed_bytes does.
+	// PruneImagesResponse.reclaimed_bytes does. It counts blob files, so it may
+	// differ from a sum taken over removed_digests.
 	ReclaimedBytes uint64 `protobuf:"varint,4,opt,name=reclaimed_bytes,json=reclaimedBytes,proto3" json:"reclaimed_bytes,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
