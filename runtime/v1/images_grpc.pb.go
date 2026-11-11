@@ -36,6 +36,7 @@ const (
 	Images_ImageFsInfo_FullMethodName  = "/k3sm.runtime.v1.Images/ImageFsInfo"
 	Images_RemoveImage_FullMethodName  = "/k3sm.runtime.v1.Images/RemoveImage"
 	Images_PruneImages_FullMethodName  = "/k3sm.runtime.v1.Images/PruneImages"
+	Images_EvictImage_FullMethodName   = "/k3sm.runtime.v1.Images/EvictImage"
 	Images_LoadImage_FullMethodName    = "/k3sm.runtime.v1.Images/LoadImage"
 	Images_PullImage_FullMethodName    = "/k3sm.runtime.v1.Images/PullImage"
 	Images_TagImage_FullMethodName     = "/k3sm.runtime.v1.Images/TagImage"
@@ -105,8 +106,9 @@ type ImagesClient interface {
 	//
 	// RemoveImage removes an image ROOT from the local index (an untag). Root
 	// removal is authorized and local — an explicit operator/lifecycle action,
-	// never a side effect of fetched content. It unlinks no blobs: blob deletion
-	// happens only in PruneImages, which re-derives reachability first.
+	// never a side effect of fetched content. It unlinks no blobs: blobs are
+	// deleted by PruneImages (the whole cache) or EvictImage (one manifest), and
+	// both re-derive reachability first.
 	// Idempotent — removing an absent image succeeds.
 	RemoveImage(ctx context.Context, in *RemoveImageRequest, opts ...grpc.CallOption) (*RemoveImageResponse, error)
 	// PruneImages deletes unreferenced content. The refusal semantics are
@@ -119,6 +121,36 @@ type ImagesClient interface {
 	// dry-run or audit caller can see why a blob survived without the daemon
 	// exporting its policy.
 	PruneImages(ctx context.Context, in *PruneImagesRequest, opts ...grpc.CallOption) (*PruneImagesResponse, error)
+	// EvictImage evicts the cache blobs of one image or artifact manifest that
+	// the node's prune rule already allows deleting and that no other cached
+	// manifest names. It removes no root, no index entry and no artifact record,
+	// so ListImages may still list the target. An unset force deletes nothing:
+	// the daemon plans and reports, in the same response shape, what a forced
+	// call would unlink. Failures travel only as gRPC status; the response has
+	// no error field. A target this node has never recorded is NOT_FOUND; a
+	// recorded target whose blobs are already gone is OK with nothing removed.
+	//
+	// Status codes and retryability:
+	//   - INVALID_ARGUMENT: both or neither of reference and digest, a malformed
+	//     digest, or a platform set alongside a digest: a platform with a digest
+	//     is INVALID_ARGUMENT, unlike InspectImage, where it is ignored. Not
+	//     retryable.
+	//   - NOT_FOUND: no index entry, artifact record or released copy names the
+	//     target. Not retryable.
+	//   - FAILED_PRECONDITION, nothing unlinked, in three cases: (a) the target
+	//     is in use by a pod, retryable once the pod is gone; (b) the reference
+	//     is ambiguous across several platform entries, retryable with a
+	//     platform; (c) the root set could not be read completely, retryable
+	//     after the operator repairs what the message names. Each case carries a
+	//     google.rpc.ErrorInfo status detail naming the case, so no caller
+	//     matches on message text.
+	//   - UNAVAILABLE: free space cannot be sampled. Retryable.
+	//   - INTERNAL: an unlink failed or its re-verification refused it. That is
+	//     a failure, not a partial success: a call in which any blob would be
+	//     kept EVICT_SKIP_REASON_UNLINK_FAILED is INTERNAL.
+	//   - OK with nothing removed and every blob kept EVICT_SKIP_REASON_YOUNG: a
+	//     just-pulled image inside the grace window; retry after it.
+	EvictImage(ctx context.Context, in *EvictImageRequest, opts ...grpc.CallOption) (*EvictImageResponse, error)
 	// Deprecated: Do not use.
 	// DEPRECATED: the node's image store is becoming an internal pull cache, and
 	// user images live in the cluster registry. Retained on the wire for skew.
@@ -339,6 +371,16 @@ func (c *imagesClient) PruneImages(ctx context.Context, in *PruneImagesRequest, 
 	return out, nil
 }
 
+func (c *imagesClient) EvictImage(ctx context.Context, in *EvictImageRequest, opts ...grpc.CallOption) (*EvictImageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EvictImageResponse)
+	err := c.cc.Invoke(ctx, Images_EvictImage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Deprecated: Do not use.
 func (c *imagesClient) LoadImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[LoadImageRequest, LoadImageResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -485,8 +527,9 @@ type ImagesServer interface {
 	//
 	// RemoveImage removes an image ROOT from the local index (an untag). Root
 	// removal is authorized and local — an explicit operator/lifecycle action,
-	// never a side effect of fetched content. It unlinks no blobs: blob deletion
-	// happens only in PruneImages, which re-derives reachability first.
+	// never a side effect of fetched content. It unlinks no blobs: blobs are
+	// deleted by PruneImages (the whole cache) or EvictImage (one manifest), and
+	// both re-derive reachability first.
 	// Idempotent — removing an absent image succeeds.
 	RemoveImage(context.Context, *RemoveImageRequest) (*RemoveImageResponse, error)
 	// PruneImages deletes unreferenced content. The refusal semantics are
@@ -499,6 +542,36 @@ type ImagesServer interface {
 	// dry-run or audit caller can see why a blob survived without the daemon
 	// exporting its policy.
 	PruneImages(context.Context, *PruneImagesRequest) (*PruneImagesResponse, error)
+	// EvictImage evicts the cache blobs of one image or artifact manifest that
+	// the node's prune rule already allows deleting and that no other cached
+	// manifest names. It removes no root, no index entry and no artifact record,
+	// so ListImages may still list the target. An unset force deletes nothing:
+	// the daemon plans and reports, in the same response shape, what a forced
+	// call would unlink. Failures travel only as gRPC status; the response has
+	// no error field. A target this node has never recorded is NOT_FOUND; a
+	// recorded target whose blobs are already gone is OK with nothing removed.
+	//
+	// Status codes and retryability:
+	//   - INVALID_ARGUMENT: both or neither of reference and digest, a malformed
+	//     digest, or a platform set alongside a digest: a platform with a digest
+	//     is INVALID_ARGUMENT, unlike InspectImage, where it is ignored. Not
+	//     retryable.
+	//   - NOT_FOUND: no index entry, artifact record or released copy names the
+	//     target. Not retryable.
+	//   - FAILED_PRECONDITION, nothing unlinked, in three cases: (a) the target
+	//     is in use by a pod, retryable once the pod is gone; (b) the reference
+	//     is ambiguous across several platform entries, retryable with a
+	//     platform; (c) the root set could not be read completely, retryable
+	//     after the operator repairs what the message names. Each case carries a
+	//     google.rpc.ErrorInfo status detail naming the case, so no caller
+	//     matches on message text.
+	//   - UNAVAILABLE: free space cannot be sampled. Retryable.
+	//   - INTERNAL: an unlink failed or its re-verification refused it. That is
+	//     a failure, not a partial success: a call in which any blob would be
+	//     kept EVICT_SKIP_REASON_UNLINK_FAILED is INTERNAL.
+	//   - OK with nothing removed and every blob kept EVICT_SKIP_REASON_YOUNG: a
+	//     just-pulled image inside the grace window; retry after it.
+	EvictImage(context.Context, *EvictImageRequest) (*EvictImageResponse, error)
 	// Deprecated: Do not use.
 	// DEPRECATED: the node's image store is becoming an internal pull cache, and
 	// user images live in the cluster registry. Retained on the wire for skew.
@@ -690,6 +763,9 @@ func (UnimplementedImagesServer) RemoveImage(context.Context, *RemoveImageReques
 func (UnimplementedImagesServer) PruneImages(context.Context, *PruneImagesRequest) (*PruneImagesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PruneImages not implemented")
 }
+func (UnimplementedImagesServer) EvictImage(context.Context, *EvictImageRequest) (*EvictImageResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method EvictImage not implemented")
+}
 func (UnimplementedImagesServer) LoadImage(grpc.ClientStreamingServer[LoadImageRequest, LoadImageResponse]) error {
 	return status.Error(codes.Unimplemented, "method LoadImage not implemented")
 }
@@ -800,6 +876,24 @@ func _Images_PruneImages_Handler(srv interface{}, ctx context.Context, dec func(
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ImagesServer).PruneImages(ctx, req.(*PruneImagesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Images_EvictImage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EvictImageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ImagesServer).EvictImage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Images_EvictImage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ImagesServer).EvictImage(ctx, req.(*EvictImageRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -934,6 +1028,10 @@ var Images_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PruneImages",
 			Handler:    _Images_PruneImages_Handler,
+		},
+		{
+			MethodName: "EvictImage",
+			Handler:    _Images_EvictImage_Handler,
 		},
 		{
 			MethodName: "PullImage",

@@ -102,6 +102,81 @@ func (PruneSkipReason) EnumDescriptor() ([]byte, []int) {
 	return file_runtime_v1_images_proto_rawDescGZIP(), []int{0}
 }
 
+// EvictSkipReason is why an eviction kept a blob of its target. Dedicated
+// rather than PruneSkipReason: eviction distinguishes causes a whole-cache
+// prune does not (SHARED with another manifest, YOUNG inside the grace
+// window), and PruneSkipReason stays exactly as released.
+// UNSPECIFIED means the daemon reported no typed reason; a client prints an
+// unknown value by number.
+type EvictSkipReason int32
+
+const (
+	EvictSkipReason_EVICT_SKIP_REASON_UNSPECIFIED EvictSkipReason = 0
+	// ROOTED: an artifact record or operator root names the blob.
+	EvictSkipReason_EVICT_SKIP_REASON_ROOTED EvictSkipReason = 1
+	// IN_USE: a per-pod record or a pod hold names the blob.
+	EvictSkipReason_EVICT_SKIP_REASON_IN_USE EvictSkipReason = 2
+	// LEASED: an in-flight ingest holds a lease covering the blob.
+	EvictSkipReason_EVICT_SKIP_REASON_LEASED EvictSkipReason = 3
+	// SHARED: another cached index entry, artifact record or released copy
+	// names the blob.
+	EvictSkipReason_EVICT_SKIP_REASON_SHARED EvictSkipReason = 4
+	// YOUNG: the blob is younger than the grace window.
+	EvictSkipReason_EVICT_SKIP_REASON_YOUNG EvictSkipReason = 5
+	// UNLINK_FAILED: the unlink's re-verification refused the blob, or the
+	// unlink itself failed. Its presence makes the call INTERNAL.
+	EvictSkipReason_EVICT_SKIP_REASON_UNLINK_FAILED EvictSkipReason = 6
+)
+
+// Enum value maps for EvictSkipReason.
+var (
+	EvictSkipReason_name = map[int32]string{
+		0: "EVICT_SKIP_REASON_UNSPECIFIED",
+		1: "EVICT_SKIP_REASON_ROOTED",
+		2: "EVICT_SKIP_REASON_IN_USE",
+		3: "EVICT_SKIP_REASON_LEASED",
+		4: "EVICT_SKIP_REASON_SHARED",
+		5: "EVICT_SKIP_REASON_YOUNG",
+		6: "EVICT_SKIP_REASON_UNLINK_FAILED",
+	}
+	EvictSkipReason_value = map[string]int32{
+		"EVICT_SKIP_REASON_UNSPECIFIED":   0,
+		"EVICT_SKIP_REASON_ROOTED":        1,
+		"EVICT_SKIP_REASON_IN_USE":        2,
+		"EVICT_SKIP_REASON_LEASED":        3,
+		"EVICT_SKIP_REASON_SHARED":        4,
+		"EVICT_SKIP_REASON_YOUNG":         5,
+		"EVICT_SKIP_REASON_UNLINK_FAILED": 6,
+	}
+)
+
+func (x EvictSkipReason) Enum() *EvictSkipReason {
+	p := new(EvictSkipReason)
+	*p = x
+	return p
+}
+
+func (x EvictSkipReason) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EvictSkipReason) Descriptor() protoreflect.EnumDescriptor {
+	return file_runtime_v1_images_proto_enumTypes[1].Descriptor()
+}
+
+func (EvictSkipReason) Type() protoreflect.EnumType {
+	return &file_runtime_v1_images_proto_enumTypes[1]
+}
+
+func (x EvictSkipReason) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use EvictSkipReason.Descriptor instead.
+func (EvictSkipReason) EnumDescriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{1}
+}
+
 // LoadImageFormat is the archive format of a LoadImage stream.
 type LoadImageFormat int32
 
@@ -139,11 +214,11 @@ func (x LoadImageFormat) String() string {
 }
 
 func (LoadImageFormat) Descriptor() protoreflect.EnumDescriptor {
-	return file_runtime_v1_images_proto_enumTypes[1].Descriptor()
+	return file_runtime_v1_images_proto_enumTypes[2].Descriptor()
 }
 
 func (LoadImageFormat) Type() protoreflect.EnumType {
-	return &file_runtime_v1_images_proto_enumTypes[1]
+	return &file_runtime_v1_images_proto_enumTypes[2]
 }
 
 func (x LoadImageFormat) Number() protoreflect.EnumNumber {
@@ -152,7 +227,7 @@ func (x LoadImageFormat) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use LoadImageFormat.Descriptor instead.
 func (LoadImageFormat) EnumDescriptor() ([]byte, []int) {
-	return file_runtime_v1_images_proto_rawDescGZIP(), []int{1}
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{2}
 }
 
 // ArtifactPolicy names the consumer an artifact is fetched for, and so the
@@ -194,11 +269,11 @@ func (x ArtifactPolicy) String() string {
 }
 
 func (ArtifactPolicy) Descriptor() protoreflect.EnumDescriptor {
-	return file_runtime_v1_images_proto_enumTypes[2].Descriptor()
+	return file_runtime_v1_images_proto_enumTypes[3].Descriptor()
 }
 
 func (ArtifactPolicy) Type() protoreflect.EnumType {
-	return &file_runtime_v1_images_proto_enumTypes[2]
+	return &file_runtime_v1_images_proto_enumTypes[3]
 }
 
 func (x ArtifactPolicy) Number() protoreflect.EnumNumber {
@@ -207,7 +282,7 @@ func (x ArtifactPolicy) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ArtifactPolicy.Descriptor instead.
 func (ArtifactPolicy) EnumDescriptor() ([]byte, []int) {
-	return file_runtime_v1_images_proto_rawDescGZIP(), []int{2}
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{3}
 }
 
 // ListImagesRequest selects which stored images to return. An empty request
@@ -901,6 +976,220 @@ func (x *SkippedBlob) GetReason() PruneSkipReason {
 	return PruneSkipReason_PRUNE_SKIP_REASON_UNSPECIFIED
 }
 
+// EvictImageRequest names the one manifest to evict, by reference or by
+// digest. Field numbers match InspectImageRequest's.
+type EvictImageRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// reference is the pull reference of an image index entry or an artifact
+	// record. Exactly one of reference or digest identifies the target; setting
+	// both, or neither, is INVALID_ARGUMENT.
+	Reference string `protobuf:"bytes,1,opt,name=reference,proto3" json:"reference,omitempty"`
+	// platform narrows a reference with several platform entries. Unset selects
+	// the reference's single entry and is FAILED_PRECONDITION when several
+	// exist. Set together with digest it is INVALID_ARGUMENT — unlike
+	// InspectImage, which ignores it there.
+	Platform *Platform `protobuf:"bytes,2,opt,name=platform,proto3" json:"platform,omitempty"`
+	// digest names the manifest directly, "<algo>:<hex>". The server validates
+	// the grammar; a malformed digest is INVALID_ARGUMENT.
+	Digest string `protobuf:"bytes,3,opt,name=digest,proto3" json:"digest,omitempty"`
+	// force, when set, unlinks. Unset, the daemon plans and unlinks nothing; the
+	// response has the same shape either way.
+	Force         bool `protobuf:"varint,4,opt,name=force,proto3" json:"force,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EvictImageRequest) Reset() {
+	*x = EvictImageRequest{}
+	mi := &file_runtime_v1_images_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EvictImageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EvictImageRequest) ProtoMessage() {}
+
+func (x *EvictImageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_images_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EvictImageRequest.ProtoReflect.Descriptor instead.
+func (*EvictImageRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *EvictImageRequest) GetReference() string {
+	if x != nil {
+		return x.Reference
+	}
+	return ""
+}
+
+func (x *EvictImageRequest) GetPlatform() *Platform {
+	if x != nil {
+		return x.Platform
+	}
+	return nil
+}
+
+func (x *EvictImageRequest) GetDigest() string {
+	if x != nil {
+		return x.Digest
+	}
+	return ""
+}
+
+func (x *EvictImageRequest) GetForce() bool {
+	if x != nil {
+		return x.Force
+	}
+	return false
+}
+
+// EvictImageResponse reports the typed outcome of one eviction. removed_digests
+// and kept together are always the target's whole blob set, so a partial
+// eviction is never silent.
+type EvictImageResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// manifest_digest is the manifest the target resolved to. Always set on OK.
+	ManifestDigest string `protobuf:"bytes,1,opt,name=manifest_digest,json=manifestDigest,proto3" json:"manifest_digest,omitempty"`
+	// removed_digests are the blob digests unlinked (or, without force, the ones
+	// that would be).
+	RemovedDigests []string `protobuf:"bytes,2,rep,name=removed_digests,json=removedDigests,proto3" json:"removed_digests,omitempty"`
+	// kept is every target blob not removed, each with its typed reason.
+	Kept []*EvictKeptBlob `protobuf:"bytes,3,rep,name=kept,proto3" json:"kept,omitempty"`
+	// reclaimed_bytes is the summed size of the removed files. It over-estimates
+	// the space returned when extents are shared (APFS clonefile), as
+	// PruneImagesResponse.reclaimed_bytes does.
+	ReclaimedBytes uint64 `protobuf:"varint,4,opt,name=reclaimed_bytes,json=reclaimedBytes,proto3" json:"reclaimed_bytes,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *EvictImageResponse) Reset() {
+	*x = EvictImageResponse{}
+	mi := &file_runtime_v1_images_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EvictImageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EvictImageResponse) ProtoMessage() {}
+
+func (x *EvictImageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_images_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EvictImageResponse.ProtoReflect.Descriptor instead.
+func (*EvictImageResponse) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *EvictImageResponse) GetManifestDigest() string {
+	if x != nil {
+		return x.ManifestDigest
+	}
+	return ""
+}
+
+func (x *EvictImageResponse) GetRemovedDigests() []string {
+	if x != nil {
+		return x.RemovedDigests
+	}
+	return nil
+}
+
+func (x *EvictImageResponse) GetKept() []*EvictKeptBlob {
+	if x != nil {
+		return x.Kept
+	}
+	return nil
+}
+
+func (x *EvictImageResponse) GetReclaimedBytes() uint64 {
+	if x != nil {
+		return x.ReclaimedBytes
+	}
+	return 0
+}
+
+// EvictKeptBlob is one target blob the eviction kept, with the typed reason.
+type EvictKeptBlob struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// digest is the blob's content digest, "<algo>:<hex>".
+	Digest string `protobuf:"bytes,1,opt,name=digest,proto3" json:"digest,omitempty"`
+	// reason is the typed cause the daemon reached.
+	Reason        EvictSkipReason `protobuf:"varint,2,opt,name=reason,proto3,enum=k3sm.runtime.v1.EvictSkipReason" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EvictKeptBlob) Reset() {
+	*x = EvictKeptBlob{}
+	mi := &file_runtime_v1_images_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EvictKeptBlob) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EvictKeptBlob) ProtoMessage() {}
+
+func (x *EvictKeptBlob) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_images_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EvictKeptBlob.ProtoReflect.Descriptor instead.
+func (*EvictKeptBlob) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *EvictKeptBlob) GetDigest() string {
+	if x != nil {
+		return x.Digest
+	}
+	return ""
+}
+
+func (x *EvictKeptBlob) GetReason() EvictSkipReason {
+	if x != nil {
+		return x.Reason
+	}
+	return EvictSkipReason_EVICT_SKIP_REASON_UNSPECIFIED
+}
+
 // LoadImageRequest is one frame of the ingest stream. The FIRST frame carries
 // the metadata (reference, format, and the advisory digest/size) and no chunk;
 // every subsequent frame carries a chunk and nothing else.
@@ -933,7 +1222,7 @@ type LoadImageRequest struct {
 
 func (x *LoadImageRequest) Reset() {
 	*x = LoadImageRequest{}
-	mi := &file_runtime_v1_images_proto_msgTypes[11]
+	mi := &file_runtime_v1_images_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -945,7 +1234,7 @@ func (x *LoadImageRequest) String() string {
 func (*LoadImageRequest) ProtoMessage() {}
 
 func (x *LoadImageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_images_proto_msgTypes[11]
+	mi := &file_runtime_v1_images_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -958,7 +1247,7 @@ func (x *LoadImageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LoadImageRequest.ProtoReflect.Descriptor instead.
 func (*LoadImageRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_images_proto_rawDescGZIP(), []int{11}
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *LoadImageRequest) GetReference() string {
@@ -1021,7 +1310,7 @@ type LoadImageResponse struct {
 
 func (x *LoadImageResponse) Reset() {
 	*x = LoadImageResponse{}
-	mi := &file_runtime_v1_images_proto_msgTypes[12]
+	mi := &file_runtime_v1_images_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1033,7 +1322,7 @@ func (x *LoadImageResponse) String() string {
 func (*LoadImageResponse) ProtoMessage() {}
 
 func (x *LoadImageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_images_proto_msgTypes[12]
+	mi := &file_runtime_v1_images_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1046,7 +1335,7 @@ func (x *LoadImageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LoadImageResponse.ProtoReflect.Descriptor instead.
 func (*LoadImageResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_images_proto_rawDescGZIP(), []int{12}
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *LoadImageResponse) GetImages() []*Image {
@@ -1098,7 +1387,7 @@ type PullImageRequest struct {
 
 func (x *PullImageRequest) Reset() {
 	*x = PullImageRequest{}
-	mi := &file_runtime_v1_images_proto_msgTypes[13]
+	mi := &file_runtime_v1_images_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1110,7 +1399,7 @@ func (x *PullImageRequest) String() string {
 func (*PullImageRequest) ProtoMessage() {}
 
 func (x *PullImageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_images_proto_msgTypes[13]
+	mi := &file_runtime_v1_images_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1123,7 +1412,7 @@ func (x *PullImageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PullImageRequest.ProtoReflect.Descriptor instead.
 func (*PullImageRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_images_proto_rawDescGZIP(), []int{13}
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *PullImageRequest) GetReference() string {
@@ -1175,7 +1464,7 @@ type PullImageResponse struct {
 
 func (x *PullImageResponse) Reset() {
 	*x = PullImageResponse{}
-	mi := &file_runtime_v1_images_proto_msgTypes[14]
+	mi := &file_runtime_v1_images_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1187,7 +1476,7 @@ func (x *PullImageResponse) String() string {
 func (*PullImageResponse) ProtoMessage() {}
 
 func (x *PullImageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_images_proto_msgTypes[14]
+	mi := &file_runtime_v1_images_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1200,7 +1489,7 @@ func (x *PullImageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PullImageResponse.ProtoReflect.Descriptor instead.
 func (*PullImageResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_images_proto_rawDescGZIP(), []int{14}
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *PullImageResponse) GetImage() *Image {
@@ -1245,7 +1534,7 @@ type TagImageRequest struct {
 
 func (x *TagImageRequest) Reset() {
 	*x = TagImageRequest{}
-	mi := &file_runtime_v1_images_proto_msgTypes[15]
+	mi := &file_runtime_v1_images_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1257,7 +1546,7 @@ func (x *TagImageRequest) String() string {
 func (*TagImageRequest) ProtoMessage() {}
 
 func (x *TagImageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_images_proto_msgTypes[15]
+	mi := &file_runtime_v1_images_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1270,7 +1559,7 @@ func (x *TagImageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TagImageRequest.ProtoReflect.Descriptor instead.
 func (*TagImageRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_images_proto_rawDescGZIP(), []int{15}
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *TagImageRequest) GetDigest() string {
@@ -1311,7 +1600,7 @@ type TagImageResponse struct {
 
 func (x *TagImageResponse) Reset() {
 	*x = TagImageResponse{}
-	mi := &file_runtime_v1_images_proto_msgTypes[16]
+	mi := &file_runtime_v1_images_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1323,7 +1612,7 @@ func (x *TagImageResponse) String() string {
 func (*TagImageResponse) ProtoMessage() {}
 
 func (x *TagImageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_images_proto_msgTypes[16]
+	mi := &file_runtime_v1_images_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1336,7 +1625,7 @@ func (x *TagImageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TagImageResponse.ProtoReflect.Descriptor instead.
 func (*TagImageResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_images_proto_rawDescGZIP(), []int{16}
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *TagImageResponse) GetImage() *Image {
@@ -1381,7 +1670,7 @@ type UntagImageRequest struct {
 
 func (x *UntagImageRequest) Reset() {
 	*x = UntagImageRequest{}
-	mi := &file_runtime_v1_images_proto_msgTypes[17]
+	mi := &file_runtime_v1_images_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1393,7 +1682,7 @@ func (x *UntagImageRequest) String() string {
 func (*UntagImageRequest) ProtoMessage() {}
 
 func (x *UntagImageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_images_proto_msgTypes[17]
+	mi := &file_runtime_v1_images_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1406,7 +1695,7 @@ func (x *UntagImageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UntagImageRequest.ProtoReflect.Descriptor instead.
 func (*UntagImageRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_images_proto_rawDescGZIP(), []int{17}
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *UntagImageRequest) GetReference() string {
@@ -1447,7 +1736,7 @@ type UntagImageResponse struct {
 
 func (x *UntagImageResponse) Reset() {
 	*x = UntagImageResponse{}
-	mi := &file_runtime_v1_images_proto_msgTypes[18]
+	mi := &file_runtime_v1_images_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1459,7 +1748,7 @@ func (x *UntagImageResponse) String() string {
 func (*UntagImageResponse) ProtoMessage() {}
 
 func (x *UntagImageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_images_proto_msgTypes[18]
+	mi := &file_runtime_v1_images_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1472,7 +1761,7 @@ func (x *UntagImageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UntagImageResponse.ProtoReflect.Descriptor instead.
 func (*UntagImageResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_images_proto_rawDescGZIP(), []int{18}
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *UntagImageResponse) GetRemoved() *Image {
@@ -1508,7 +1797,7 @@ type InspectImageRequest struct {
 
 func (x *InspectImageRequest) Reset() {
 	*x = InspectImageRequest{}
-	mi := &file_runtime_v1_images_proto_msgTypes[19]
+	mi := &file_runtime_v1_images_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1520,7 +1809,7 @@ func (x *InspectImageRequest) String() string {
 func (*InspectImageRequest) ProtoMessage() {}
 
 func (x *InspectImageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_images_proto_msgTypes[19]
+	mi := &file_runtime_v1_images_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1533,7 +1822,7 @@ func (x *InspectImageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectImageRequest.ProtoReflect.Descriptor instead.
 func (*InspectImageRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_images_proto_rawDescGZIP(), []int{19}
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *InspectImageRequest) GetReference() string {
@@ -1583,7 +1872,7 @@ type InspectImageResponse struct {
 
 func (x *InspectImageResponse) Reset() {
 	*x = InspectImageResponse{}
-	mi := &file_runtime_v1_images_proto_msgTypes[20]
+	mi := &file_runtime_v1_images_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1595,7 +1884,7 @@ func (x *InspectImageResponse) String() string {
 func (*InspectImageResponse) ProtoMessage() {}
 
 func (x *InspectImageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_images_proto_msgTypes[20]
+	mi := &file_runtime_v1_images_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1608,7 +1897,7 @@ func (x *InspectImageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectImageResponse.ProtoReflect.Descriptor instead.
 func (*InspectImageResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_images_proto_rawDescGZIP(), []int{20}
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *InspectImageResponse) GetImage() *Image {
@@ -1677,7 +1966,7 @@ type ImageConfig struct {
 
 func (x *ImageConfig) Reset() {
 	*x = ImageConfig{}
-	mi := &file_runtime_v1_images_proto_msgTypes[21]
+	mi := &file_runtime_v1_images_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1689,7 +1978,7 @@ func (x *ImageConfig) String() string {
 func (*ImageConfig) ProtoMessage() {}
 
 func (x *ImageConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_images_proto_msgTypes[21]
+	mi := &file_runtime_v1_images_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1702,7 +1991,7 @@ func (x *ImageConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageConfig.ProtoReflect.Descriptor instead.
 func (*ImageConfig) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_images_proto_rawDescGZIP(), []int{21}
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ImageConfig) GetPlatform() *Platform {
@@ -1786,7 +2075,7 @@ type SaveImageRequest struct {
 
 func (x *SaveImageRequest) Reset() {
 	*x = SaveImageRequest{}
-	mi := &file_runtime_v1_images_proto_msgTypes[22]
+	mi := &file_runtime_v1_images_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1798,7 +2087,7 @@ func (x *SaveImageRequest) String() string {
 func (*SaveImageRequest) ProtoMessage() {}
 
 func (x *SaveImageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_images_proto_msgTypes[22]
+	mi := &file_runtime_v1_images_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1811,7 +2100,7 @@ func (x *SaveImageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveImageRequest.ProtoReflect.Descriptor instead.
 func (*SaveImageRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_images_proto_rawDescGZIP(), []int{22}
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *SaveImageRequest) GetReference() string {
@@ -1881,7 +2170,7 @@ type SaveImageResponse struct {
 
 func (x *SaveImageResponse) Reset() {
 	*x = SaveImageResponse{}
-	mi := &file_runtime_v1_images_proto_msgTypes[23]
+	mi := &file_runtime_v1_images_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1893,7 +2182,7 @@ func (x *SaveImageResponse) String() string {
 func (*SaveImageResponse) ProtoMessage() {}
 
 func (x *SaveImageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_images_proto_msgTypes[23]
+	mi := &file_runtime_v1_images_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1906,7 +2195,7 @@ func (x *SaveImageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveImageResponse.ProtoReflect.Descriptor instead.
 func (*SaveImageResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_images_proto_rawDescGZIP(), []int{23}
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *SaveImageResponse) GetChunk() []byte {
@@ -1965,7 +2254,7 @@ type PullArtifactRequest struct {
 
 func (x *PullArtifactRequest) Reset() {
 	*x = PullArtifactRequest{}
-	mi := &file_runtime_v1_images_proto_msgTypes[24]
+	mi := &file_runtime_v1_images_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1977,7 +2266,7 @@ func (x *PullArtifactRequest) String() string {
 func (*PullArtifactRequest) ProtoMessage() {}
 
 func (x *PullArtifactRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_images_proto_msgTypes[24]
+	mi := &file_runtime_v1_images_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1990,7 +2279,7 @@ func (x *PullArtifactRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PullArtifactRequest.ProtoReflect.Descriptor instead.
 func (*PullArtifactRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_images_proto_rawDescGZIP(), []int{24}
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *PullArtifactRequest) GetReference() string {
@@ -2053,7 +2342,7 @@ type PullArtifactResponse struct {
 
 func (x *PullArtifactResponse) Reset() {
 	*x = PullArtifactResponse{}
-	mi := &file_runtime_v1_images_proto_msgTypes[25]
+	mi := &file_runtime_v1_images_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2065,7 +2354,7 @@ func (x *PullArtifactResponse) String() string {
 func (*PullArtifactResponse) ProtoMessage() {}
 
 func (x *PullArtifactResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_images_proto_msgTypes[25]
+	mi := &file_runtime_v1_images_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2078,7 +2367,7 @@ func (x *PullArtifactResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PullArtifactResponse.ProtoReflect.Descriptor instead.
 func (*PullArtifactResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_images_proto_rawDescGZIP(), []int{25}
+	return file_runtime_v1_images_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *PullArtifactResponse) GetManifestDigest() string {
@@ -2149,7 +2438,20 @@ const file_runtime_v1_images_proto_rawDesc = "" +
 	"\x05error\x18\x04 \x01(\v2\x12.google.rpc.StatusR\x05errorJ\x05\bd\x10\x96\x01\"f\n" +
 	"\vSkippedBlob\x12\x16\n" +
 	"\x06digest\x18\x01 \x01(\tR\x06digest\x128\n" +
-	"\x06reason\x18\x02 \x01(\x0e2 .k3sm.runtime.v1.PruneSkipReasonR\x06reasonJ\x05\bd\x10\x96\x01\"\xb3\x01\n" +
+	"\x06reason\x18\x02 \x01(\x0e2 .k3sm.runtime.v1.PruneSkipReasonR\x06reasonJ\x05\bd\x10\x96\x01\"\x9d\x01\n" +
+	"\x11EvictImageRequest\x12\x1c\n" +
+	"\treference\x18\x01 \x01(\tR\treference\x125\n" +
+	"\bplatform\x18\x02 \x01(\v2\x19.k3sm.runtime.v1.PlatformR\bplatform\x12\x16\n" +
+	"\x06digest\x18\x03 \x01(\tR\x06digest\x12\x14\n" +
+	"\x05force\x18\x04 \x01(\bR\x05forceJ\x05\bd\x10\x96\x01\"\xca\x01\n" +
+	"\x12EvictImageResponse\x12'\n" +
+	"\x0fmanifest_digest\x18\x01 \x01(\tR\x0emanifestDigest\x12'\n" +
+	"\x0fremoved_digests\x18\x02 \x03(\tR\x0eremovedDigests\x122\n" +
+	"\x04kept\x18\x03 \x03(\v2\x1e.k3sm.runtime.v1.EvictKeptBlobR\x04kept\x12'\n" +
+	"\x0freclaimed_bytes\x18\x04 \x01(\x04R\x0ereclaimedBytesJ\x05\bd\x10\x96\x01\"h\n" +
+	"\rEvictKeptBlob\x12\x16\n" +
+	"\x06digest\x18\x01 \x01(\tR\x06digest\x128\n" +
+	"\x06reason\x18\x02 \x01(\x0e2 .k3sm.runtime.v1.EvictSkipReasonR\x06reasonJ\x05\bd\x10\x96\x01\"\xb3\x01\n" +
 	"\x10LoadImageRequest\x12\x1c\n" +
 	"\treference\x18\x01 \x01(\tR\treference\x128\n" +
 	"\x06format\x18\x02 \x01(\x0e2 .k3sm.runtime.v1.LoadImageFormatR\x06format\x12\x16\n" +
@@ -2237,20 +2539,30 @@ const file_runtime_v1_images_proto_rawDesc = "" +
 	"\x1bPRUNE_SKIP_REASON_REACHABLE\x10\x01\x12\x1c\n" +
 	"\x18PRUNE_SKIP_REASON_LEASED\x10\x02\x12\x1c\n" +
 	"\x18PRUNE_SKIP_REASON_IN_USE\x10\x03\x12#\n" +
-	"\x1fPRUNE_SKIP_REASON_UNLINK_FAILED\x10\x04*y\n" +
+	"\x1fPRUNE_SKIP_REASON_UNLINK_FAILED\x10\x04*\xee\x01\n" +
+	"\x0fEvictSkipReason\x12!\n" +
+	"\x1dEVICT_SKIP_REASON_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18EVICT_SKIP_REASON_ROOTED\x10\x01\x12\x1c\n" +
+	"\x18EVICT_SKIP_REASON_IN_USE\x10\x02\x12\x1c\n" +
+	"\x18EVICT_SKIP_REASON_LEASED\x10\x03\x12\x1c\n" +
+	"\x18EVICT_SKIP_REASON_SHARED\x10\x04\x12\x1b\n" +
+	"\x17EVICT_SKIP_REASON_YOUNG\x10\x05\x12#\n" +
+	"\x1fEVICT_SKIP_REASON_UNLINK_FAILED\x10\x06*y\n" +
 	"\x0fLoadImageFormat\x12!\n" +
 	"\x1dLOAD_IMAGE_FORMAT_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dLOAD_IMAGE_FORMAT_DOCKER_SAVE\x10\x01\x12 \n" +
 	"\x1cLOAD_IMAGE_FORMAT_OCI_LAYOUT\x10\x02*S\n" +
 	"\x0eArtifactPolicy\x12\x1f\n" +
 	"\x1bARTIFACT_POLICY_UNSPECIFIED\x10\x00\x12 \n" +
-	"\x1cARTIFACT_POLICY_IMAGE_VOLUME\x10\x012\xe8\a\n" +
+	"\x1cARTIFACT_POLICY_IMAGE_VOLUME\x10\x012\xbf\b\n" +
 	"\x06Images\x12U\n" +
 	"\n" +
 	"ListImages\x12\".k3sm.runtime.v1.ListImagesRequest\x1a#.k3sm.runtime.v1.ListImagesResponse\x12X\n" +
 	"\vImageFsInfo\x12#.k3sm.runtime.v1.ImageFsInfoRequest\x1a$.k3sm.runtime.v1.ImageFsInfoResponse\x12]\n" +
 	"\vRemoveImage\x12#.k3sm.runtime.v1.RemoveImageRequest\x1a$.k3sm.runtime.v1.RemoveImageResponse\"\x03\x88\x02\x01\x12X\n" +
-	"\vPruneImages\x12#.k3sm.runtime.v1.PruneImagesRequest\x1a$.k3sm.runtime.v1.PruneImagesResponse\x12Y\n" +
+	"\vPruneImages\x12#.k3sm.runtime.v1.PruneImagesRequest\x1a$.k3sm.runtime.v1.PruneImagesResponse\x12U\n" +
+	"\n" +
+	"EvictImage\x12\".k3sm.runtime.v1.EvictImageRequest\x1a#.k3sm.runtime.v1.EvictImageResponse\x12Y\n" +
 	"\tLoadImage\x12!.k3sm.runtime.v1.LoadImageRequest\x1a\".k3sm.runtime.v1.LoadImageResponse\"\x03\x88\x02\x01(\x01\x12R\n" +
 	"\tPullImage\x12!.k3sm.runtime.v1.PullImageRequest\x1a\".k3sm.runtime.v1.PullImageResponse\x12T\n" +
 	"\bTagImage\x12 .k3sm.runtime.v1.TagImageRequest\x1a!.k3sm.runtime.v1.TagImageResponse\"\x03\x88\x02\x01\x12Z\n" +
@@ -2273,115 +2585,124 @@ func file_runtime_v1_images_proto_rawDescGZIP() []byte {
 	return file_runtime_v1_images_proto_rawDescData
 }
 
-var file_runtime_v1_images_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_runtime_v1_images_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_runtime_v1_images_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_runtime_v1_images_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_runtime_v1_images_proto_goTypes = []any{
 	(PruneSkipReason)(0),          // 0: k3sm.runtime.v1.PruneSkipReason
-	(LoadImageFormat)(0),          // 1: k3sm.runtime.v1.LoadImageFormat
-	(ArtifactPolicy)(0),           // 2: k3sm.runtime.v1.ArtifactPolicy
-	(*ListImagesRequest)(nil),     // 3: k3sm.runtime.v1.ListImagesRequest
-	(*ListImagesResponse)(nil),    // 4: k3sm.runtime.v1.ListImagesResponse
-	(*Image)(nil),                 // 5: k3sm.runtime.v1.Image
-	(*ImageFsInfoRequest)(nil),    // 6: k3sm.runtime.v1.ImageFsInfoRequest
-	(*ImageFsInfoResponse)(nil),   // 7: k3sm.runtime.v1.ImageFsInfoResponse
-	(*FilesystemUsage)(nil),       // 8: k3sm.runtime.v1.FilesystemUsage
-	(*RemoveImageRequest)(nil),    // 9: k3sm.runtime.v1.RemoveImageRequest
-	(*RemoveImageResponse)(nil),   // 10: k3sm.runtime.v1.RemoveImageResponse
-	(*PruneImagesRequest)(nil),    // 11: k3sm.runtime.v1.PruneImagesRequest
-	(*PruneImagesResponse)(nil),   // 12: k3sm.runtime.v1.PruneImagesResponse
-	(*SkippedBlob)(nil),           // 13: k3sm.runtime.v1.SkippedBlob
-	(*LoadImageRequest)(nil),      // 14: k3sm.runtime.v1.LoadImageRequest
-	(*LoadImageResponse)(nil),     // 15: k3sm.runtime.v1.LoadImageResponse
-	(*PullImageRequest)(nil),      // 16: k3sm.runtime.v1.PullImageRequest
-	(*PullImageResponse)(nil),     // 17: k3sm.runtime.v1.PullImageResponse
-	(*TagImageRequest)(nil),       // 18: k3sm.runtime.v1.TagImageRequest
-	(*TagImageResponse)(nil),      // 19: k3sm.runtime.v1.TagImageResponse
-	(*UntagImageRequest)(nil),     // 20: k3sm.runtime.v1.UntagImageRequest
-	(*UntagImageResponse)(nil),    // 21: k3sm.runtime.v1.UntagImageResponse
-	(*InspectImageRequest)(nil),   // 22: k3sm.runtime.v1.InspectImageRequest
-	(*InspectImageResponse)(nil),  // 23: k3sm.runtime.v1.InspectImageResponse
-	(*ImageConfig)(nil),           // 24: k3sm.runtime.v1.ImageConfig
-	(*SaveImageRequest)(nil),      // 25: k3sm.runtime.v1.SaveImageRequest
-	(*SaveImageResponse)(nil),     // 26: k3sm.runtime.v1.SaveImageResponse
-	(*PullArtifactRequest)(nil),   // 27: k3sm.runtime.v1.PullArtifactRequest
-	(*PullArtifactResponse)(nil),  // 28: k3sm.runtime.v1.PullArtifactResponse
-	nil,                           // 29: k3sm.runtime.v1.ImageConfig.LabelsEntry
-	(*Platform)(nil),              // 30: k3sm.runtime.v1.Platform
-	(*status.Status)(nil),         // 31: google.rpc.Status
-	(*Descriptor)(nil),            // 32: k3sm.runtime.v1.Descriptor
-	(*ImageManifest)(nil),         // 33: k3sm.runtime.v1.ImageManifest
-	(*timestamppb.Timestamp)(nil), // 34: google.protobuf.Timestamp
-	(ImagePullPolicy)(0),          // 35: k3sm.runtime.v1.ImagePullPolicy
-	(*LocalObjectReference)(nil),  // 36: k3sm.runtime.v1.LocalObjectReference
+	(EvictSkipReason)(0),          // 1: k3sm.runtime.v1.EvictSkipReason
+	(LoadImageFormat)(0),          // 2: k3sm.runtime.v1.LoadImageFormat
+	(ArtifactPolicy)(0),           // 3: k3sm.runtime.v1.ArtifactPolicy
+	(*ListImagesRequest)(nil),     // 4: k3sm.runtime.v1.ListImagesRequest
+	(*ListImagesResponse)(nil),    // 5: k3sm.runtime.v1.ListImagesResponse
+	(*Image)(nil),                 // 6: k3sm.runtime.v1.Image
+	(*ImageFsInfoRequest)(nil),    // 7: k3sm.runtime.v1.ImageFsInfoRequest
+	(*ImageFsInfoResponse)(nil),   // 8: k3sm.runtime.v1.ImageFsInfoResponse
+	(*FilesystemUsage)(nil),       // 9: k3sm.runtime.v1.FilesystemUsage
+	(*RemoveImageRequest)(nil),    // 10: k3sm.runtime.v1.RemoveImageRequest
+	(*RemoveImageResponse)(nil),   // 11: k3sm.runtime.v1.RemoveImageResponse
+	(*PruneImagesRequest)(nil),    // 12: k3sm.runtime.v1.PruneImagesRequest
+	(*PruneImagesResponse)(nil),   // 13: k3sm.runtime.v1.PruneImagesResponse
+	(*SkippedBlob)(nil),           // 14: k3sm.runtime.v1.SkippedBlob
+	(*EvictImageRequest)(nil),     // 15: k3sm.runtime.v1.EvictImageRequest
+	(*EvictImageResponse)(nil),    // 16: k3sm.runtime.v1.EvictImageResponse
+	(*EvictKeptBlob)(nil),         // 17: k3sm.runtime.v1.EvictKeptBlob
+	(*LoadImageRequest)(nil),      // 18: k3sm.runtime.v1.LoadImageRequest
+	(*LoadImageResponse)(nil),     // 19: k3sm.runtime.v1.LoadImageResponse
+	(*PullImageRequest)(nil),      // 20: k3sm.runtime.v1.PullImageRequest
+	(*PullImageResponse)(nil),     // 21: k3sm.runtime.v1.PullImageResponse
+	(*TagImageRequest)(nil),       // 22: k3sm.runtime.v1.TagImageRequest
+	(*TagImageResponse)(nil),      // 23: k3sm.runtime.v1.TagImageResponse
+	(*UntagImageRequest)(nil),     // 24: k3sm.runtime.v1.UntagImageRequest
+	(*UntagImageResponse)(nil),    // 25: k3sm.runtime.v1.UntagImageResponse
+	(*InspectImageRequest)(nil),   // 26: k3sm.runtime.v1.InspectImageRequest
+	(*InspectImageResponse)(nil),  // 27: k3sm.runtime.v1.InspectImageResponse
+	(*ImageConfig)(nil),           // 28: k3sm.runtime.v1.ImageConfig
+	(*SaveImageRequest)(nil),      // 29: k3sm.runtime.v1.SaveImageRequest
+	(*SaveImageResponse)(nil),     // 30: k3sm.runtime.v1.SaveImageResponse
+	(*PullArtifactRequest)(nil),   // 31: k3sm.runtime.v1.PullArtifactRequest
+	(*PullArtifactResponse)(nil),  // 32: k3sm.runtime.v1.PullArtifactResponse
+	nil,                           // 33: k3sm.runtime.v1.ImageConfig.LabelsEntry
+	(*Platform)(nil),              // 34: k3sm.runtime.v1.Platform
+	(*status.Status)(nil),         // 35: google.rpc.Status
+	(*Descriptor)(nil),            // 36: k3sm.runtime.v1.Descriptor
+	(*ImageManifest)(nil),         // 37: k3sm.runtime.v1.ImageManifest
+	(*timestamppb.Timestamp)(nil), // 38: google.protobuf.Timestamp
+	(ImagePullPolicy)(0),          // 39: k3sm.runtime.v1.ImagePullPolicy
+	(*LocalObjectReference)(nil),  // 40: k3sm.runtime.v1.LocalObjectReference
 }
 var file_runtime_v1_images_proto_depIdxs = []int32{
-	30, // 0: k3sm.runtime.v1.ListImagesRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	5,  // 1: k3sm.runtime.v1.ListImagesResponse.images:type_name -> k3sm.runtime.v1.Image
-	31, // 2: k3sm.runtime.v1.ListImagesResponse.error:type_name -> google.rpc.Status
-	32, // 3: k3sm.runtime.v1.Image.manifest_descriptor:type_name -> k3sm.runtime.v1.Descriptor
-	33, // 4: k3sm.runtime.v1.Image.manifest:type_name -> k3sm.runtime.v1.ImageManifest
-	8,  // 5: k3sm.runtime.v1.ImageFsInfoResponse.filesystems:type_name -> k3sm.runtime.v1.FilesystemUsage
-	31, // 6: k3sm.runtime.v1.ImageFsInfoResponse.error:type_name -> google.rpc.Status
-	34, // 7: k3sm.runtime.v1.FilesystemUsage.timestamp:type_name -> google.protobuf.Timestamp
-	30, // 8: k3sm.runtime.v1.RemoveImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	31, // 9: k3sm.runtime.v1.RemoveImageResponse.error:type_name -> google.rpc.Status
-	13, // 10: k3sm.runtime.v1.PruneImagesResponse.skipped:type_name -> k3sm.runtime.v1.SkippedBlob
-	31, // 11: k3sm.runtime.v1.PruneImagesResponse.error:type_name -> google.rpc.Status
+	34, // 0: k3sm.runtime.v1.ListImagesRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	6,  // 1: k3sm.runtime.v1.ListImagesResponse.images:type_name -> k3sm.runtime.v1.Image
+	35, // 2: k3sm.runtime.v1.ListImagesResponse.error:type_name -> google.rpc.Status
+	36, // 3: k3sm.runtime.v1.Image.manifest_descriptor:type_name -> k3sm.runtime.v1.Descriptor
+	37, // 4: k3sm.runtime.v1.Image.manifest:type_name -> k3sm.runtime.v1.ImageManifest
+	9,  // 5: k3sm.runtime.v1.ImageFsInfoResponse.filesystems:type_name -> k3sm.runtime.v1.FilesystemUsage
+	35, // 6: k3sm.runtime.v1.ImageFsInfoResponse.error:type_name -> google.rpc.Status
+	38, // 7: k3sm.runtime.v1.FilesystemUsage.timestamp:type_name -> google.protobuf.Timestamp
+	34, // 8: k3sm.runtime.v1.RemoveImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	35, // 9: k3sm.runtime.v1.RemoveImageResponse.error:type_name -> google.rpc.Status
+	14, // 10: k3sm.runtime.v1.PruneImagesResponse.skipped:type_name -> k3sm.runtime.v1.SkippedBlob
+	35, // 11: k3sm.runtime.v1.PruneImagesResponse.error:type_name -> google.rpc.Status
 	0,  // 12: k3sm.runtime.v1.SkippedBlob.reason:type_name -> k3sm.runtime.v1.PruneSkipReason
-	1,  // 13: k3sm.runtime.v1.LoadImageRequest.format:type_name -> k3sm.runtime.v1.LoadImageFormat
-	5,  // 14: k3sm.runtime.v1.LoadImageResponse.images:type_name -> k3sm.runtime.v1.Image
-	31, // 15: k3sm.runtime.v1.LoadImageResponse.error:type_name -> google.rpc.Status
-	30, // 16: k3sm.runtime.v1.PullImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	35, // 17: k3sm.runtime.v1.PullImageRequest.policy:type_name -> k3sm.runtime.v1.ImagePullPolicy
-	5,  // 18: k3sm.runtime.v1.PullImageResponse.image:type_name -> k3sm.runtime.v1.Image
-	31, // 19: k3sm.runtime.v1.PullImageResponse.error:type_name -> google.rpc.Status
-	30, // 20: k3sm.runtime.v1.TagImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	5,  // 21: k3sm.runtime.v1.TagImageResponse.image:type_name -> k3sm.runtime.v1.Image
-	31, // 22: k3sm.runtime.v1.TagImageResponse.error:type_name -> google.rpc.Status
-	30, // 23: k3sm.runtime.v1.UntagImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	5,  // 24: k3sm.runtime.v1.UntagImageResponse.removed:type_name -> k3sm.runtime.v1.Image
-	31, // 25: k3sm.runtime.v1.UntagImageResponse.error:type_name -> google.rpc.Status
-	30, // 26: k3sm.runtime.v1.InspectImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	5,  // 27: k3sm.runtime.v1.InspectImageResponse.image:type_name -> k3sm.runtime.v1.Image
-	24, // 28: k3sm.runtime.v1.InspectImageResponse.config:type_name -> k3sm.runtime.v1.ImageConfig
-	31, // 29: k3sm.runtime.v1.InspectImageResponse.error:type_name -> google.rpc.Status
-	30, // 30: k3sm.runtime.v1.ImageConfig.platform:type_name -> k3sm.runtime.v1.Platform
-	34, // 31: k3sm.runtime.v1.ImageConfig.created:type_name -> google.protobuf.Timestamp
-	29, // 32: k3sm.runtime.v1.ImageConfig.labels:type_name -> k3sm.runtime.v1.ImageConfig.LabelsEntry
-	30, // 33: k3sm.runtime.v1.SaveImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	1,  // 34: k3sm.runtime.v1.SaveImageRequest.format:type_name -> k3sm.runtime.v1.LoadImageFormat
-	31, // 35: k3sm.runtime.v1.SaveImageResponse.error:type_name -> google.rpc.Status
-	35, // 36: k3sm.runtime.v1.PullArtifactRequest.pull_policy:type_name -> k3sm.runtime.v1.ImagePullPolicy
-	2,  // 37: k3sm.runtime.v1.PullArtifactRequest.artifact_policy:type_name -> k3sm.runtime.v1.ArtifactPolicy
-	36, // 38: k3sm.runtime.v1.PullArtifactRequest.image_pull_secrets:type_name -> k3sm.runtime.v1.LocalObjectReference
-	31, // 39: k3sm.runtime.v1.PullArtifactResponse.error:type_name -> google.rpc.Status
-	3,  // 40: k3sm.runtime.v1.Images.ListImages:input_type -> k3sm.runtime.v1.ListImagesRequest
-	6,  // 41: k3sm.runtime.v1.Images.ImageFsInfo:input_type -> k3sm.runtime.v1.ImageFsInfoRequest
-	9,  // 42: k3sm.runtime.v1.Images.RemoveImage:input_type -> k3sm.runtime.v1.RemoveImageRequest
-	11, // 43: k3sm.runtime.v1.Images.PruneImages:input_type -> k3sm.runtime.v1.PruneImagesRequest
-	14, // 44: k3sm.runtime.v1.Images.LoadImage:input_type -> k3sm.runtime.v1.LoadImageRequest
-	16, // 45: k3sm.runtime.v1.Images.PullImage:input_type -> k3sm.runtime.v1.PullImageRequest
-	18, // 46: k3sm.runtime.v1.Images.TagImage:input_type -> k3sm.runtime.v1.TagImageRequest
-	20, // 47: k3sm.runtime.v1.Images.UntagImage:input_type -> k3sm.runtime.v1.UntagImageRequest
-	22, // 48: k3sm.runtime.v1.Images.InspectImage:input_type -> k3sm.runtime.v1.InspectImageRequest
-	25, // 49: k3sm.runtime.v1.Images.SaveImage:input_type -> k3sm.runtime.v1.SaveImageRequest
-	27, // 50: k3sm.runtime.v1.Images.PullArtifact:input_type -> k3sm.runtime.v1.PullArtifactRequest
-	4,  // 51: k3sm.runtime.v1.Images.ListImages:output_type -> k3sm.runtime.v1.ListImagesResponse
-	7,  // 52: k3sm.runtime.v1.Images.ImageFsInfo:output_type -> k3sm.runtime.v1.ImageFsInfoResponse
-	10, // 53: k3sm.runtime.v1.Images.RemoveImage:output_type -> k3sm.runtime.v1.RemoveImageResponse
-	12, // 54: k3sm.runtime.v1.Images.PruneImages:output_type -> k3sm.runtime.v1.PruneImagesResponse
-	15, // 55: k3sm.runtime.v1.Images.LoadImage:output_type -> k3sm.runtime.v1.LoadImageResponse
-	17, // 56: k3sm.runtime.v1.Images.PullImage:output_type -> k3sm.runtime.v1.PullImageResponse
-	19, // 57: k3sm.runtime.v1.Images.TagImage:output_type -> k3sm.runtime.v1.TagImageResponse
-	21, // 58: k3sm.runtime.v1.Images.UntagImage:output_type -> k3sm.runtime.v1.UntagImageResponse
-	23, // 59: k3sm.runtime.v1.Images.InspectImage:output_type -> k3sm.runtime.v1.InspectImageResponse
-	26, // 60: k3sm.runtime.v1.Images.SaveImage:output_type -> k3sm.runtime.v1.SaveImageResponse
-	28, // 61: k3sm.runtime.v1.Images.PullArtifact:output_type -> k3sm.runtime.v1.PullArtifactResponse
-	51, // [51:62] is the sub-list for method output_type
-	40, // [40:51] is the sub-list for method input_type
-	40, // [40:40] is the sub-list for extension type_name
-	40, // [40:40] is the sub-list for extension extendee
-	0,  // [0:40] is the sub-list for field type_name
+	34, // 13: k3sm.runtime.v1.EvictImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	17, // 14: k3sm.runtime.v1.EvictImageResponse.kept:type_name -> k3sm.runtime.v1.EvictKeptBlob
+	1,  // 15: k3sm.runtime.v1.EvictKeptBlob.reason:type_name -> k3sm.runtime.v1.EvictSkipReason
+	2,  // 16: k3sm.runtime.v1.LoadImageRequest.format:type_name -> k3sm.runtime.v1.LoadImageFormat
+	6,  // 17: k3sm.runtime.v1.LoadImageResponse.images:type_name -> k3sm.runtime.v1.Image
+	35, // 18: k3sm.runtime.v1.LoadImageResponse.error:type_name -> google.rpc.Status
+	34, // 19: k3sm.runtime.v1.PullImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	39, // 20: k3sm.runtime.v1.PullImageRequest.policy:type_name -> k3sm.runtime.v1.ImagePullPolicy
+	6,  // 21: k3sm.runtime.v1.PullImageResponse.image:type_name -> k3sm.runtime.v1.Image
+	35, // 22: k3sm.runtime.v1.PullImageResponse.error:type_name -> google.rpc.Status
+	34, // 23: k3sm.runtime.v1.TagImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	6,  // 24: k3sm.runtime.v1.TagImageResponse.image:type_name -> k3sm.runtime.v1.Image
+	35, // 25: k3sm.runtime.v1.TagImageResponse.error:type_name -> google.rpc.Status
+	34, // 26: k3sm.runtime.v1.UntagImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	6,  // 27: k3sm.runtime.v1.UntagImageResponse.removed:type_name -> k3sm.runtime.v1.Image
+	35, // 28: k3sm.runtime.v1.UntagImageResponse.error:type_name -> google.rpc.Status
+	34, // 29: k3sm.runtime.v1.InspectImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	6,  // 30: k3sm.runtime.v1.InspectImageResponse.image:type_name -> k3sm.runtime.v1.Image
+	28, // 31: k3sm.runtime.v1.InspectImageResponse.config:type_name -> k3sm.runtime.v1.ImageConfig
+	35, // 32: k3sm.runtime.v1.InspectImageResponse.error:type_name -> google.rpc.Status
+	34, // 33: k3sm.runtime.v1.ImageConfig.platform:type_name -> k3sm.runtime.v1.Platform
+	38, // 34: k3sm.runtime.v1.ImageConfig.created:type_name -> google.protobuf.Timestamp
+	33, // 35: k3sm.runtime.v1.ImageConfig.labels:type_name -> k3sm.runtime.v1.ImageConfig.LabelsEntry
+	34, // 36: k3sm.runtime.v1.SaveImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	2,  // 37: k3sm.runtime.v1.SaveImageRequest.format:type_name -> k3sm.runtime.v1.LoadImageFormat
+	35, // 38: k3sm.runtime.v1.SaveImageResponse.error:type_name -> google.rpc.Status
+	39, // 39: k3sm.runtime.v1.PullArtifactRequest.pull_policy:type_name -> k3sm.runtime.v1.ImagePullPolicy
+	3,  // 40: k3sm.runtime.v1.PullArtifactRequest.artifact_policy:type_name -> k3sm.runtime.v1.ArtifactPolicy
+	40, // 41: k3sm.runtime.v1.PullArtifactRequest.image_pull_secrets:type_name -> k3sm.runtime.v1.LocalObjectReference
+	35, // 42: k3sm.runtime.v1.PullArtifactResponse.error:type_name -> google.rpc.Status
+	4,  // 43: k3sm.runtime.v1.Images.ListImages:input_type -> k3sm.runtime.v1.ListImagesRequest
+	7,  // 44: k3sm.runtime.v1.Images.ImageFsInfo:input_type -> k3sm.runtime.v1.ImageFsInfoRequest
+	10, // 45: k3sm.runtime.v1.Images.RemoveImage:input_type -> k3sm.runtime.v1.RemoveImageRequest
+	12, // 46: k3sm.runtime.v1.Images.PruneImages:input_type -> k3sm.runtime.v1.PruneImagesRequest
+	15, // 47: k3sm.runtime.v1.Images.EvictImage:input_type -> k3sm.runtime.v1.EvictImageRequest
+	18, // 48: k3sm.runtime.v1.Images.LoadImage:input_type -> k3sm.runtime.v1.LoadImageRequest
+	20, // 49: k3sm.runtime.v1.Images.PullImage:input_type -> k3sm.runtime.v1.PullImageRequest
+	22, // 50: k3sm.runtime.v1.Images.TagImage:input_type -> k3sm.runtime.v1.TagImageRequest
+	24, // 51: k3sm.runtime.v1.Images.UntagImage:input_type -> k3sm.runtime.v1.UntagImageRequest
+	26, // 52: k3sm.runtime.v1.Images.InspectImage:input_type -> k3sm.runtime.v1.InspectImageRequest
+	29, // 53: k3sm.runtime.v1.Images.SaveImage:input_type -> k3sm.runtime.v1.SaveImageRequest
+	31, // 54: k3sm.runtime.v1.Images.PullArtifact:input_type -> k3sm.runtime.v1.PullArtifactRequest
+	5,  // 55: k3sm.runtime.v1.Images.ListImages:output_type -> k3sm.runtime.v1.ListImagesResponse
+	8,  // 56: k3sm.runtime.v1.Images.ImageFsInfo:output_type -> k3sm.runtime.v1.ImageFsInfoResponse
+	11, // 57: k3sm.runtime.v1.Images.RemoveImage:output_type -> k3sm.runtime.v1.RemoveImageResponse
+	13, // 58: k3sm.runtime.v1.Images.PruneImages:output_type -> k3sm.runtime.v1.PruneImagesResponse
+	16, // 59: k3sm.runtime.v1.Images.EvictImage:output_type -> k3sm.runtime.v1.EvictImageResponse
+	19, // 60: k3sm.runtime.v1.Images.LoadImage:output_type -> k3sm.runtime.v1.LoadImageResponse
+	21, // 61: k3sm.runtime.v1.Images.PullImage:output_type -> k3sm.runtime.v1.PullImageResponse
+	23, // 62: k3sm.runtime.v1.Images.TagImage:output_type -> k3sm.runtime.v1.TagImageResponse
+	25, // 63: k3sm.runtime.v1.Images.UntagImage:output_type -> k3sm.runtime.v1.UntagImageResponse
+	27, // 64: k3sm.runtime.v1.Images.InspectImage:output_type -> k3sm.runtime.v1.InspectImageResponse
+	30, // 65: k3sm.runtime.v1.Images.SaveImage:output_type -> k3sm.runtime.v1.SaveImageResponse
+	32, // 66: k3sm.runtime.v1.Images.PullArtifact:output_type -> k3sm.runtime.v1.PullArtifactResponse
+	55, // [55:67] is the sub-list for method output_type
+	43, // [43:55] is the sub-list for method input_type
+	43, // [43:43] is the sub-list for extension type_name
+	43, // [43:43] is the sub-list for extension extendee
+	0,  // [0:43] is the sub-list for field type_name
 }
 
 func init() { file_runtime_v1_images_proto_init() }
@@ -2395,8 +2716,8 @@ func file_runtime_v1_images_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_runtime_v1_images_proto_rawDesc), len(file_runtime_v1_images_proto_rawDesc)),
-			NumEnums:      3,
-			NumMessages:   27,
+			NumEnums:      4,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

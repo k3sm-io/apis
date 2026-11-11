@@ -40,8 +40,8 @@ import (
 //
 // The gate pins five structural facts and one textual one:
 //
-//   - the service exists at k3sm.runtime.v1.Images with EXACTLY eleven methods —
-//     the five store verbs it opened with, the five image primitives
+//   - the service exists at k3sm.runtime.v1.Images with EXACTLY twelve methods —
+//     the five store verbs it opened with, the one-manifest eviction, the five image primitives
 //     (pull / tag / untag / inspect / save), and the artifact pull — each bound to its OWN request and
 //     response type, so a later carve cannot quietly re-home a verb onto a
 //     sibling's message;
@@ -69,7 +69,7 @@ import (
 func TestImagesServiceSurface(t *testing.T) {
 	fd := File_runtime_v1_images_proto
 
-	t.Run("the service lives in the runtime package with exactly eleven methods", func(t *testing.T) {
+	t.Run("the service lives in the runtime package with exactly twelve methods", func(t *testing.T) {
 		// Same package as runtime.proto: the CRI split is service-level, never a
 		// second proto package or import path.
 		siblingPkg := (&Descriptor{}).ProtoReflect().Descriptor().ParentFile().Package()
@@ -87,7 +87,7 @@ func TestImagesServiceSurface(t *testing.T) {
 
 		want := map[string]bool{
 			"ListImages": false, "ImageFsInfo": false, "RemoveImage": false,
-			"PruneImages": false, "LoadImage": false,
+			"PruneImages": false, "EvictImage": false, "LoadImage": false,
 			"PullImage": false, "TagImage": false, "UntagImage": false,
 			"InspectImage": false, "SaveImage": false,
 			"PullArtifact": false,
@@ -100,7 +100,7 @@ func TestImagesServiceSurface(t *testing.T) {
 			name := string(ms.Get(i).Name())
 			seen, known := want[name]
 			if !known {
-				t.Errorf("unexpected method %s on Images (the surface is exactly eleven verbs)", name)
+				t.Errorf("unexpected method %s on Images (the surface is exactly twelve verbs)", name)
 				continue
 			}
 			if seen {
@@ -128,6 +128,7 @@ func TestImagesServiceSurface(t *testing.T) {
 			{"ImageFsInfo", false, false},
 			{"RemoveImage", false, false},
 			{"PruneImages", false, false},
+			{"EvictImage", false, false},
 			{"PullImage", false, false},
 			{"TagImage", false, false},
 			{"UntagImage", false, false},
@@ -157,13 +158,13 @@ func TestImagesServiceSurface(t *testing.T) {
 		}
 
 		// The generated grpc.ServiceDesc is what a daemon actually registers, so
-		// pin it too: nine unary handlers plus the two streams, one in each
+		// pin it too: ten unary handlers plus the two streams, one in each
 		// direction.
 		if got, want := Images_ServiceDesc.ServiceName, "k3sm.runtime.v1.Images"; got != want {
 			t.Errorf("Images_ServiceDesc.ServiceName = %q, want %q", got, want)
 		}
-		if got := len(Images_ServiceDesc.Methods); got != 9 {
-			t.Errorf("Images_ServiceDesc has %d unary methods, want 9", got)
+		if got := len(Images_ServiceDesc.Methods); got != 10 {
+			t.Errorf("Images_ServiceDesc has %d unary methods, want 10", got)
 		}
 		if got := len(Images_ServiceDesc.Streams); got != 2 {
 			t.Fatalf("Images_ServiceDesc has %d streams, want 2 (LoadImage, SaveImage)", got)
@@ -200,6 +201,7 @@ func TestImagesServiceSurface(t *testing.T) {
 			{"ImageFsInfo", "ImageFsInfoRequest", "ImageFsInfoResponse"},
 			{"RemoveImage", "RemoveImageRequest", "RemoveImageResponse"},
 			{"PruneImages", "PruneImagesRequest", "PruneImagesResponse"},
+			{"EvictImage", "EvictImageRequest", "EvictImageResponse"},
 			{"LoadImage", "LoadImageRequest", "LoadImageResponse"},
 			{"PullImage", "PullImageRequest", "PullImageResponse"},
 			{"TagImage", "TagImageRequest", "TagImageResponse"},
@@ -514,6 +516,7 @@ func newMessages() []proto.Message {
 		&ImageFsInfoRequest{}, &ImageFsInfoResponse{}, &FilesystemUsage{},
 		&RemoveImageRequest{}, &RemoveImageResponse{},
 		&PruneImagesRequest{}, &PruneImagesResponse{}, &SkippedBlob{},
+		&EvictImageRequest{}, &EvictImageResponse{}, &EvictKeptBlob{},
 		&LoadImageRequest{}, &LoadImageResponse{},
 		&PullImageRequest{}, &PullImageResponse{},
 		&TagImageRequest{}, &TagImageResponse{},
@@ -568,6 +571,15 @@ func populatedMessages() []proto.Message {
 			ReclaimedBytes: 9,
 		},
 		&SkippedBlob{Digest: "sha256:cccc", Reason: PruneSkipReason_PRUNE_SKIP_REASON_LEASED},
+		&EvictImageRequest{Reference: "example.com/img:tag", Platform: &Platform{Os: "darwin", Architecture: "arm64"}, Force: true},
+		&EvictImageRequest{Digest: "sha256:aaaa"},
+		&EvictImageResponse{
+			ManifestDigest: "sha256:aaaa",
+			RemovedDigests: []string{"sha256:dddd"},
+			Kept:           []*EvictKeptBlob{{Digest: "sha256:cccc", Reason: EvictSkipReason_EVICT_SKIP_REASON_SHARED}},
+			ReclaimedBytes: 9,
+		},
+		&EvictKeptBlob{Digest: "sha256:cccc", Reason: EvictSkipReason_EVICT_SKIP_REASON_YOUNG},
 		&LoadImageRequest{
 			Reference: "example.com/img:tag",
 			Format:    LoadImageFormat_LOAD_IMAGE_FORMAT_OCI_LAYOUT,

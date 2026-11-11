@@ -81,8 +81,9 @@ service Images {
   //
   // RemoveImage removes an image ROOT from the local index (an untag). Root
   // removal is authorized and local — an explicit operator/lifecycle action,
-  // never a side effect of fetched content. It unlinks no blobs: blob deletion
-  // happens only in PruneImages, which re-derives reachability first.
+  // never a side effect of fetched content. It unlinks no blobs: blobs are
+  // deleted by PruneImages (the whole cache) or EvictImage (one manifest), and
+  // both re-derive reachability first.
   // Idempotent — removing an absent image succeeds.
   rpc RemoveImage(RemoveImageRequest) returns (RemoveImageResponse) {
     option deprecated = true;
@@ -98,6 +99,37 @@ service Images {
   // dry-run or audit caller can see why a blob survived without the daemon
   // exporting its policy.
   rpc PruneImages(PruneImagesRequest) returns (PruneImagesResponse);
+
+  // EvictImage evicts the cache blobs of one image or artifact manifest that
+  // the node's prune rule already allows deleting and that no other cached
+  // manifest names. It removes no root, no index entry and no artifact record,
+  // so ListImages may still list the target. An unset force deletes nothing:
+  // the daemon plans and reports, in the same response shape, what a forced
+  // call would unlink. Failures travel only as gRPC status; the response has
+  // no error field. A target this node has never recorded is NOT_FOUND; a
+  // recorded target whose blobs are already gone is OK with nothing removed.
+  //
+  // Status codes and retryability:
+  //   - INVALID_ARGUMENT: both or neither of reference and digest, a malformed
+  //     digest, or a platform set alongside a digest: a platform with a digest
+  //     is INVALID_ARGUMENT, unlike InspectImage, where it is ignored. Not
+  //     retryable.
+  //   - NOT_FOUND: no index entry, artifact record or released copy names the
+  //     target. Not retryable.
+  //   - FAILED_PRECONDITION, nothing unlinked, in three cases: (a) the target
+  //     is in use by a pod, retryable once the pod is gone; (b) the reference
+  //     is ambiguous across several platform entries, retryable with a
+  //     platform; (c) the root set could not be read completely, retryable
+  //     after the operator repairs what the message names. Each case carries a
+  //     google.rpc.ErrorInfo status detail naming the case, so no caller
+  //     matches on message text.
+  //   - UNAVAILABLE: free space cannot be sampled. Retryable.
+  //   - INTERNAL: an unlink failed or its re-verification refused it. That is
+  //     a failure, not a partial success: a call in which any blob would be
+  //     kept EVICT_SKIP_REASON_UNLINK_FAILED is INTERNAL.
+  //   - OK with nothing removed and every blob kept EVICT_SKIP_REASON_YOUNG: a
+  //     just-pulled image inside the grace window; retry after it.
+  rpc EvictImage(EvictImageRequest) returns (EvictImageResponse);
 
   // DEPRECATED: the node's image store is becoming an internal pull cache, and
   // user images live in the cluster registry. Retained on the wire for skew.
@@ -490,6 +522,92 @@ enum PruneSkipReason {
   // UNLINK_FAILED: the blob was planned for deletion but the unlink's
   // re-verification refused it, or the unlink itself failed.
   PRUNE_SKIP_REASON_UNLINK_FAILED = 4;
+}
+
+// ---------------------------------------------------------------------------
+// EvictImage
+// ---------------------------------------------------------------------------
+
+// EvictImageRequest names the one manifest to evict, by reference or by
+// digest. Field numbers match InspectImageRequest's.
+message EvictImageRequest {
+  // reference is the pull reference of an image index entry or an artifact
+  // record. Exactly one of reference or digest identifies the target; setting
+  // both, or neither, is INVALID_ARGUMENT.
+  string reference = 1;
+
+  // platform narrows a reference with several platform entries. Unset selects
+  // the reference's single entry and is FAILED_PRECONDITION when several
+  // exist. Set together with digest it is INVALID_ARGUMENT — unlike
+  // InspectImage, which ignores it there.
+  Platform platform = 2;
+
+  // digest names the manifest directly, "<algo>:<hex>". The server validates
+  // the grammar; a malformed digest is INVALID_ARGUMENT.
+  string digest = 3;
+
+  // force, when set, unlinks. Unset, the daemon plans and unlinks nothing; the
+  // response has the same shape either way.
+  bool force = 4;
+
+  reserved 100 to 149;
+}
+
+// EvictImageResponse reports the typed outcome of one eviction. removed_digests
+// and kept together are always the target's whole blob set, so a partial
+// eviction is never silent.
+message EvictImageResponse {
+  // manifest_digest is the manifest the target resolved to. Always set on OK.
+  string manifest_digest = 1;
+
+  // removed_digests are the blob digests unlinked (or, without force, the ones
+  // that would be).
+  repeated string removed_digests = 2;
+
+  // kept is every target blob not removed, each with its typed reason.
+  repeated EvictKeptBlob kept = 3;
+
+  // reclaimed_bytes is the summed size of the removed files. It over-estimates
+  // the space returned when extents are shared (APFS clonefile), as
+  // PruneImagesResponse.reclaimed_bytes does.
+  uint64 reclaimed_bytes = 4;
+
+  reserved 100 to 149;
+}
+
+// EvictKeptBlob is one target blob the eviction kept, with the typed reason.
+message EvictKeptBlob {
+  // digest is the blob's content digest, "<algo>:<hex>".
+  string digest = 1;
+
+  // reason is the typed cause the daemon reached.
+  EvictSkipReason reason = 2;
+
+  reserved 100 to 149;
+}
+
+// EvictSkipReason is why an eviction kept a blob of its target. Dedicated
+// rather than PruneSkipReason: eviction distinguishes causes a whole-cache
+// prune does not (SHARED with another manifest, YOUNG inside the grace
+// window), and PruneSkipReason stays exactly as released.
+// UNSPECIFIED means the daemon reported no typed reason; a client prints an
+// unknown value by number.
+enum EvictSkipReason {
+  EVICT_SKIP_REASON_UNSPECIFIED = 0;
+  // ROOTED: an artifact record or operator root names the blob.
+  EVICT_SKIP_REASON_ROOTED = 1;
+  // IN_USE: a per-pod record or a pod hold names the blob.
+  EVICT_SKIP_REASON_IN_USE = 2;
+  // LEASED: an in-flight ingest holds a lease covering the blob.
+  EVICT_SKIP_REASON_LEASED = 3;
+  // SHARED: another cached index entry, artifact record or released copy
+  // names the blob.
+  EVICT_SKIP_REASON_SHARED = 4;
+  // YOUNG: the blob is younger than the grace window.
+  EVICT_SKIP_REASON_YOUNG = 5;
+  // UNLINK_FAILED: the unlink's re-verification refused the blob, or the
+  // unlink itself failed. Its presence makes the call INTERNAL.
+  EVICT_SKIP_REASON_UNLINK_FAILED = 6;
 }
 
 // ---------------------------------------------------------------------------
