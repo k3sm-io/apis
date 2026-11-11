@@ -115,8 +115,9 @@ service Images {
   //     digest, a platform set alongside a digest (a platform with a digest
   //     is INVALID_ARGUMENT, unlike InspectImage, where it is ignored), or a
   //     target that names more than 4097 blobs. Not retryable.
-  //   - NOT_FOUND: no index entry, artifact record or released copy names the
-  //     target. Not retryable.
+  //   - NOT_FOUND: by digest, no index entry, artifact record or released copy
+  //     names the target; by reference, no index entry or artifact record names
+  //     it (a released copy is found by digest only). Not retryable.
   //   - FAILED_PRECONDITION, in these cases: (a) the target is in use by a
   //     pod, retryable once the pod is gone; (b) the reference is ambiguous,
   //     either across several platform entries, or because an index entry and
@@ -124,11 +125,13 @@ service Images {
   //     manifests under one reference; retryable with a platform only when the
   //     ambiguity is across platform entries, otherwise by digest; (c) the
   //     root set could not be read completely, retryable after the root set
-  //     is repaired; (d) the index entry predates manifest retention and names
+  //     is repaired; an artifact record that cannot be decoded also makes the
+  //     root set incomplete, so a target the index resolves can still be
+  //     refused this way until the record is repaired; (d) the index entry predates manifest retention and names
   //     no manifest digest, so it cannot be evicted until the image is pulled
-  //     again; (e) the recorded entry or artifact record that would name the
-  //     target cannot be decoded, does not match its digest, or is not owned
-  //     by this node. Cases (a) and (b) are decided before any unlink, so
+  //     again; (e) when the index names no entry for the target and a recorded
+  //     artifact entry cannot be decoded, does not match its digest, or is not
+  //     owned by this node. Cases (a) and (b) are decided before any unlink, so
   //     nothing is unlinked. Case (c) is checked again before each removal
   //     stage: detected before the first stage, nothing is unlinked; detected
   //     later, it may follow removals already made, and a re-run converges.
@@ -137,7 +140,8 @@ service Images {
   //     reason IMAGE_IN_USE for (a), reason REFERENCE_AMBIGUOUS for (b) and
   //     reason ROOTS_INCOMPLETE for (c), so no caller matches on message text.
   //     Only cases (a), (b) and (c) carry the detail; no other status of this
-  //     call has one. Cases (d) and (e) carry no status detail and are not
+  //     call has one. When more than one of them applies, the detail names the
+  //     first of in use, ambiguous, roots incomplete. Cases (d) and (e) carry no status detail and are not
   //     retryable as is: pull the image again, or repair the named entry.
   //   - UNAVAILABLE: free space cannot be sampled. Retryable.
   //   - INTERNAL: an unlink failed or its re-verification refused it. That is
