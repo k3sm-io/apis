@@ -231,15 +231,21 @@ func TestImagesEvictImageSurface(t *testing.T) {
 			"An unset force deletes nothing",
 			"a platform with a digest is INVALID_ARGUMENT, unlike InspectImage, where it is ignored",
 			"NOT_FOUND: no index entry, artifact record or released copy names the target",
-			"FAILED_PRECONDITION, in three cases",
+			"FAILED_PRECONDITION, in these cases",
 			"Cases (a) and (b) are decided before any unlink, so nothing is unlinked",
 			"detected before the first stage, nothing is unlinked",
 			"detected later, it may follow removals already made, and a re-run converges",
 			"(a) the target is in use by a pod",
-			"(b) the reference is ambiguous across several platform entries",
+			"(b) the reference is ambiguous, either across several platform entries",
+			"retryable with a platform only when the ambiguity is across platform entries, otherwise by digest",
 			"(c) the root set could not be read completely",
 			"google.rpc.ErrorInfo status detail",
-			"Only these three cases carry the detail",
+			"Only cases (a), (b) and (c) carry the detail",
+			"(d) the index entry predates manifest retention and names no manifest digest, so it cannot be evicted until the image is pulled again",
+			"(e) the recorded entry or artifact record that would name the target cannot be decoded, does not match its digest, or is not owned by this node",
+			"Cases (d) and (e) carry no status detail and are not retryable as is: pull the image again, or repair the named entry",
+			"or a target that names more than 4097 blobs. Not retryable",
+			"A recorded target that names no blobs is OK in the same way",
 			"UNAVAILABLE:",
 			"INTERNAL:",
 			"a re-run converges",
@@ -255,6 +261,18 @@ func TestImagesEvictImageSurface(t *testing.T) {
 		}
 		if strings.Contains(method, "UNLINK_FAILED") {
 			t.Error("the EvictImage method comment still names the removed UNLINK_FAILED reason")
+		}
+
+		reqSrc := string(raw)
+		if i := strings.Index(reqSrc, "message EvictImageRequest {"); i >= 0 {
+			reqSrc = reqSrc[i:]
+		}
+		plat, ok := commentBlockAbove(reqSrc, "Platform platform = 2;")
+		if !ok {
+			t.Fatal("images.proto has no comment block above the EvictImageRequest platform field")
+		}
+		if want := "Ignored when the reference matches an artifact record, which has no platform."; !strings.Contains(flattenComments(plat), want) {
+			t.Errorf("the EvictImageRequest platform comment lost the contract text %q", want)
 		}
 
 		resp, ok := commentBlockAbove(string(raw), "message EvictImageResponse {")

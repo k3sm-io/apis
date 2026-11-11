@@ -128,29 +128,38 @@ type ImagesClient interface {
 	// the daemon plans and reports, in the same response shape, what a forced
 	// call would unlink. Failures travel only as gRPC status; the response has
 	// no error field. A target this node has never recorded is NOT_FOUND; a
-	// recorded target whose blobs are already gone is OK with nothing removed.
+	// recorded target whose blobs are already gone is OK with nothing removed. A
+	// recorded target that names no blobs is OK in the same way.
 	//
 	// Status codes and retryability:
 	//   - INVALID_ARGUMENT: both or neither of reference and digest, a malformed
-	//     digest, or a platform set alongside a digest: a platform with a digest
-	//     is INVALID_ARGUMENT, unlike InspectImage, where it is ignored. Not
-	//     retryable.
+	//     digest, a platform set alongside a digest (a platform with a digest
+	//     is INVALID_ARGUMENT, unlike InspectImage, where it is ignored), or a
+	//     target that names more than 4097 blobs. Not retryable.
 	//   - NOT_FOUND: no index entry, artifact record or released copy names the
 	//     target. Not retryable.
-	//   - FAILED_PRECONDITION, in three cases: (a) the target is in use by a
-	//     pod, retryable once the pod is gone; (b) the reference is ambiguous
-	//     across several platform entries, retryable with a platform; (c) the
+	//   - FAILED_PRECONDITION, in these cases: (a) the target is in use by a
+	//     pod, retryable once the pod is gone; (b) the reference is ambiguous,
+	//     either across several platform entries, or because an index entry and
+	//     an artifact record, or several artifact records, name different
+	//     manifests under one reference; retryable with a platform only when the
+	//     ambiguity is across platform entries, otherwise by digest; (c) the
 	//     root set could not be read completely, retryable after the root set
-	//     is repaired. Cases (a) and (b) are decided before any unlink, so
+	//     is repaired; (d) the index entry predates manifest retention and names
+	//     no manifest digest, so it cannot be evicted until the image is pulled
+	//     again; (e) the recorded entry or artifact record that would name the
+	//     target cannot be decoded, does not match its digest, or is not owned
+	//     by this node. Cases (a) and (b) are decided before any unlink, so
 	//     nothing is unlinked. Case (c) is checked again before each removal
 	//     stage: detected before the first stage, nothing is unlinked; detected
 	//     later, it may follow removals already made, and a re-run converges.
-	//     Each case carries a
+	//     Cases (a), (b) and (c) each carry a
 	//     google.rpc.ErrorInfo status detail with domain runtime.k3sm.io and
 	//     reason IMAGE_IN_USE for (a), reason REFERENCE_AMBIGUOUS for (b) and
 	//     reason ROOTS_INCOMPLETE for (c), so no caller matches on message text.
-	//     Only these three cases carry the detail; no other status of this call
-	//     has one.
+	//     Only cases (a), (b) and (c) carry the detail; no other status of this
+	//     call has one. Cases (d) and (e) carry no status detail and are not
+	//     retryable as is: pull the image again, or repair the named entry.
 	//   - UNAVAILABLE: free space cannot be sampled. Retryable.
 	//   - INTERNAL: an unlink failed or its re-verification refused it. That is
 	//     a failure, not a partial success, and it has no kept reason of its
@@ -557,29 +566,38 @@ type ImagesServer interface {
 	// the daemon plans and reports, in the same response shape, what a forced
 	// call would unlink. Failures travel only as gRPC status; the response has
 	// no error field. A target this node has never recorded is NOT_FOUND; a
-	// recorded target whose blobs are already gone is OK with nothing removed.
+	// recorded target whose blobs are already gone is OK with nothing removed. A
+	// recorded target that names no blobs is OK in the same way.
 	//
 	// Status codes and retryability:
 	//   - INVALID_ARGUMENT: both or neither of reference and digest, a malformed
-	//     digest, or a platform set alongside a digest: a platform with a digest
-	//     is INVALID_ARGUMENT, unlike InspectImage, where it is ignored. Not
-	//     retryable.
+	//     digest, a platform set alongside a digest (a platform with a digest
+	//     is INVALID_ARGUMENT, unlike InspectImage, where it is ignored), or a
+	//     target that names more than 4097 blobs. Not retryable.
 	//   - NOT_FOUND: no index entry, artifact record or released copy names the
 	//     target. Not retryable.
-	//   - FAILED_PRECONDITION, in three cases: (a) the target is in use by a
-	//     pod, retryable once the pod is gone; (b) the reference is ambiguous
-	//     across several platform entries, retryable with a platform; (c) the
+	//   - FAILED_PRECONDITION, in these cases: (a) the target is in use by a
+	//     pod, retryable once the pod is gone; (b) the reference is ambiguous,
+	//     either across several platform entries, or because an index entry and
+	//     an artifact record, or several artifact records, name different
+	//     manifests under one reference; retryable with a platform only when the
+	//     ambiguity is across platform entries, otherwise by digest; (c) the
 	//     root set could not be read completely, retryable after the root set
-	//     is repaired. Cases (a) and (b) are decided before any unlink, so
+	//     is repaired; (d) the index entry predates manifest retention and names
+	//     no manifest digest, so it cannot be evicted until the image is pulled
+	//     again; (e) the recorded entry or artifact record that would name the
+	//     target cannot be decoded, does not match its digest, or is not owned
+	//     by this node. Cases (a) and (b) are decided before any unlink, so
 	//     nothing is unlinked. Case (c) is checked again before each removal
 	//     stage: detected before the first stage, nothing is unlinked; detected
 	//     later, it may follow removals already made, and a re-run converges.
-	//     Each case carries a
+	//     Cases (a), (b) and (c) each carry a
 	//     google.rpc.ErrorInfo status detail with domain runtime.k3sm.io and
 	//     reason IMAGE_IN_USE for (a), reason REFERENCE_AMBIGUOUS for (b) and
 	//     reason ROOTS_INCOMPLETE for (c), so no caller matches on message text.
-	//     Only these three cases carry the detail; no other status of this call
-	//     has one.
+	//     Only cases (a), (b) and (c) carry the detail; no other status of this
+	//     call has one. Cases (d) and (e) carry no status detail and are not
+	//     retryable as is: pull the image again, or repair the named entry.
 	//   - UNAVAILABLE: free space cannot be sampled. Retryable.
 	//   - INTERNAL: an unlink failed or its re-verification refused it. That is
 	//     a failure, not a partial success, and it has no kept reason of its

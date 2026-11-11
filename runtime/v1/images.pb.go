@@ -982,7 +982,8 @@ type EvictImageRequest struct {
 	// platform narrows a reference with several platform entries. Unset selects
 	// the reference's single entry and is FAILED_PRECONDITION when several
 	// exist. Set together with digest it is INVALID_ARGUMENT — unlike
-	// InspectImage, which ignores it there.
+	// InspectImage, which ignores it there. Ignored when the reference matches
+	// an artifact record, which has no platform.
 	Platform *Platform `protobuf:"bytes,2,opt,name=platform,proto3" json:"platform,omitempty"`
 	// digest names the manifest directly, "<algo>:<hex>". The server validates
 	// the grammar; a malformed digest is INVALID_ARGUMENT.
