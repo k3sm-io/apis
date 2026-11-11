@@ -153,7 +153,6 @@ func TestImagesEvictImageSurface(t *testing.T) {
 			{"EVICT_SKIP_REASON_LEASED", 3},
 			{"EVICT_SKIP_REASON_SHARED", 4},
 			{"EVICT_SKIP_REASON_YOUNG", 5},
-			{"EVICT_SKIP_REASON_UNLINK_FAILED", 6},
 		}
 		vs := ed.Values()
 		if vs.Len() != len(want) {
@@ -204,25 +203,66 @@ func TestImagesEvictImageSurface(t *testing.T) {
 		}
 	})
 
+	t.Run("the ErrorInfo domain and reason constants are exact", func(t *testing.T) {
+		for _, c := range []struct{ name, got, want string }{
+			{"EvictErrorInfoDomain", EvictErrorInfoDomain, "runtime.k3sm.io"},
+			{"EvictReasonImageInUse", EvictReasonImageInUse, "IMAGE_IN_USE"},
+			{"EvictReasonReferenceAmbiguous", EvictReasonReferenceAmbiguous, "REFERENCE_AMBIGUOUS"},
+			{"EvictReasonRootsIncomplete", EvictReasonRootsIncomplete, "ROOTS_INCOMPLETE"},
+		} {
+			if c.got != c.want {
+				t.Errorf("%s = %q, want %q", c.name, c.got, c.want)
+			}
+		}
+	})
+
 	t.Run("the EvictImage contract comment is present in the proto", func(t *testing.T) {
 		raw, err := os.ReadFile("images.proto")
 		if err != nil {
 			t.Fatalf("read images.proto: %v", err)
 		}
-		text := strings.Join(strings.Fields(strings.ReplaceAll(string(raw), "//", " ")), " ")
+		block, ok := commentBlockAbove(string(raw), "rpc EvictImage(")
+		if !ok || block == "" {
+			t.Fatal("images.proto has no comment block above rpc EvictImage")
+		}
+		method := flattenComments(block)
 		for _, want := range []string{
 			"It removes no root, no index entry and no artifact record",
 			"An unset force deletes nothing",
 			"a platform with a digest is INVALID_ARGUMENT, unlike InspectImage, where it is ignored",
 			"NOT_FOUND: no index entry, artifact record or released copy names the target",
-			"is INTERNAL",
-			"carries a google.rpc.ErrorInfo status detail",
+			"FAILED_PRECONDITION, nothing unlinked, in three cases",
+			"(a) the target is in use by a pod",
+			"(b) the reference is ambiguous across several platform entries",
+			"(c) the root set could not be read completely",
+			"google.rpc.ErrorInfo status detail",
+			"Only these three cases carry the detail",
+			"UNAVAILABLE:",
+			"INTERNAL:",
+			"a re-run converges",
+			// The ErrorInfo strings a caller matches on, from the Go constants.
+			"domain " + EvictErrorInfoDomain,
+			"reason " + EvictReasonImageInUse,
+			"reason " + EvictReasonReferenceAmbiguous,
+			"reason " + EvictReasonRootsIncomplete,
 		} {
-			if !strings.Contains(text, want) {
-				t.Errorf("images.proto lost the EvictImage contract text %q", want)
+			if !strings.Contains(method, want) {
+				t.Errorf("the EvictImage method comment lost the contract text %q", want)
 			}
 		}
-		if strings.Contains(text, "blob deletion happens only in PruneImages") {
+		if strings.Contains(method, "UNLINK_FAILED") {
+			t.Error("the EvictImage method comment still names the removed UNLINK_FAILED reason")
+		}
+
+		resp, ok := commentBlockAbove(string(raw), "message EvictImageResponse {")
+		if !ok {
+			t.Fatal("images.proto has no comment block above message EvictImageResponse")
+		}
+		if want := "does not say whether anything was unlinked"; !strings.Contains(flattenComments(resp), want) {
+			t.Errorf("the EvictImageResponse comment lost the contract text %q", want)
+		}
+
+		if strings.Contains(flattenComments(string(raw)), "blob deletion happens only in PruneImages") {
 			t.Error("the RemoveImage comment still says PruneImages is the only blob deletion")
 		}
 	})

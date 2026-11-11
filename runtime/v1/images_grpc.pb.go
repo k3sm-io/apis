@@ -141,13 +141,17 @@ type ImagesClient interface {
 	//     is in use by a pod, retryable once the pod is gone; (b) the reference
 	//     is ambiguous across several platform entries, retryable with a
 	//     platform; (c) the root set could not be read completely, retryable
-	//     after the operator repairs what the message names. Each case carries a
-	//     google.rpc.ErrorInfo status detail naming the case, so no caller
-	//     matches on message text.
+	//     after the root set is repaired. Each case carries a
+	//     google.rpc.ErrorInfo status detail with domain runtime.k3sm.io and
+	//     reason IMAGE_IN_USE for (a), reason REFERENCE_AMBIGUOUS for (b) and
+	//     reason ROOTS_INCOMPLETE for (c), so no caller matches on message text.
+	//     Only these three cases carry the detail; no other status of this call
+	//     has one.
 	//   - UNAVAILABLE: free space cannot be sampled. Retryable.
 	//   - INTERNAL: an unlink failed or its re-verification refused it. That is
-	//     a failure, not a partial success: a call in which any blob would be
-	//     kept EVICT_SKIP_REASON_UNLINK_FAILED is INTERNAL.
+	//     a failure, not a partial success, and it has no kept reason of its
+	//     own. Some blobs may already be unlinked; the kept list is in the
+	//     daemon's log. Retryable: a re-run converges.
 	//   - OK with nothing removed and every blob kept EVICT_SKIP_REASON_YOUNG: a
 	//     just-pulled image inside the grace window; retry after it.
 	EvictImage(ctx context.Context, in *EvictImageRequest, opts ...grpc.CallOption) (*EvictImageResponse, error)
@@ -562,13 +566,17 @@ type ImagesServer interface {
 	//     is in use by a pod, retryable once the pod is gone; (b) the reference
 	//     is ambiguous across several platform entries, retryable with a
 	//     platform; (c) the root set could not be read completely, retryable
-	//     after the operator repairs what the message names. Each case carries a
-	//     google.rpc.ErrorInfo status detail naming the case, so no caller
-	//     matches on message text.
+	//     after the root set is repaired. Each case carries a
+	//     google.rpc.ErrorInfo status detail with domain runtime.k3sm.io and
+	//     reason IMAGE_IN_USE for (a), reason REFERENCE_AMBIGUOUS for (b) and
+	//     reason ROOTS_INCOMPLETE for (c), so no caller matches on message text.
+	//     Only these three cases carry the detail; no other status of this call
+	//     has one.
 	//   - UNAVAILABLE: free space cannot be sampled. Retryable.
 	//   - INTERNAL: an unlink failed or its re-verification refused it. That is
-	//     a failure, not a partial success: a call in which any blob would be
-	//     kept EVICT_SKIP_REASON_UNLINK_FAILED is INTERNAL.
+	//     a failure, not a partial success, and it has no kept reason of its
+	//     own. Some blobs may already be unlinked; the kept list is in the
+	//     daemon's log. Retryable: a re-run converges.
 	//   - OK with nothing removed and every blob kept EVICT_SKIP_REASON_YOUNG: a
 	//     just-pulled image inside the grace window; retry after it.
 	EvictImage(context.Context, *EvictImageRequest) (*EvictImageResponse, error)

@@ -123,9 +123,6 @@ const (
 	EvictSkipReason_EVICT_SKIP_REASON_SHARED EvictSkipReason = 4
 	// YOUNG: the blob is younger than the grace window.
 	EvictSkipReason_EVICT_SKIP_REASON_YOUNG EvictSkipReason = 5
-	// UNLINK_FAILED: the unlink's re-verification refused the blob, or the
-	// unlink itself failed. Its presence makes the call INTERNAL.
-	EvictSkipReason_EVICT_SKIP_REASON_UNLINK_FAILED EvictSkipReason = 6
 )
 
 // Enum value maps for EvictSkipReason.
@@ -137,16 +134,14 @@ var (
 		3: "EVICT_SKIP_REASON_LEASED",
 		4: "EVICT_SKIP_REASON_SHARED",
 		5: "EVICT_SKIP_REASON_YOUNG",
-		6: "EVICT_SKIP_REASON_UNLINK_FAILED",
 	}
 	EvictSkipReason_value = map[string]int32{
-		"EVICT_SKIP_REASON_UNSPECIFIED":   0,
-		"EVICT_SKIP_REASON_ROOTED":        1,
-		"EVICT_SKIP_REASON_IN_USE":        2,
-		"EVICT_SKIP_REASON_LEASED":        3,
-		"EVICT_SKIP_REASON_SHARED":        4,
-		"EVICT_SKIP_REASON_YOUNG":         5,
-		"EVICT_SKIP_REASON_UNLINK_FAILED": 6,
+		"EVICT_SKIP_REASON_UNSPECIFIED": 0,
+		"EVICT_SKIP_REASON_ROOTED":      1,
+		"EVICT_SKIP_REASON_IN_USE":      2,
+		"EVICT_SKIP_REASON_LEASED":      3,
+		"EVICT_SKIP_REASON_SHARED":      4,
+		"EVICT_SKIP_REASON_YOUNG":       5,
 	}
 )
 
@@ -1059,7 +1054,9 @@ func (x *EvictImageRequest) GetForce() bool {
 
 // EvictImageResponse reports the typed outcome of one eviction. removed_digests
 // and kept together are always the target's whole blob set, so a partial
-// eviction is never silent.
+// eviction is never silent. The response does not say whether anything was
+// unlinked: a caller knows from the force it sent, and without force the lists
+// are a plan.
 type EvictImageResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// manifest_digest is the manifest the target resolved to. Always set on OK.
@@ -2539,15 +2536,14 @@ const file_runtime_v1_images_proto_rawDesc = "" +
 	"\x1bPRUNE_SKIP_REASON_REACHABLE\x10\x01\x12\x1c\n" +
 	"\x18PRUNE_SKIP_REASON_LEASED\x10\x02\x12\x1c\n" +
 	"\x18PRUNE_SKIP_REASON_IN_USE\x10\x03\x12#\n" +
-	"\x1fPRUNE_SKIP_REASON_UNLINK_FAILED\x10\x04*\xee\x01\n" +
+	"\x1fPRUNE_SKIP_REASON_UNLINK_FAILED\x10\x04*\xc9\x01\n" +
 	"\x0fEvictSkipReason\x12!\n" +
 	"\x1dEVICT_SKIP_REASON_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18EVICT_SKIP_REASON_ROOTED\x10\x01\x12\x1c\n" +
 	"\x18EVICT_SKIP_REASON_IN_USE\x10\x02\x12\x1c\n" +
 	"\x18EVICT_SKIP_REASON_LEASED\x10\x03\x12\x1c\n" +
 	"\x18EVICT_SKIP_REASON_SHARED\x10\x04\x12\x1b\n" +
-	"\x17EVICT_SKIP_REASON_YOUNG\x10\x05\x12#\n" +
-	"\x1fEVICT_SKIP_REASON_UNLINK_FAILED\x10\x06*y\n" +
+	"\x17EVICT_SKIP_REASON_YOUNG\x10\x05*y\n" +
 	"\x0fLoadImageFormat\x12!\n" +
 	"\x1dLOAD_IMAGE_FORMAT_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dLOAD_IMAGE_FORMAT_DOCKER_SAVE\x10\x01\x12 \n" +
