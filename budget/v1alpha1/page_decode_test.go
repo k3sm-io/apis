@@ -102,7 +102,15 @@ func decodePage(b []byte) (PageSnapshot, error) {
 	s.NodeName = string(b[off : off+int(n)])
 	s.Generation = i64("generation")
 	s.WriterPeriodSeconds = i64("writerPeriodSeconds")
+	if s.WriterPeriodSeconds < 1 {
+		return s, readErr(PageErrCorrupt, "writerPeriodSeconds %d below 1", s.WriterPeriodSeconds)
+	}
 	s.ObservedAt = unixTime(i64("observedAt"))
+	// Code 0 is the "unknown" value of every table; on platform, level and a
+	// used slot's unit it is not a value a writer can publish, so it is corrupt.
+	if word("platform") == 0 {
+		return s, readErr(PageErrCorrupt, "platform holds code 0")
+	}
 	s.Platform = Platform(code("platform", codes["platform"], ""))
 
 	s.Capacity = BudgetCapacity{
@@ -121,6 +129,9 @@ func decodePage(b []byte) (PageSnapshot, error) {
 		default:
 			return s, readErr(PageErrCorrupt, "capacity.gpuPresent holds %d, want 0 or 1", *v)
 		}
+	}
+	if word("level") == 0 {
+		return s, readErr(PageErrCorrupt, "level holds code 0")
 	}
 	s.Level = Level(code("level", codes["level"], ""))
 
@@ -177,6 +188,9 @@ func decodePage(b []byte) (PageSnapshot, error) {
 		p := "signals[" + strconv.Itoa(i) + "]."
 		if word(p+"id") == 0 {
 			continue
+		}
+		if word(p+"unit") == 0 {
+			return s, readErr(PageErrCorrupt, "%sunit holds code 0 in a used slot", p)
 		}
 		s.Signals = append(s.Signals, BudgetSignal{
 			ID:                   SignalID(code(p+"id", codes["signal"], "")),

@@ -152,6 +152,23 @@ func pageNegatives(t *testing.T) map[string][]byte {
 			copy(b[pageOffset("nodeName"):], strings.Repeat("a", MaxPageNodeNameBytes+1))
 			return b
 		}),
+		"zero-period": forge(func(b []byte) []byte {
+			le.PutUint64(b[pageOffset("writerPeriodSeconds"):], 0)
+			return b
+		}),
+		"platform-zero": forge(func(b []byte) []byte {
+			le.PutUint64(b[pageOffset("platform"):], 0)
+			return b
+		}),
+		"level-zero": forge(func(b []byte) []byte {
+			le.PutUint64(b[pageOffset("level"):], 0)
+			return b
+		}),
+		// The slot's id stays non-zero: a used slot without a unit.
+		"unit-zero": forge(func(b []byte) []byte {
+			le.PutUint64(b[pageOffset("signals[0].unit"):], 0)
+			return b
+		}),
 	}
 }
 

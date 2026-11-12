@@ -175,6 +175,10 @@ func NewPageManifest() PageManifest {
 				Name: "node-name-too-long", File: "negative/node-name-too-long.v1.page",
 				Error: PageErrCorrupt, EncoderError: PageEncoderErrNodeNameTooLong,
 			},
+			{Name: "zero-period", File: "negative/zero-period.v1.page", Error: PageErrCorrupt},
+			{Name: "platform-zero", File: "negative/platform-zero.v1.page", Error: PageErrCorrupt},
+			{Name: "level-zero", File: "negative/level-zero.v1.page", Error: PageErrCorrupt},
+			{Name: "unit-zero", File: "negative/unit-zero.v1.page", Error: PageErrCorrupt},
 		},
 	}
 }

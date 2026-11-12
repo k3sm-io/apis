@@ -23,15 +23,19 @@ const (
 	// PageErrNotFound: no page, or no access to it.
 	PageErrNotFound = "notFound"
 	// PageErrABIMismatch: bad magic, an unknown ABI major, a header size
-	// other than PageHeaderSize, or an unknown code in a structural table
-	// (signal, unit, level, band, platform, kill mode). An unknown code in a
-	// producer-vocabulary table reads as that type's "unknown" value instead.
+	// other than PageHeaderSize, or an unknown non-zero code in a structural
+	// table (signal, unit, level, band, platform, kill mode). Code 0 is never
+	// an ABI mismatch: where it is not legal it is PageErrCorrupt. An unknown
+	// code in a producer-vocabulary table reads as that type's "unknown"
+	// value instead.
 	PageErrABIMismatch = "abiMismatch"
 	// PageErrTruncated: a file shorter than headerSize + bodySize, or a
 	// bodySize below the size the reader's own minor knows.
 	PageErrTruncated = "truncated"
 	// PageErrCorrupt: a well-formed header, but a field outside its own
-	// domain (a nodeNameLen above MaxPageNodeNameBytes).
+	// domain: a nodeNameLen above MaxPageNodeNameBytes, a capacity.gpuPresent
+	// other than 0 or 1, a writerPeriodSeconds below 1, code 0 in platform or
+	// level, or code 0 in the unit of a used signal slot (a non-zero id).
 	PageErrCorrupt = "corrupt"
 	// PageErrTorn: no stable read (an even seq equal on both sides) after
 	// the reader's retries; the manifest's readerRetries is the bound.
