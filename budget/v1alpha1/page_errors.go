@@ -36,6 +36,15 @@ const (
 	// domain: a nodeNameLen above MaxPageNodeNameBytes, a capacity.gpuPresent
 	// other than 0 or 1, a writerPeriodSeconds below 1, code 0 in platform or
 	// level, or code 0 in the unit of a used signal slot (a non-zero id).
+	// Those are the only structural codes where 0 is illegal; every other
+	// structural code may legitimately be 0 (an unused slot, an unset
+	// reference).
+	//
+	// Precedence: a reader reports the first defect in field order
+	// (writerPeriodSeconds, platform, level, capacity.gpuPresent, then each
+	// signal slot's id, unit and sharedWith), so a page with both an unknown
+	// code and a corrupt field gets the error of whichever comes first; the
+	// manifest's mixed-defect cases pin this.
 	PageErrCorrupt = "corrupt"
 	// PageErrTorn: no stable read (an even seq equal on both sides) after
 	// the reader's retries; the manifest's readerRetries is the bound.

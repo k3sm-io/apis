@@ -169,6 +169,18 @@
       "file": "negative/unit-zero.v1.page",
       "sha256": "dbbcf331629df227dffc0cca4dd7f79dd0abd13e28de5ec59f97514ade9045e7",
       "error": "corrupt"
+    },
+    {
+      "name": "platform-zero-level-unknown",
+      "file": "negative/platform-zero-level-unknown.v1.page",
+      "sha256": "4ad2d48b1a11f06ec7d116cc864179c1662f3b94b1bffd23d7f505d408539dea",
+      "error": "corrupt"
+    },
+    {
+      "name": "slot-id-unknown-unit-zero",
+      "file": "negative/slot-id-unknown-unit-zero.v1.page",
+      "sha256": "bb8ff884071cbfbfa416f97da5ea9b282ee7b7412b762a15bedfece2c9168318",
+      "error": "abiMismatch"
     }
   ],
   "notifyVectors": [

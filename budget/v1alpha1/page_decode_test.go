@@ -91,6 +91,19 @@ func decodePage(b []byte) (PageSnapshot, error) {
 		}
 		return ""
 	}
+	// structural decodes a structural code the way every SDK reader does,
+	// stopping at the first defect: an unknown non-zero code is an ABI
+	// mismatch at once, and 0 reads as "" for the caller to judge.
+	structural := func(name string, table []string) (string, error) {
+		c := word(name)
+		if c > uint64(len(table)) {
+			return "", readErr(PageErrABIMismatch, "%s holds unknown code %d", name, c)
+		}
+		if c == 0 {
+			return "", nil
+		}
+		return table[c-1], nil
+	}
 	codes := PageCodeTables()
 	unixTime := func(v int64) metav1.Time { return metav1.NewTime(time.Unix(v, 0).UTC()) }
 
@@ -108,10 +121,26 @@ func decodePage(b []byte) (PageSnapshot, error) {
 	s.ObservedAt = unixTime(i64("observedAt"))
 	// Code 0 is the "unknown" value of every table; on platform, level and a
 	// used slot's unit it is not a value a writer can publish, so it is corrupt.
-	if word("platform") == 0 {
+	// The reader stops at the first defect in field order: platform is
+	// decoded (and judged) before level is read, so platform 0 is corrupt
+	// whatever level holds, and an unknown platform is an ABI mismatch
+	// whatever level holds.
+	platform, err := structural("platform", codes["platform"])
+	if err != nil {
+		return s, err
+	}
+	if platform == "" {
 		return s, readErr(PageErrCorrupt, "platform holds code 0")
 	}
-	s.Platform = Platform(code("platform", codes["platform"], ""))
+	s.Platform = Platform(platform)
+	level, err := structural("level", codes["level"])
+	if err != nil {
+		return s, err
+	}
+	if level == "" {
+		return s, readErr(PageErrCorrupt, "level holds code 0")
+	}
+	s.Level = Level(level)
 
 	s.Capacity = BudgetCapacity{
 		CPUCapacityMilli: opt("capacity.cpuCapacityMilli"), CPUSystemReserveMilli: opt("capacity.cpuSystemReserveMilli"),
@@ -130,10 +159,6 @@ func decodePage(b []byte) (PageSnapshot, error) {
 			return s, readErr(PageErrCorrupt, "capacity.gpuPresent holds %d, want 0 or 1", *v)
 		}
 	}
-	if word("level") == 0 {
-		return s, readErr(PageErrCorrupt, "level holds code 0")
-	}
-	s.Level = Level(code("level", codes["level"], ""))
 
 	if s.Platform == PlatformDarwin {
 		d := &DarwinSignals{
@@ -186,15 +211,29 @@ func decodePage(b []byte) (PageSnapshot, error) {
 
 	for i := range MaxPageSignals {
 		p := "signals[" + strconv.Itoa(i) + "]."
-		if word(p+"id") == 0 {
+		// The id code is decoded before the unit is judged: an unknown id
+		// is an ABI mismatch whatever the unit holds.
+		id, err := structural(p+"id", codes["signal"])
+		if err != nil {
+			return s, err
+		}
+		if id == "" {
 			continue
 		}
-		if word(p+"unit") == 0 {
+		unit, err := structural(p+"unit", codes["unit"])
+		if err != nil {
+			return s, err
+		}
+		if unit == "" {
 			return s, readErr(PageErrCorrupt, "%sunit holds code 0 in a used slot", p)
 		}
+		sharedWith, err := structural(p+"sharedWith", codes["signal"])
+		if err != nil {
+			return s, err
+		}
 		s.Signals = append(s.Signals, BudgetSignal{
-			ID:                   SignalID(code(p+"id", codes["signal"], "")),
-			Unit:                 SignalUnit(code(p+"unit", codes["unit"], "")),
+			ID:                   SignalID(id),
+			Unit:                 SignalUnit(unit),
 			Value:                opt(p + "value"),
 			WarnThreshold:        opt(p + "warnThreshold"),
 			AdmitStopThreshold:   opt(p + "admitStopThreshold"),
@@ -212,7 +251,7 @@ func decodePage(b []byte) (PageSnapshot, error) {
 			EtaToNextRungSeconds: opt(p + "etaToNextRungSeconds"),
 			Trend:                Trend(code(p+"trend", codes["trend"], string(TrendUnknown))),
 			LimitingResource:     LimitingResource(code(p+"limitingResource", codes["limitingResource"], string(ResourceUnknown))),
-			SharedWith:           SignalID(code(p+"sharedWith", codes["signal"], "")),
+			SharedWith:           SignalID(sharedWith),
 		})
 	}
 

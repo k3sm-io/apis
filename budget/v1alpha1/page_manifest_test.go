@@ -179,6 +179,14 @@ func NewPageManifest() PageManifest {
 			{Name: "platform-zero", File: "negative/platform-zero.v1.page", Error: PageErrCorrupt},
 			{Name: "level-zero", File: "negative/level-zero.v1.page", Error: PageErrCorrupt},
 			{Name: "unit-zero", File: "negative/unit-zero.v1.page", Error: PageErrCorrupt},
+			{
+				Name: "platform-zero-level-unknown", File: "negative/platform-zero-level-unknown.v1.page",
+				Error: PageErrCorrupt,
+			},
+			{
+				Name: "slot-id-unknown-unit-zero", File: "negative/slot-id-unknown-unit-zero.v1.page",
+				Error: PageErrABIMismatch,
+			},
 		},
 	}
 }

@@ -129,6 +129,9 @@ func pageNegatives(t *testing.T) map[string][]byte {
 		return edit(append([]byte(nil), base...))
 	}
 	le := binary.LittleEndian
+	// unknownCode is far past any code table, so the fixtures that hold it
+	// stay unknown-code cases when a minor appends codes.
+	const unknownCode = 0xFFFF_FFFF
 	return map[string][]byte{
 		"short": forge(func(b []byte) []byte { return b[:1024] }),
 		"bad-magic": forge(func(b []byte) []byte {
@@ -166,6 +169,19 @@ func pageNegatives(t *testing.T) map[string][]byte {
 		}),
 		// The slot's id stays non-zero: a used slot without a unit.
 		"unit-zero": forge(func(b []byte) []byte {
+			le.PutUint64(b[pageOffset("signals[0].unit"):], 0)
+			return b
+		}),
+		// Mixed defects pin the precedence: the first defect in field order
+		// wins. Platform is judged before level is read, so this is corrupt.
+		"platform-zero-level-unknown": forge(func(b []byte) []byte {
+			le.PutUint64(b[pageOffset("platform"):], 0)
+			le.PutUint64(b[pageOffset("level"):], unknownCode)
+			return b
+		}),
+		// A slot's id is decoded before its unit is judged: ABI mismatch.
+		"slot-id-unknown-unit-zero": forge(func(b []byte) []byte {
+			le.PutUint64(b[pageOffset("signals[0].id"):], unknownCode)
 			le.PutUint64(b[pageOffset("signals[0].unit"):], 0)
 			return b
 		}),
