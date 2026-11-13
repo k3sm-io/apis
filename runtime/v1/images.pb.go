@@ -449,11 +449,22 @@ type ImageFsInfoResponse struct {
 	// This describes what the store holds and carries no policy: no key is
 	// implied to be reclaimable, budgeted or eligible for anything.
 	//
-	// The reserved names never contain "/" and a media type always does, so the
-	// two cannot collide. Because the keys partition the store, the values sum
-	// to store_bytes. An empty map means the runtime did not report a split (an
-	// older runtime), never zero bytes. The runtime bounds the length of each
-	// key.
+	// Key grammar: a key is one of the reserved names above or a media type of
+	// the form type "/" subtype (RFC 6838 restricted names, no parameters). No
+	// reserved name contains "/" and a media type always does, so the two cannot
+	// collide; the runtime never emits a key without "/" other than a reserved
+	// name, and an artifact type that is not a media type is counted under
+	// "artifact". A media-type key is at most 255 bytes; a longer artifact type
+	// is counted under "artifact".
+	//
+	// store_bytes is the sum of these values: the runtime computes it from this
+	// same map in the same response, so the two always agree. A consumer that
+	// sees the values not sum to store_bytes must treat the split as not
+	// reported and must not subtract one from the other.
+	//
+	// An empty map with store_bytes greater than zero means the runtime did not
+	// report a split (an older runtime). An empty map with store_bytes of zero is
+	// an empty store.
 	StoreBytesByClass map[string]uint64 `protobuf:"bytes,4,rep,name=store_bytes_by_class,json=storeBytesByClass,proto3" json:"store_bytes_by_class,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
