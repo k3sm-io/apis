@@ -195,6 +195,13 @@ func TestImageClassReportRoundTripAndRefusals(t *testing.T) {
 		{"negative bytes", strings.Replace(valid, `"artifact":512`, `"artifact":-512`, 1), ErrInvalidClassReport},
 		{"bytes over uint64", strings.Replace(valid, `"unattributed":7`, `"unattributed":18446744073709551616`, 1), ErrInvalidClassReport},
 		{"observedAt not RFC 3339", strings.Replace(valid, `2026-11-13T09:30:00Z`, `2026-11-13 09:30:00`, 1), ErrInvalidClassReport},
+		{"null observedAt", strings.Replace(valid, `"2026-11-13T09:30:00Z"`, `null`, 1), ErrInvalidClassReport},
+		{"null storeBytes", strings.Replace(valid, `"storeBytes":1074795015`, `"storeBytes":null`, 1), ErrInvalidClassReport},
+		{"null storeBytes on an empty store", `{"schema":1,"observedAt":"2026-11-13T09:30:00Z","storeBytes":null,"bytesByClass":{}}`, ErrInvalidClassReport},
+		{"null storeBytes spaced", `{"schema":1,"observedAt":"2026-11-13T09:30:00Z","storeBytes": null ,"bytesByClass":{}}`, ErrInvalidClassReport},
+		{"null reserved class", `{"schema":1,"observedAt":"2026-11-13T09:30:00Z","storeBytes":0,"bytesByClass":{"image":null}}`, ErrInvalidClassReport},
+		{"null media-type class", `{"schema":1,"observedAt":"2026-11-13T09:30:00Z","storeBytes":0,"bytesByClass":{"application/wasm":null}}`, ErrInvalidClassReport},
+		{"null class beside others", strings.Replace(valid, `"artifact":512`, `"artifact":null`, 1), ErrInvalidClassReport},
 		{"observedAt with offset", strings.Replace(valid, `2026-11-13T09:30:00Z`, `2026-11-13T10:30:00+01:00`, 1), ErrInvalidClassReport},
 	} {
 		t.Run("refuses raw "+tc.name, func(t *testing.T) {
@@ -241,4 +248,117 @@ func marshalUnchecked(t *testing.T, r ClassReport) string {
 	}
 	b.WriteString("}}")
 	return b.String()
+}
+
+// TestFoldClasses pins the writer's rule past MaxClasses: the smallest
+// media-type classes, ties by key, fold into ClassArtifact; reserved classes
+// are never folded; the sum is preserved and the result is deterministic and
+// encodable.
+func TestFoldClasses(t *testing.T) {
+	t.Parallel()
+
+	// classes returns the three reserved classes plus media-type classes
+	// until there are n keys in all, media type i holding i%7 bytes so
+	// values tie and the key tiebreak matters.
+	classes := func(n int, withArtifact bool) map[string]uint64 {
+		m := map[string]uint64{ClassImage: 1, ClassUnattributed: 0}
+		if withArtifact {
+			m[ClassArtifact] = 5
+		}
+		for i := 0; len(m) < n; i++ {
+			m[fmt.Sprintf("application/x-%03d", i)] = uint64(i % 7)
+		}
+		return m
+	}
+	sum := func(m map[string]uint64) (s uint64) {
+		for _, v := range m {
+			s += v
+		}
+		return s
+	}
+
+	// Reserved classes holding the smallest values must still not fold.
+	reservedSmallest := classes(100, true)
+	reservedSmallest[ClassImage], reservedSmallest[ClassArtifact], reservedSmallest[ClassUnattributed] = 0, 0, 0
+
+	for _, tc := range []struct {
+		name       string
+		in         map[string]uint64
+		wantFolded []string // media-type keys expected gone
+	}{
+		{"nil", nil, nil},
+		{"64 unchanged", classes(MaxClasses, true), nil},
+		{"65 folds one", classes(MaxClasses+1, true), []string{"application/x-000"}},
+		// With no ClassArtifact, creating it costs a key, so two fold:
+		// x-000 and x-007 tie at zero bytes; x-000 sorts first, then x-007.
+		{"65 without artifact folds two", classes(MaxClasses+1, false), []string{"application/x-000", "application/x-007"}},
+		{"200 folds down", classes(200, true), nil},
+		{"reserved names never fold", reservedSmallest, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := tc.in
+			before := fmt.Sprint(in)
+			got := FoldClasses(in)
+			if got == nil {
+				t.Fatal("FoldClasses returned nil")
+			}
+			if fmt.Sprint(in) != before {
+				t.Fatal("FoldClasses modified its input")
+			}
+			if len(got) > MaxClasses {
+				t.Fatalf("%d keys, at most %d", len(got), MaxClasses)
+			}
+			if sum(got) != sum(in) {
+				t.Fatalf("sum = %d, want %d", sum(got), sum(in))
+			}
+			if len(in) <= MaxClasses {
+				if !reflect.DeepEqual(got, in) && !(in == nil && len(got) == 0) {
+					t.Fatalf("FoldClasses = %v, want %v unchanged", got, in)
+				}
+				return
+			}
+			if len(got) != MaxClasses {
+				t.Fatalf("%d keys, want exactly %d", len(got), MaxClasses)
+			}
+			for _, k := range []string{ClassImage, ClassUnattributed} {
+				if _, ok := in[k]; ok {
+					if v, ok := got[k]; !ok || v != in[k] {
+						t.Fatalf("reserved class %q = %d, %v; want %d kept", k, v, ok, in[k])
+					}
+				}
+			}
+			if _, ok := got[ClassArtifact]; !ok {
+				t.Fatal("ClassArtifact missing after a fold")
+			}
+			for _, k := range tc.wantFolded {
+				if _, ok := got[k]; ok {
+					t.Fatalf("%q not folded", k)
+				}
+			}
+			// Every kept media-type class is at least as large as every
+			// folded one, ties resolved by key.
+			for fk, fv := range in {
+				if _, kept := got[fk]; kept || isReservedClass(fk) {
+					continue
+				}
+				for kk, kv := range got {
+					if isReservedClass(kk) {
+						continue
+					}
+					if kv < fv || (kv == fv && kk < fk) {
+						t.Fatalf("kept %q (%d) but folded %q (%d)", kk, kv, fk, fv)
+					}
+				}
+			}
+			for i := 0; i < 20; i++ {
+				if again := FoldClasses(in); !reflect.DeepEqual(again, got) {
+					t.Fatalf("FoldClasses #%d = %v, want %v", i, again, got)
+				}
+			}
+			r := ClassReport{Schema: ClassReportSchema, ObservedAt: observed, StoreBytes: sum(in), BytesByClass: got}
+			if _, err := r.Encode(); err != nil {
+				t.Fatalf("Encode of the folded classes: %v", err)
+			}
+		})
+	}
 }

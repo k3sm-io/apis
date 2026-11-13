@@ -22,14 +22,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// ClassReportSchema is the current schema of the ClassReport payload. An
-// incompatible change bumps it; a reader refuses any other value with
-// ErrUnknownClassReportSchema.
+// ClassReportSchema is the current schema of the ClassReport payload. Schema
+// 1 is closed: any change to the field set, an added field included, bumps
+// it; a reader refuses any other value with ErrUnknownClassReportSchema.
 const ClassReportSchema = 1
 
 // Bounds on the AnnotationClassReport value.
@@ -42,7 +43,11 @@ const (
 	MaxClassReportBytes = 32 << 10
 	// MaxClasses is the most class keys one report may carry: the three
 	// reserved keys plus room for many distinct artifact media types on one
-	// node.
+	// node. A writer with more classes does not drop any: it folds the
+	// smallest media-type classes (ties broken by ascending key) into
+	// ClassArtifact until at most MaxClasses keys remain, never folding a
+	// reserved class, so StoreBytes is unchanged. FoldClasses applies this
+	// rule.
 	MaxClasses = 64
 	// MaxClassKeyBytes is the longest class key, the media-type bound the
 	// store_bytes_by_class field comment in runtime/v1/images.proto states.
@@ -59,8 +64,9 @@ var (
 	// it is not a node error to retry.
 	ErrUnknownClassReportSchema = errors.New("imagestorev1: unknown class report schema")
 	// ErrInvalidClassReport is wrapped by every other payload error:
-	// malformed JSON, an unknown, missing, repeated or case-folded key,
-	// trailing data, or a value that fails validation.
+	// malformed JSON, an unknown, missing, repeated or case-folded key, a
+	// null field or class value, trailing data, or a value that fails
+	// validation.
 	ErrInvalidClassReport = errors.New("imagestorev1: invalid class report")
 	// ErrClassReportTooLarge is wrapped, beside ErrInvalidClassReport, by a
 	// payload over MaxClassReportBytes, which is refused unparsed.
@@ -135,8 +141,10 @@ func (r *ClassReport) Validate() error {
 // Encode validates the report and returns the annotation value: compact JSON
 // with the class keys in sorted order, so equal reports encode to equal
 // bytes. The value is then decoded with ParseClassReport, so Encode refuses
-// anything Parse would refuse and a writer can never produce a value its
-// reader rejects. A nil BytesByClass encodes as an empty object.
+// anything Parse would refuse and a writer can never produce a value a
+// reader of the same schema rejects. A nil BytesByClass encodes as an empty
+// object. Encode refuses more than MaxClasses keys; fold them first with
+// FoldClasses.
 func (r *ClassReport) Encode() (string, error) {
 	if err := r.Validate(); err != nil {
 		return "", err
@@ -163,6 +171,60 @@ func (r *ClassReport) Encode() (string, error) {
 	return s, nil
 }
 
+// FoldClasses returns a copy of byClass with at most MaxClasses keys, by the
+// rule MaxClasses states: while there are too many keys, the smallest
+// media-type class, ties broken by ascending key, is removed and its bytes
+// added to ClassArtifact (created if absent). ClassImage, ClassArtifact and
+// ClassUnattributed are never folded, and every key that is not one of them
+// counts as a media-type class. The result is deterministic and its values
+// sum to those of byClass (when that sum fits a uint64, as a valid report's
+// does). A map already within MaxClasses is copied unchanged; byClass itself
+// is never modified, and the result is never nil.
+func FoldClasses(byClass map[string]uint64) map[string]uint64 {
+	out := make(map[string]uint64, min(len(byClass), MaxClasses))
+	if len(byClass) <= MaxClasses {
+		for k, v := range byClass {
+			out[k] = v
+		}
+		return out
+	}
+	media := make([]string, 0, len(byClass))
+	for k := range byClass {
+		if !isReservedClass(k) {
+			media = append(media, k)
+		}
+	}
+	sort.Slice(media, func(i, j int) bool {
+		a, b := byClass[media[i]], byClass[media[j]]
+		if a != b {
+			return a < b
+		}
+		return media[i] < media[j]
+	})
+	// Folding n keys leaves len-n keys, plus ClassArtifact if it is new.
+	n := len(byClass) - MaxClasses
+	if _, ok := byClass[ClassArtifact]; !ok {
+		n++
+	}
+	folded := make(map[string]bool, n)
+	var sum uint64
+	for _, k := range media[:n] {
+		folded[k] = true
+		sum += byClass[k]
+	}
+	for k, v := range byClass {
+		if !folded[k] {
+			out[k] = v
+		}
+	}
+	out[ClassArtifact] += sum
+	return out
+}
+
+func isReservedClass(k string) bool {
+	return k == ClassImage || k == ClassArtifact || k == ClassUnattributed
+}
+
 // classReportFields is the exact set of top-level keys a payload carries,
 // every one required.
 var classReportFields = [...]string{"schema", "observedAt", "storeBytes", "bytesByClass"}
@@ -178,7 +240,9 @@ var classReportFields = [...]string{"schema", "observedAt", "storeBytes", "bytes
 //     exactly 1 (a string, 1.0, 2), is ErrUnknownClassReportSchema, so a
 //     future schema whose fields changed type is never reported as malformed;
 //  4. refuses a top-level key that is unknown, missing, or matches a field
-//     only case-insensitively, and a bytesByClass that is not an object;
+//     only case-insensitively, a field or class value that is JSON null
+//     (which would otherwise decode as zero), and a bytesByClass that is
+//     not an object;
 //  5. decodes the value and validates it (ClassReport.Validate).
 //
 // A missing or unknown schema returns ErrUnknownClassReportSchema; every
@@ -217,8 +281,22 @@ func ParseClassReport(value string) (ClassReport, error) {
 			}
 		}
 	}
+	for _, f := range classReportFields {
+		if isJSONNull(top[f]) {
+			return ClassReport{}, fmt.Errorf("%w: field %q is null", ErrInvalidClassReport, f)
+		}
+	}
 	if raw := bytes.TrimSpace(top["bytesByClass"]); len(raw) == 0 || raw[0] != '{' {
 		return ClassReport{}, fmt.Errorf("%w: bytesByClass is not an object", ErrInvalidClassReport)
+	}
+	var classes map[string]json.RawMessage
+	if err := json.Unmarshal(top["bytesByClass"], &classes); err != nil {
+		return ClassReport{}, fmt.Errorf("%w: %w", ErrInvalidClassReport, err)
+	}
+	for k, v := range classes {
+		if isJSONNull(v) {
+			return ClassReport{}, fmt.Errorf("%w: class %.300q is null", ErrInvalidClassReport, k)
+		}
 	}
 	var r ClassReport
 	if err := json.Unmarshal([]byte(value), &r); err != nil {
@@ -228,6 +306,12 @@ func ParseClassReport(value string) (ClassReport, error) {
 		return ClassReport{}, err
 	}
 	return r, nil
+}
+
+// isJSONNull reports whether raw is the JSON literal null, which
+// encoding/json would otherwise decode silently as a zero value.
+func isJSONNull(raw json.RawMessage) bool {
+	return string(bytes.TrimSpace(raw)) == "null"
 }
 
 func isClassReportField(k string) bool {
