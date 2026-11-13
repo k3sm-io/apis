@@ -439,11 +439,21 @@ type ImageFsInfoResponse struct {
 	// error carries a structured failure (empty on success).
 	Error *status.Status `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
 	// store_bytes_by_class is a raw measurement of the image store's bytes split
-	// by content class. Keys are the reserved class names the runtime uses
-	// ("image", "artifact", "unattributed") and artifact media types; the values
-	// sum to store_bytes. An empty map means the runtime did not report a split
-	// (an older runtime), never zero bytes. It carries no policy: no class is
+	// by content class. The keys partition the store: each blob is counted under
+	// exactly one key, and a blob shared by several images or artifacts is
+	// counted once. The key a blob lands under is:
+	//   - "image" for content an image names;
+	//   - an artifact's media type when the runtime has one recorded for it;
+	//   - "artifact" for artifact bytes with no recorded media type;
+	//   - "unattributed" for everything else (content nothing names).
+	// This describes what the store holds and carries no policy: no key is
 	// implied to be reclaimable, budgeted or eligible for anything.
+	//
+	// The reserved names never contain "/" and a media type always does, so the
+	// two cannot collide. Because the keys partition the store, the values sum
+	// to store_bytes. An empty map means the runtime did not report a split (an
+	// older runtime), never zero bytes. The runtime bounds the length of each
+	// key.
 	StoreBytesByClass map[string]uint64 `protobuf:"bytes,4,rep,name=store_bytes_by_class,json=storeBytesByClass,proto3" json:"store_bytes_by_class,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache

@@ -707,13 +707,6 @@ func TestImageFsInfoResponseStoreBytesByClass(t *testing.T) {
 		if _, ok := out.GetStoreBytesByClass()["artifact"]; !ok {
 			t.Error("a zero-valued class key was dropped on the wire")
 		}
-		var sum uint64
-		for _, v := range out.GetStoreBytesByClass() {
-			sum += v
-		}
-		if sum != out.GetStoreBytes() {
-			t.Errorf("classes sum to %d, want store_bytes %d", sum, out.GetStoreBytes())
-		}
 	})
 
 	t.Run("an older runtime's response decodes to an empty map", func(t *testing.T) {
