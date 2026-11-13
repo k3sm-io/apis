@@ -354,6 +354,14 @@ message ImageFsInfoResponse {
   // error carries a structured failure (empty on success).
   google.rpc.Status error = 3;
 
+  // store_bytes_by_class is a raw measurement of the image store's bytes split
+  // by content class. Keys are the reserved class names the runtime uses
+  // ("image", "artifact", "unattributed") and artifact media types; the values
+  // sum to store_bytes. An empty map means the runtime did not report a split
+  // (an older runtime), never zero bytes. It carries no policy: no class is
+  // implied to be reclaimable, budgeted or eligible for anything.
+  map<string, uint64> store_bytes_by_class = 4;
+
   reserved 100 to 149;
 }
 

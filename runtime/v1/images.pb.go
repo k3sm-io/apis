@@ -437,9 +437,16 @@ type ImageFsInfoResponse struct {
 	// what a prune could reclaim.
 	StoreBytes uint64 `protobuf:"varint,2,opt,name=store_bytes,json=storeBytes,proto3" json:"store_bytes,omitempty"`
 	// error carries a structured failure (empty on success).
-	Error         *status.Status `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Error *status.Status `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	// store_bytes_by_class is a raw measurement of the image store's bytes split
+	// by content class. Keys are the reserved class names the runtime uses
+	// ("image", "artifact", "unattributed") and artifact media types; the values
+	// sum to store_bytes. An empty map means the runtime did not report a split
+	// (an older runtime), never zero bytes. It carries no policy: no class is
+	// implied to be reclaimable, budgeted or eligible for anything.
+	StoreBytesByClass map[string]uint64 `protobuf:"bytes,4,rep,name=store_bytes_by_class,json=storeBytesByClass,proto3" json:"store_bytes_by_class,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *ImageFsInfoResponse) Reset() {
@@ -489,6 +496,13 @@ func (x *ImageFsInfoResponse) GetStoreBytes() uint64 {
 func (x *ImageFsInfoResponse) GetError() *status.Status {
 	if x != nil {
 		return x.Error
+	}
+	return nil
+}
+
+func (x *ImageFsInfoResponse) GetStoreBytesByClass() map[string]uint64 {
+	if x != nil {
+		return x.StoreBytesByClass
 	}
 	return nil
 }
@@ -2116,12 +2130,16 @@ const file_runtime_v1_images_proto_rawDesc = "" +
 	"\x05Image\x12L\n" +
 	"\x13manifest_descriptor\x18\x01 \x01(\v2\x1b.k3sm.runtime.v1.DescriptorR\x12manifestDescriptor\x12:\n" +
 	"\bmanifest\x18\x02 \x01(\v2\x1e.k3sm.runtime.v1.ImageManifestR\bmanifestJ\x05\bd\x10\x96\x01\"\x1b\n" +
-	"\x12ImageFsInfoRequestJ\x05\bd\x10\x96\x01\"\xab\x01\n" +
+	"\x12ImageFsInfoRequestJ\x05\bd\x10\x96\x01\"\xdf\x02\n" +
 	"\x13ImageFsInfoResponse\x12B\n" +
 	"\vfilesystems\x18\x01 \x03(\v2 .k3sm.runtime.v1.FilesystemUsageR\vfilesystems\x12\x1f\n" +
 	"\vstore_bytes\x18\x02 \x01(\x04R\n" +
 	"storeBytes\x12(\n" +
-	"\x05error\x18\x03 \x01(\v2\x12.google.rpc.StatusR\x05errorJ\x05\bd\x10\x96\x01\"\x82\x02\n" +
+	"\x05error\x18\x03 \x01(\v2\x12.google.rpc.StatusR\x05error\x12l\n" +
+	"\x14store_bytes_by_class\x18\x04 \x03(\v2;.k3sm.runtime.v1.ImageFsInfoResponse.StoreBytesByClassEntryR\x11storeBytesByClass\x1aD\n" +
+	"\x16StoreBytesByClassEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x01J\x05\bd\x10\x96\x01\"\x82\x02\n" +
 	"\x0fFilesystemUsage\x128\n" +
 	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x1e\n" +
 	"\n" +
@@ -2274,7 +2292,7 @@ func file_runtime_v1_images_proto_rawDescGZIP() []byte {
 }
 
 var file_runtime_v1_images_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_runtime_v1_images_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_runtime_v1_images_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
 var file_runtime_v1_images_proto_goTypes = []any{
 	(PruneSkipReason)(0),          // 0: k3sm.runtime.v1.PruneSkipReason
 	(LoadImageFormat)(0),          // 1: k3sm.runtime.v1.LoadImageFormat
@@ -2305,83 +2323,85 @@ var file_runtime_v1_images_proto_goTypes = []any{
 	(*SaveImageResponse)(nil),     // 26: k3sm.runtime.v1.SaveImageResponse
 	(*PullArtifactRequest)(nil),   // 27: k3sm.runtime.v1.PullArtifactRequest
 	(*PullArtifactResponse)(nil),  // 28: k3sm.runtime.v1.PullArtifactResponse
-	nil,                           // 29: k3sm.runtime.v1.ImageConfig.LabelsEntry
-	(*Platform)(nil),              // 30: k3sm.runtime.v1.Platform
-	(*status.Status)(nil),         // 31: google.rpc.Status
-	(*Descriptor)(nil),            // 32: k3sm.runtime.v1.Descriptor
-	(*ImageManifest)(nil),         // 33: k3sm.runtime.v1.ImageManifest
-	(*timestamppb.Timestamp)(nil), // 34: google.protobuf.Timestamp
-	(ImagePullPolicy)(0),          // 35: k3sm.runtime.v1.ImagePullPolicy
-	(*LocalObjectReference)(nil),  // 36: k3sm.runtime.v1.LocalObjectReference
+	nil,                           // 29: k3sm.runtime.v1.ImageFsInfoResponse.StoreBytesByClassEntry
+	nil,                           // 30: k3sm.runtime.v1.ImageConfig.LabelsEntry
+	(*Platform)(nil),              // 31: k3sm.runtime.v1.Platform
+	(*status.Status)(nil),         // 32: google.rpc.Status
+	(*Descriptor)(nil),            // 33: k3sm.runtime.v1.Descriptor
+	(*ImageManifest)(nil),         // 34: k3sm.runtime.v1.ImageManifest
+	(*timestamppb.Timestamp)(nil), // 35: google.protobuf.Timestamp
+	(ImagePullPolicy)(0),          // 36: k3sm.runtime.v1.ImagePullPolicy
+	(*LocalObjectReference)(nil),  // 37: k3sm.runtime.v1.LocalObjectReference
 }
 var file_runtime_v1_images_proto_depIdxs = []int32{
-	30, // 0: k3sm.runtime.v1.ListImagesRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	31, // 0: k3sm.runtime.v1.ListImagesRequest.platform:type_name -> k3sm.runtime.v1.Platform
 	5,  // 1: k3sm.runtime.v1.ListImagesResponse.images:type_name -> k3sm.runtime.v1.Image
-	31, // 2: k3sm.runtime.v1.ListImagesResponse.error:type_name -> google.rpc.Status
-	32, // 3: k3sm.runtime.v1.Image.manifest_descriptor:type_name -> k3sm.runtime.v1.Descriptor
-	33, // 4: k3sm.runtime.v1.Image.manifest:type_name -> k3sm.runtime.v1.ImageManifest
+	32, // 2: k3sm.runtime.v1.ListImagesResponse.error:type_name -> google.rpc.Status
+	33, // 3: k3sm.runtime.v1.Image.manifest_descriptor:type_name -> k3sm.runtime.v1.Descriptor
+	34, // 4: k3sm.runtime.v1.Image.manifest:type_name -> k3sm.runtime.v1.ImageManifest
 	8,  // 5: k3sm.runtime.v1.ImageFsInfoResponse.filesystems:type_name -> k3sm.runtime.v1.FilesystemUsage
-	31, // 6: k3sm.runtime.v1.ImageFsInfoResponse.error:type_name -> google.rpc.Status
-	34, // 7: k3sm.runtime.v1.FilesystemUsage.timestamp:type_name -> google.protobuf.Timestamp
-	30, // 8: k3sm.runtime.v1.RemoveImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	31, // 9: k3sm.runtime.v1.RemoveImageResponse.error:type_name -> google.rpc.Status
-	13, // 10: k3sm.runtime.v1.PruneImagesResponse.skipped:type_name -> k3sm.runtime.v1.SkippedBlob
-	31, // 11: k3sm.runtime.v1.PruneImagesResponse.error:type_name -> google.rpc.Status
-	0,  // 12: k3sm.runtime.v1.SkippedBlob.reason:type_name -> k3sm.runtime.v1.PruneSkipReason
-	1,  // 13: k3sm.runtime.v1.LoadImageRequest.format:type_name -> k3sm.runtime.v1.LoadImageFormat
-	5,  // 14: k3sm.runtime.v1.LoadImageResponse.images:type_name -> k3sm.runtime.v1.Image
-	31, // 15: k3sm.runtime.v1.LoadImageResponse.error:type_name -> google.rpc.Status
-	30, // 16: k3sm.runtime.v1.PullImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	35, // 17: k3sm.runtime.v1.PullImageRequest.policy:type_name -> k3sm.runtime.v1.ImagePullPolicy
-	5,  // 18: k3sm.runtime.v1.PullImageResponse.image:type_name -> k3sm.runtime.v1.Image
-	31, // 19: k3sm.runtime.v1.PullImageResponse.error:type_name -> google.rpc.Status
-	30, // 20: k3sm.runtime.v1.TagImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	5,  // 21: k3sm.runtime.v1.TagImageResponse.image:type_name -> k3sm.runtime.v1.Image
-	31, // 22: k3sm.runtime.v1.TagImageResponse.error:type_name -> google.rpc.Status
-	30, // 23: k3sm.runtime.v1.UntagImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	5,  // 24: k3sm.runtime.v1.UntagImageResponse.removed:type_name -> k3sm.runtime.v1.Image
-	31, // 25: k3sm.runtime.v1.UntagImageResponse.error:type_name -> google.rpc.Status
-	30, // 26: k3sm.runtime.v1.InspectImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	5,  // 27: k3sm.runtime.v1.InspectImageResponse.image:type_name -> k3sm.runtime.v1.Image
-	24, // 28: k3sm.runtime.v1.InspectImageResponse.config:type_name -> k3sm.runtime.v1.ImageConfig
-	31, // 29: k3sm.runtime.v1.InspectImageResponse.error:type_name -> google.rpc.Status
-	30, // 30: k3sm.runtime.v1.ImageConfig.platform:type_name -> k3sm.runtime.v1.Platform
-	34, // 31: k3sm.runtime.v1.ImageConfig.created:type_name -> google.protobuf.Timestamp
-	29, // 32: k3sm.runtime.v1.ImageConfig.labels:type_name -> k3sm.runtime.v1.ImageConfig.LabelsEntry
-	30, // 33: k3sm.runtime.v1.SaveImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
-	1,  // 34: k3sm.runtime.v1.SaveImageRequest.format:type_name -> k3sm.runtime.v1.LoadImageFormat
-	31, // 35: k3sm.runtime.v1.SaveImageResponse.error:type_name -> google.rpc.Status
-	35, // 36: k3sm.runtime.v1.PullArtifactRequest.pull_policy:type_name -> k3sm.runtime.v1.ImagePullPolicy
-	2,  // 37: k3sm.runtime.v1.PullArtifactRequest.artifact_policy:type_name -> k3sm.runtime.v1.ArtifactPolicy
-	36, // 38: k3sm.runtime.v1.PullArtifactRequest.image_pull_secrets:type_name -> k3sm.runtime.v1.LocalObjectReference
-	31, // 39: k3sm.runtime.v1.PullArtifactResponse.error:type_name -> google.rpc.Status
-	3,  // 40: k3sm.runtime.v1.Images.ListImages:input_type -> k3sm.runtime.v1.ListImagesRequest
-	6,  // 41: k3sm.runtime.v1.Images.ImageFsInfo:input_type -> k3sm.runtime.v1.ImageFsInfoRequest
-	9,  // 42: k3sm.runtime.v1.Images.RemoveImage:input_type -> k3sm.runtime.v1.RemoveImageRequest
-	11, // 43: k3sm.runtime.v1.Images.PruneImages:input_type -> k3sm.runtime.v1.PruneImagesRequest
-	14, // 44: k3sm.runtime.v1.Images.LoadImage:input_type -> k3sm.runtime.v1.LoadImageRequest
-	16, // 45: k3sm.runtime.v1.Images.PullImage:input_type -> k3sm.runtime.v1.PullImageRequest
-	18, // 46: k3sm.runtime.v1.Images.TagImage:input_type -> k3sm.runtime.v1.TagImageRequest
-	20, // 47: k3sm.runtime.v1.Images.UntagImage:input_type -> k3sm.runtime.v1.UntagImageRequest
-	22, // 48: k3sm.runtime.v1.Images.InspectImage:input_type -> k3sm.runtime.v1.InspectImageRequest
-	25, // 49: k3sm.runtime.v1.Images.SaveImage:input_type -> k3sm.runtime.v1.SaveImageRequest
-	27, // 50: k3sm.runtime.v1.Images.PullArtifact:input_type -> k3sm.runtime.v1.PullArtifactRequest
-	4,  // 51: k3sm.runtime.v1.Images.ListImages:output_type -> k3sm.runtime.v1.ListImagesResponse
-	7,  // 52: k3sm.runtime.v1.Images.ImageFsInfo:output_type -> k3sm.runtime.v1.ImageFsInfoResponse
-	10, // 53: k3sm.runtime.v1.Images.RemoveImage:output_type -> k3sm.runtime.v1.RemoveImageResponse
-	12, // 54: k3sm.runtime.v1.Images.PruneImages:output_type -> k3sm.runtime.v1.PruneImagesResponse
-	15, // 55: k3sm.runtime.v1.Images.LoadImage:output_type -> k3sm.runtime.v1.LoadImageResponse
-	17, // 56: k3sm.runtime.v1.Images.PullImage:output_type -> k3sm.runtime.v1.PullImageResponse
-	19, // 57: k3sm.runtime.v1.Images.TagImage:output_type -> k3sm.runtime.v1.TagImageResponse
-	21, // 58: k3sm.runtime.v1.Images.UntagImage:output_type -> k3sm.runtime.v1.UntagImageResponse
-	23, // 59: k3sm.runtime.v1.Images.InspectImage:output_type -> k3sm.runtime.v1.InspectImageResponse
-	26, // 60: k3sm.runtime.v1.Images.SaveImage:output_type -> k3sm.runtime.v1.SaveImageResponse
-	28, // 61: k3sm.runtime.v1.Images.PullArtifact:output_type -> k3sm.runtime.v1.PullArtifactResponse
-	51, // [51:62] is the sub-list for method output_type
-	40, // [40:51] is the sub-list for method input_type
-	40, // [40:40] is the sub-list for extension type_name
-	40, // [40:40] is the sub-list for extension extendee
-	0,  // [0:40] is the sub-list for field type_name
+	32, // 6: k3sm.runtime.v1.ImageFsInfoResponse.error:type_name -> google.rpc.Status
+	29, // 7: k3sm.runtime.v1.ImageFsInfoResponse.store_bytes_by_class:type_name -> k3sm.runtime.v1.ImageFsInfoResponse.StoreBytesByClassEntry
+	35, // 8: k3sm.runtime.v1.FilesystemUsage.timestamp:type_name -> google.protobuf.Timestamp
+	31, // 9: k3sm.runtime.v1.RemoveImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	32, // 10: k3sm.runtime.v1.RemoveImageResponse.error:type_name -> google.rpc.Status
+	13, // 11: k3sm.runtime.v1.PruneImagesResponse.skipped:type_name -> k3sm.runtime.v1.SkippedBlob
+	32, // 12: k3sm.runtime.v1.PruneImagesResponse.error:type_name -> google.rpc.Status
+	0,  // 13: k3sm.runtime.v1.SkippedBlob.reason:type_name -> k3sm.runtime.v1.PruneSkipReason
+	1,  // 14: k3sm.runtime.v1.LoadImageRequest.format:type_name -> k3sm.runtime.v1.LoadImageFormat
+	5,  // 15: k3sm.runtime.v1.LoadImageResponse.images:type_name -> k3sm.runtime.v1.Image
+	32, // 16: k3sm.runtime.v1.LoadImageResponse.error:type_name -> google.rpc.Status
+	31, // 17: k3sm.runtime.v1.PullImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	36, // 18: k3sm.runtime.v1.PullImageRequest.policy:type_name -> k3sm.runtime.v1.ImagePullPolicy
+	5,  // 19: k3sm.runtime.v1.PullImageResponse.image:type_name -> k3sm.runtime.v1.Image
+	32, // 20: k3sm.runtime.v1.PullImageResponse.error:type_name -> google.rpc.Status
+	31, // 21: k3sm.runtime.v1.TagImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	5,  // 22: k3sm.runtime.v1.TagImageResponse.image:type_name -> k3sm.runtime.v1.Image
+	32, // 23: k3sm.runtime.v1.TagImageResponse.error:type_name -> google.rpc.Status
+	31, // 24: k3sm.runtime.v1.UntagImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	5,  // 25: k3sm.runtime.v1.UntagImageResponse.removed:type_name -> k3sm.runtime.v1.Image
+	32, // 26: k3sm.runtime.v1.UntagImageResponse.error:type_name -> google.rpc.Status
+	31, // 27: k3sm.runtime.v1.InspectImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	5,  // 28: k3sm.runtime.v1.InspectImageResponse.image:type_name -> k3sm.runtime.v1.Image
+	24, // 29: k3sm.runtime.v1.InspectImageResponse.config:type_name -> k3sm.runtime.v1.ImageConfig
+	32, // 30: k3sm.runtime.v1.InspectImageResponse.error:type_name -> google.rpc.Status
+	31, // 31: k3sm.runtime.v1.ImageConfig.platform:type_name -> k3sm.runtime.v1.Platform
+	35, // 32: k3sm.runtime.v1.ImageConfig.created:type_name -> google.protobuf.Timestamp
+	30, // 33: k3sm.runtime.v1.ImageConfig.labels:type_name -> k3sm.runtime.v1.ImageConfig.LabelsEntry
+	31, // 34: k3sm.runtime.v1.SaveImageRequest.platform:type_name -> k3sm.runtime.v1.Platform
+	1,  // 35: k3sm.runtime.v1.SaveImageRequest.format:type_name -> k3sm.runtime.v1.LoadImageFormat
+	32, // 36: k3sm.runtime.v1.SaveImageResponse.error:type_name -> google.rpc.Status
+	36, // 37: k3sm.runtime.v1.PullArtifactRequest.pull_policy:type_name -> k3sm.runtime.v1.ImagePullPolicy
+	2,  // 38: k3sm.runtime.v1.PullArtifactRequest.artifact_policy:type_name -> k3sm.runtime.v1.ArtifactPolicy
+	37, // 39: k3sm.runtime.v1.PullArtifactRequest.image_pull_secrets:type_name -> k3sm.runtime.v1.LocalObjectReference
+	32, // 40: k3sm.runtime.v1.PullArtifactResponse.error:type_name -> google.rpc.Status
+	3,  // 41: k3sm.runtime.v1.Images.ListImages:input_type -> k3sm.runtime.v1.ListImagesRequest
+	6,  // 42: k3sm.runtime.v1.Images.ImageFsInfo:input_type -> k3sm.runtime.v1.ImageFsInfoRequest
+	9,  // 43: k3sm.runtime.v1.Images.RemoveImage:input_type -> k3sm.runtime.v1.RemoveImageRequest
+	11, // 44: k3sm.runtime.v1.Images.PruneImages:input_type -> k3sm.runtime.v1.PruneImagesRequest
+	14, // 45: k3sm.runtime.v1.Images.LoadImage:input_type -> k3sm.runtime.v1.LoadImageRequest
+	16, // 46: k3sm.runtime.v1.Images.PullImage:input_type -> k3sm.runtime.v1.PullImageRequest
+	18, // 47: k3sm.runtime.v1.Images.TagImage:input_type -> k3sm.runtime.v1.TagImageRequest
+	20, // 48: k3sm.runtime.v1.Images.UntagImage:input_type -> k3sm.runtime.v1.UntagImageRequest
+	22, // 49: k3sm.runtime.v1.Images.InspectImage:input_type -> k3sm.runtime.v1.InspectImageRequest
+	25, // 50: k3sm.runtime.v1.Images.SaveImage:input_type -> k3sm.runtime.v1.SaveImageRequest
+	27, // 51: k3sm.runtime.v1.Images.PullArtifact:input_type -> k3sm.runtime.v1.PullArtifactRequest
+	4,  // 52: k3sm.runtime.v1.Images.ListImages:output_type -> k3sm.runtime.v1.ListImagesResponse
+	7,  // 53: k3sm.runtime.v1.Images.ImageFsInfo:output_type -> k3sm.runtime.v1.ImageFsInfoResponse
+	10, // 54: k3sm.runtime.v1.Images.RemoveImage:output_type -> k3sm.runtime.v1.RemoveImageResponse
+	12, // 55: k3sm.runtime.v1.Images.PruneImages:output_type -> k3sm.runtime.v1.PruneImagesResponse
+	15, // 56: k3sm.runtime.v1.Images.LoadImage:output_type -> k3sm.runtime.v1.LoadImageResponse
+	17, // 57: k3sm.runtime.v1.Images.PullImage:output_type -> k3sm.runtime.v1.PullImageResponse
+	19, // 58: k3sm.runtime.v1.Images.TagImage:output_type -> k3sm.runtime.v1.TagImageResponse
+	21, // 59: k3sm.runtime.v1.Images.UntagImage:output_type -> k3sm.runtime.v1.UntagImageResponse
+	23, // 60: k3sm.runtime.v1.Images.InspectImage:output_type -> k3sm.runtime.v1.InspectImageResponse
+	26, // 61: k3sm.runtime.v1.Images.SaveImage:output_type -> k3sm.runtime.v1.SaveImageResponse
+	28, // 62: k3sm.runtime.v1.Images.PullArtifact:output_type -> k3sm.runtime.v1.PullArtifactResponse
+	52, // [52:63] is the sub-list for method output_type
+	41, // [41:52] is the sub-list for method input_type
+	41, // [41:41] is the sub-list for extension type_name
+	41, // [41:41] is the sub-list for extension extendee
+	0,  // [0:41] is the sub-list for field type_name
 }
 
 func init() { file_runtime_v1_images_proto_init() }
@@ -2396,7 +2416,7 @@ func file_runtime_v1_images_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_runtime_v1_images_proto_rawDesc), len(file_runtime_v1_images_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   27,
+			NumMessages:   28,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -557,6 +557,11 @@ func populatedMessages() []proto.Message {
 				InodesUsed:     42,
 			}},
 			StoreBytes: 1 << 20,
+			StoreBytesByClass: map[string]uint64{
+				"image":        1 << 19,
+				"artifact":     1 << 18,
+				"unattributed": 1 << 18,
+			},
 		},
 		&FilesystemUsage{Mountpoint: "/", UsedBytes: 3, CapacityBytes: 4, AvailableBytes: 1, InodesUsed: 2},
 		&RemoveImageRequest{Reference: "example.com/img:tag", Platform: &Platform{Os: "darwin", Architecture: "arm64"}, Digest: "sha256:aaaa"},
@@ -629,4 +634,99 @@ func populatedMessages() []proto.Message {
 		},
 		&PullArtifactResponse{ManifestDigest: "sha256:aaaa", LayerDigests: []string{"sha256:bbbb", "sha256:cccc"}},
 	}
+}
+
+// TestImageFsInfoResponseStoreBytesByClass pins the additive per-class split
+// of the image store measurement: its field number, its map<string, uint64>
+// shape, the existing fields it must not displace, and a wire round-trip that
+// keeps every key and value.
+func TestImageFsInfoResponseStoreBytesByClass(t *testing.T) {
+	md := (&ImageFsInfoResponse{}).ProtoReflect().Descriptor()
+
+	t.Run("field numbers are pinned", func(t *testing.T) {
+		for _, tc := range []struct {
+			name protoreflect.Name
+			num  protoreflect.FieldNumber
+		}{
+			{"filesystems", 1},
+			{"store_bytes", 2},
+			{"error", 3},
+			{"store_bytes_by_class", 4},
+		} {
+			f := md.Fields().ByName(tc.name)
+			if f == nil {
+				t.Errorf("ImageFsInfoResponse.%s does not exist", tc.name)
+				continue
+			}
+			if f.Number() != tc.num {
+				t.Errorf("ImageFsInfoResponse.%s = field %d, want %d", tc.name, f.Number(), tc.num)
+			}
+		}
+	})
+
+	t.Run("store_bytes_by_class is map<string, uint64>", func(t *testing.T) {
+		f := md.Fields().ByName("store_bytes_by_class")
+		if f == nil {
+			t.Fatal("ImageFsInfoResponse.store_bytes_by_class does not exist")
+		}
+		if !f.IsMap() {
+			t.Fatalf("store_bytes_by_class is not a map (cardinality %v, kind %v)", f.Cardinality(), f.Kind())
+		}
+		if k := f.MapKey().Kind(); k != protoreflect.StringKind {
+			t.Errorf("store_bytes_by_class key kind = %v, want string", k)
+		}
+		if v := f.MapValue().Kind(); v != protoreflect.Uint64Kind {
+			t.Errorf("store_bytes_by_class value kind = %v, want uint64", v)
+		}
+	})
+
+	t.Run("the map survives a wire round-trip", func(t *testing.T) {
+		in := &ImageFsInfoResponse{
+			StoreBytes: 1000,
+			StoreBytesByClass: map[string]uint64{
+				"image":                                600,
+				"artifact":                             0,
+				"unattributed":                         100,
+				"application/vnd.example.model.v1+tar": 300,
+			},
+		}
+		b, err := proto.Marshal(in)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		out := &ImageFsInfoResponse{}
+		if err := proto.Unmarshal(b, out); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if !proto.Equal(in, out) {
+			t.Fatalf("round-trip mismatch:\n in  %v\n out %v", in, out)
+		}
+		if got := len(out.GetStoreBytesByClass()); got != len(in.StoreBytesByClass) {
+			t.Errorf("round-trip kept %d classes, want %d", got, len(in.StoreBytesByClass))
+		}
+		if _, ok := out.GetStoreBytesByClass()["artifact"]; !ok {
+			t.Error("a zero-valued class key was dropped on the wire")
+		}
+		var sum uint64
+		for _, v := range out.GetStoreBytesByClass() {
+			sum += v
+		}
+		if sum != out.GetStoreBytes() {
+			t.Errorf("classes sum to %d, want store_bytes %d", sum, out.GetStoreBytes())
+		}
+	})
+
+	t.Run("an older runtime's response decodes to an empty map", func(t *testing.T) {
+		b, err := proto.Marshal(&ImageFsInfoResponse{StoreBytes: 1000})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		out := &ImageFsInfoResponse{}
+		if err := proto.Unmarshal(b, out); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if n := len(out.GetStoreBytesByClass()); n != 0 {
+			t.Errorf("store_bytes_by_class has %d entries, want none", n)
+		}
+	})
 }
