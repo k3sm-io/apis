@@ -410,6 +410,22 @@ message Volume {
   // Skew: a runtime that predates this field sees a Volume with no known
   // source set and must refuse the pod, never mount nothing in its place.
   ImageVolumeSource image = 9;
+
+  // expose publishes this volume to one named account on the NODE: the
+  // operator-exposure source, the reverse of host_path. Added later as the
+  // next free sequential source number (2..9 were taken). In a pod spec it is
+  // an inline CSI volume with the driver k3sm reserves for it; the provider
+  // maps that here.
+  //
+  // Shape only, as for host_path. Whether the account may receive exposures
+  // from the pod's namespace, where the data lives on the node and how the
+  // account is let in are runtime decisions, re-checked at every create
+  // against the node's root-owned allowlist; nothing the pod spec asserts
+  // about itself is trusted.
+  //
+  // Skew: a runtime that predates this field sees a Volume with no known
+  // source set and must refuse the pod, never mount nothing in its place.
+  ExposeVolumeSource expose = 10;
 }
 
 // ConfigMapVolumeSource mounts a ConfigMap as files. Mirrors
@@ -569,6 +585,20 @@ message HostPathVolumeSource {
   // whose empty value is meaningful, and an enum would have to invent a
   // zero-value distinction upstream does not have.
   string type = 2;
+}
+
+// ExposeVolumeSource is a pod-lifetime directory the pod writes and one named
+// account on the node may reach, at a stable node path the runtime manages.
+message ExposeVolumeSource {
+  // user is the account name the pod spec names (volumeAttributes.user).
+  string user = 1;
+  // uid is the account's uid as the provider resolved it on the node. The
+  // runtime resolves the name again and refuses the pod when the two differ,
+  // so a renamed or recycled account never inherits an exposure.
+  uint32 uid = 2;
+  // read_write, when true, asks for read and write access for the account
+  // (volumeAttributes.access "read-write"); false is read-only access.
+  bool read_write = 3;
 }
 
 // ImageVolumeSource mounts an OCI artifact (a platform-less manifest, for

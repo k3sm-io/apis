@@ -1155,7 +1155,22 @@ type Volume struct {
 	//
 	// Skew: a runtime that predates this field sees a Volume with no known
 	// source set and must refuse the pod, never mount nothing in its place.
-	Image         *ImageVolumeSource `protobuf:"bytes,9,opt,name=image,proto3" json:"image,omitempty"`
+	Image *ImageVolumeSource `protobuf:"bytes,9,opt,name=image,proto3" json:"image,omitempty"`
+	// expose publishes this volume to one named account on the NODE: the
+	// operator-exposure source, the reverse of host_path. Added later as the
+	// next free sequential source number (2..9 were taken). In a pod spec it is
+	// an inline CSI volume with the driver k3sm reserves for it; the provider
+	// maps that here.
+	//
+	// Shape only, as for host_path. Whether the account may receive exposures
+	// from the pod's namespace, where the data lives on the node and how the
+	// account is let in are runtime decisions, re-checked at every create
+	// against the node's root-owned allowlist; nothing the pod spec asserts
+	// about itself is trusted.
+	//
+	// Skew: a runtime that predates this field sees a Volume with no known
+	// source set and must refuse the pod, never mount nothing in its place.
+	Expose        *ExposeVolumeSource `protobuf:"bytes,10,opt,name=expose,proto3" json:"expose,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1249,6 +1264,13 @@ func (x *Volume) GetHostPath() *HostPathVolumeSource {
 func (x *Volume) GetImage() *ImageVolumeSource {
 	if x != nil {
 		return x.Image
+	}
+	return nil
+}
+
+func (x *Volume) GetExpose() *ExposeVolumeSource {
+	if x != nil {
+		return x.Expose
 	}
 	return nil
 }
@@ -2140,6 +2162,74 @@ func (x *HostPathVolumeSource) GetType() string {
 	return ""
 }
 
+// ExposeVolumeSource is a pod-lifetime directory the pod writes and one named
+// account on the node may reach, at a stable node path the runtime manages.
+type ExposeVolumeSource struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// user is the account name the pod spec names (volumeAttributes.user).
+	User string `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	// uid is the account's uid as the provider resolved it on the node. The
+	// runtime resolves the name again and refuses the pod when the two differ,
+	// so a renamed or recycled account never inherits an exposure.
+	Uid uint32 `protobuf:"varint,2,opt,name=uid,proto3" json:"uid,omitempty"`
+	// read_write, when true, asks for read and write access for the account
+	// (volumeAttributes.access "read-write"); false is read-only access.
+	ReadWrite     bool `protobuf:"varint,3,opt,name=read_write,json=readWrite,proto3" json:"read_write,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExposeVolumeSource) Reset() {
+	*x = ExposeVolumeSource{}
+	mi := &file_runtime_v1_runtime_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExposeVolumeSource) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExposeVolumeSource) ProtoMessage() {}
+
+func (x *ExposeVolumeSource) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_runtime_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExposeVolumeSource.ProtoReflect.Descriptor instead.
+func (*ExposeVolumeSource) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ExposeVolumeSource) GetUser() string {
+	if x != nil {
+		return x.User
+	}
+	return ""
+}
+
+func (x *ExposeVolumeSource) GetUid() uint32 {
+	if x != nil {
+		return x.Uid
+	}
+	return 0
+}
+
+func (x *ExposeVolumeSource) GetReadWrite() bool {
+	if x != nil {
+		return x.ReadWrite
+	}
+	return false
+}
+
 // ImageVolumeSource mounts an OCI artifact (a platform-less manifest, for
 // example a ModelPack model) read-only into a pod. Mirrors
 // corev1.ImageVolumeSource (reference + pullPolicy) and adds paths.
@@ -2174,7 +2264,7 @@ type ImageVolumeSource struct {
 
 func (x *ImageVolumeSource) Reset() {
 	*x = ImageVolumeSource{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[17]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2186,7 +2276,7 @@ func (x *ImageVolumeSource) String() string {
 func (*ImageVolumeSource) ProtoMessage() {}
 
 func (x *ImageVolumeSource) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[17]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2199,7 +2289,7 @@ func (x *ImageVolumeSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageVolumeSource.ProtoReflect.Descriptor instead.
 func (*ImageVolumeSource) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{17}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ImageVolumeSource) GetReference() string {
@@ -2267,7 +2357,7 @@ type PodSecurityContext struct {
 
 func (x *PodSecurityContext) Reset() {
 	*x = PodSecurityContext{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[18]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2279,7 +2369,7 @@ func (x *PodSecurityContext) String() string {
 func (*PodSecurityContext) ProtoMessage() {}
 
 func (x *PodSecurityContext) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[18]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2292,7 +2382,7 @@ func (x *PodSecurityContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PodSecurityContext.ProtoReflect.Descriptor instead.
 func (*PodSecurityContext) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{18}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *PodSecurityContext) GetFsGroup() int64 {
@@ -2335,7 +2425,7 @@ type LocalObjectReference struct {
 
 func (x *LocalObjectReference) Reset() {
 	*x = LocalObjectReference{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[19]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2347,7 +2437,7 @@ func (x *LocalObjectReference) String() string {
 func (*LocalObjectReference) ProtoMessage() {}
 
 func (x *LocalObjectReference) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[19]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2360,7 +2450,7 @@ func (x *LocalObjectReference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LocalObjectReference.ProtoReflect.Descriptor instead.
 func (*LocalObjectReference) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{19}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *LocalObjectReference) GetName() string {
@@ -2500,7 +2590,7 @@ type Container struct {
 
 func (x *Container) Reset() {
 	*x = Container{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[20]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2512,7 +2602,7 @@ func (x *Container) String() string {
 func (*Container) ProtoMessage() {}
 
 func (x *Container) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[20]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2525,7 +2615,7 @@ func (x *Container) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Container.ProtoReflect.Descriptor instead.
 func (*Container) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{20}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *Container) GetName() string {
@@ -2677,7 +2767,7 @@ type EnvVar struct {
 
 func (x *EnvVar) Reset() {
 	*x = EnvVar{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[21]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2689,7 +2779,7 @@ func (x *EnvVar) String() string {
 func (*EnvVar) ProtoMessage() {}
 
 func (x *EnvVar) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[21]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2702,7 +2792,7 @@ func (x *EnvVar) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnvVar.ProtoReflect.Descriptor instead.
 func (*EnvVar) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{21}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *EnvVar) GetName() string {
@@ -2746,7 +2836,7 @@ type VolumeMount struct {
 
 func (x *VolumeMount) Reset() {
 	*x = VolumeMount{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[22]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2758,7 +2848,7 @@ func (x *VolumeMount) String() string {
 func (*VolumeMount) ProtoMessage() {}
 
 func (x *VolumeMount) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[22]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2771,7 +2861,7 @@ func (x *VolumeMount) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VolumeMount.ProtoReflect.Descriptor instead.
 func (*VolumeMount) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{22}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *VolumeMount) GetName() string {
@@ -2821,7 +2911,7 @@ type ContainerPort struct {
 
 func (x *ContainerPort) Reset() {
 	*x = ContainerPort{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[23]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2833,7 +2923,7 @@ func (x *ContainerPort) String() string {
 func (*ContainerPort) ProtoMessage() {}
 
 func (x *ContainerPort) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[23]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2846,7 +2936,7 @@ func (x *ContainerPort) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContainerPort.ProtoReflect.Descriptor instead.
 func (*ContainerPort) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{23}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ContainerPort) GetName() string {
@@ -2897,7 +2987,7 @@ type Probe struct {
 
 func (x *Probe) Reset() {
 	*x = Probe{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[24]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2909,7 +2999,7 @@ func (x *Probe) String() string {
 func (*Probe) ProtoMessage() {}
 
 func (x *Probe) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[24]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2922,7 +3012,7 @@ func (x *Probe) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Probe.ProtoReflect.Descriptor instead.
 func (*Probe) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{24}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *Probe) GetInitialDelaySeconds() int32 {
@@ -3001,7 +3091,7 @@ type HTTPGetAction struct {
 
 func (x *HTTPGetAction) Reset() {
 	*x = HTTPGetAction{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[25]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3013,7 +3103,7 @@ func (x *HTTPGetAction) String() string {
 func (*HTTPGetAction) ProtoMessage() {}
 
 func (x *HTTPGetAction) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[25]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3026,7 +3116,7 @@ func (x *HTTPGetAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HTTPGetAction.ProtoReflect.Descriptor instead.
 func (*HTTPGetAction) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{25}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *HTTPGetAction) GetPath() string {
@@ -3075,7 +3165,7 @@ type HTTPHeader struct {
 
 func (x *HTTPHeader) Reset() {
 	*x = HTTPHeader{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[26]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3087,7 +3177,7 @@ func (x *HTTPHeader) String() string {
 func (*HTTPHeader) ProtoMessage() {}
 
 func (x *HTTPHeader) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[26]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3100,7 +3190,7 @@ func (x *HTTPHeader) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HTTPHeader.ProtoReflect.Descriptor instead.
 func (*HTTPHeader) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{26}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *HTTPHeader) GetName() string {
@@ -3131,7 +3221,7 @@ type TCPSocketAction struct {
 
 func (x *TCPSocketAction) Reset() {
 	*x = TCPSocketAction{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[27]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3143,7 +3233,7 @@ func (x *TCPSocketAction) String() string {
 func (*TCPSocketAction) ProtoMessage() {}
 
 func (x *TCPSocketAction) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[27]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3156,7 +3246,7 @@ func (x *TCPSocketAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TCPSocketAction.ProtoReflect.Descriptor instead.
 func (*TCPSocketAction) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{27}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *TCPSocketAction) GetPort() *IntOrString {
@@ -3185,7 +3275,7 @@ type ExecAction struct {
 
 func (x *ExecAction) Reset() {
 	*x = ExecAction{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[28]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3197,7 +3287,7 @@ func (x *ExecAction) String() string {
 func (*ExecAction) ProtoMessage() {}
 
 func (x *ExecAction) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[28]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3210,7 +3300,7 @@ func (x *ExecAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecAction.ProtoReflect.Descriptor instead.
 func (*ExecAction) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{28}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ExecAction) GetCommand() []string {
@@ -3236,7 +3326,7 @@ type IntOrString struct {
 
 func (x *IntOrString) Reset() {
 	*x = IntOrString{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[29]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3248,7 +3338,7 @@ func (x *IntOrString) String() string {
 func (*IntOrString) ProtoMessage() {}
 
 func (x *IntOrString) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[29]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3261,7 +3351,7 @@ func (x *IntOrString) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IntOrString.ProtoReflect.Descriptor instead.
 func (*IntOrString) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{29}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *IntOrString) GetIntVal() int32 {
@@ -3297,7 +3387,7 @@ type SecurityContext struct {
 
 func (x *SecurityContext) Reset() {
 	*x = SecurityContext{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[30]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3309,7 +3399,7 @@ func (x *SecurityContext) String() string {
 func (*SecurityContext) ProtoMessage() {}
 
 func (x *SecurityContext) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[30]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3322,7 +3412,7 @@ func (x *SecurityContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecurityContext.ProtoReflect.Descriptor instead.
 func (*SecurityContext) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{30}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *SecurityContext) GetRunAsUser() int64 {
@@ -3363,7 +3453,7 @@ type EnvFromSource struct {
 
 func (x *EnvFromSource) Reset() {
 	*x = EnvFromSource{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[31]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3375,7 +3465,7 @@ func (x *EnvFromSource) String() string {
 func (*EnvFromSource) ProtoMessage() {}
 
 func (x *EnvFromSource) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[31]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3388,7 +3478,7 @@ func (x *EnvFromSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnvFromSource.ProtoReflect.Descriptor instead.
 func (*EnvFromSource) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{31}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *EnvFromSource) GetPrefix() string {
@@ -3426,7 +3516,7 @@ type ConfigMapEnvSource struct {
 
 func (x *ConfigMapEnvSource) Reset() {
 	*x = ConfigMapEnvSource{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[32]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3438,7 +3528,7 @@ func (x *ConfigMapEnvSource) String() string {
 func (*ConfigMapEnvSource) ProtoMessage() {}
 
 func (x *ConfigMapEnvSource) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[32]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3451,7 +3541,7 @@ func (x *ConfigMapEnvSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigMapEnvSource.ProtoReflect.Descriptor instead.
 func (*ConfigMapEnvSource) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{32}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ConfigMapEnvSource) GetName() string {
@@ -3481,7 +3571,7 @@ type SecretEnvSource struct {
 
 func (x *SecretEnvSource) Reset() {
 	*x = SecretEnvSource{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[33]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3493,7 +3583,7 @@ func (x *SecretEnvSource) String() string {
 func (*SecretEnvSource) ProtoMessage() {}
 
 func (x *SecretEnvSource) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[33]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3506,7 +3596,7 @@ func (x *SecretEnvSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretEnvSource.ProtoReflect.Descriptor instead.
 func (*SecretEnvSource) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{33}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *SecretEnvSource) GetName() string {
@@ -3541,7 +3631,7 @@ type EnvVarSource struct {
 
 func (x *EnvVarSource) Reset() {
 	*x = EnvVarSource{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[34]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3553,7 +3643,7 @@ func (x *EnvVarSource) String() string {
 func (*EnvVarSource) ProtoMessage() {}
 
 func (x *EnvVarSource) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[34]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3566,7 +3656,7 @@ func (x *EnvVarSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnvVarSource.ProtoReflect.Descriptor instead.
 func (*EnvVarSource) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{34}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *EnvVarSource) GetFieldRef() *ObjectFieldSelector {
@@ -3605,7 +3695,7 @@ type ObjectFieldSelector struct {
 
 func (x *ObjectFieldSelector) Reset() {
 	*x = ObjectFieldSelector{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[35]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3617,7 +3707,7 @@ func (x *ObjectFieldSelector) String() string {
 func (*ObjectFieldSelector) ProtoMessage() {}
 
 func (x *ObjectFieldSelector) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[35]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3630,7 +3720,7 @@ func (x *ObjectFieldSelector) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObjectFieldSelector.ProtoReflect.Descriptor instead.
 func (*ObjectFieldSelector) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{35}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *ObjectFieldSelector) GetApiVersion() string {
@@ -3663,7 +3753,7 @@ type ConfigMapKeySelector struct {
 
 func (x *ConfigMapKeySelector) Reset() {
 	*x = ConfigMapKeySelector{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[36]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3675,7 +3765,7 @@ func (x *ConfigMapKeySelector) String() string {
 func (*ConfigMapKeySelector) ProtoMessage() {}
 
 func (x *ConfigMapKeySelector) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[36]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3688,7 +3778,7 @@ func (x *ConfigMapKeySelector) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigMapKeySelector.ProtoReflect.Descriptor instead.
 func (*ConfigMapKeySelector) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{36}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *ConfigMapKeySelector) GetName() string {
@@ -3728,7 +3818,7 @@ type SecretKeySelector struct {
 
 func (x *SecretKeySelector) Reset() {
 	*x = SecretKeySelector{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[37]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3740,7 +3830,7 @@ func (x *SecretKeySelector) String() string {
 func (*SecretKeySelector) ProtoMessage() {}
 
 func (x *SecretKeySelector) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[37]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3753,7 +3843,7 @@ func (x *SecretKeySelector) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretKeySelector.ProtoReflect.Descriptor instead.
 func (*SecretKeySelector) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{37}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *SecretKeySelector) GetName() string {
@@ -3934,7 +4024,7 @@ type SandboxProfile struct {
 
 func (x *SandboxProfile) Reset() {
 	*x = SandboxProfile{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[38]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3946,7 +4036,7 @@ func (x *SandboxProfile) String() string {
 func (*SandboxProfile) ProtoMessage() {}
 
 func (x *SandboxProfile) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[38]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3959,7 +4049,7 @@ func (x *SandboxProfile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SandboxProfile.ProtoReflect.Descriptor instead.
 func (*SandboxProfile) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{38}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *SandboxProfile) GetBackend() SandboxBackend {
@@ -4080,7 +4170,7 @@ type ImageManifest struct {
 
 func (x *ImageManifest) Reset() {
 	*x = ImageManifest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[39]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4092,7 +4182,7 @@ func (x *ImageManifest) String() string {
 func (*ImageManifest) ProtoMessage() {}
 
 func (x *ImageManifest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[39]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4105,7 +4195,7 @@ func (x *ImageManifest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageManifest.ProtoReflect.Descriptor instead.
 func (*ImageManifest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{39}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ImageManifest) GetReference() string {
@@ -4178,7 +4268,7 @@ type Descriptor struct {
 
 func (x *Descriptor) Reset() {
 	*x = Descriptor{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[40]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4190,7 +4280,7 @@ func (x *Descriptor) String() string {
 func (*Descriptor) ProtoMessage() {}
 
 func (x *Descriptor) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[40]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4203,7 +4293,7 @@ func (x *Descriptor) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Descriptor.ProtoReflect.Descriptor instead.
 func (*Descriptor) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{40}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *Descriptor) GetMediaType() string {
@@ -4261,7 +4351,7 @@ type Platform struct {
 
 func (x *Platform) Reset() {
 	*x = Platform{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[41]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4273,7 +4363,7 @@ func (x *Platform) String() string {
 func (*Platform) ProtoMessage() {}
 
 func (x *Platform) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[41]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4286,7 +4376,7 @@ func (x *Platform) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Platform.ProtoReflect.Descriptor instead.
 func (*Platform) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{41}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *Platform) GetOs() string {
@@ -4376,7 +4466,7 @@ type PodStatus struct {
 
 func (x *PodStatus) Reset() {
 	*x = PodStatus{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[42]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4388,7 +4478,7 @@ func (x *PodStatus) String() string {
 func (*PodStatus) ProtoMessage() {}
 
 func (x *PodStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[42]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4401,7 +4491,7 @@ func (x *PodStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PodStatus.ProtoReflect.Descriptor instead.
 func (*PodStatus) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{42}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *PodStatus) GetPodId() string {
@@ -4535,7 +4625,7 @@ type PodCondition struct {
 
 func (x *PodCondition) Reset() {
 	*x = PodCondition{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[43]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4547,7 +4637,7 @@ func (x *PodCondition) String() string {
 func (*PodCondition) ProtoMessage() {}
 
 func (x *PodCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[43]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4560,7 +4650,7 @@ func (x *PodCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PodCondition.ProtoReflect.Descriptor instead.
 func (*PodCondition) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{43}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *PodCondition) GetType() string {
@@ -4665,7 +4755,7 @@ type ContainerStatus struct {
 
 func (x *ContainerStatus) Reset() {
 	*x = ContainerStatus{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[44]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4677,7 +4767,7 @@ func (x *ContainerStatus) String() string {
 func (*ContainerStatus) ProtoMessage() {}
 
 func (x *ContainerStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[44]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4690,7 +4780,7 @@ func (x *ContainerStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContainerStatus.ProtoReflect.Descriptor instead.
 func (*ContainerStatus) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{44}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *ContainerStatus) GetName() string {
@@ -4823,7 +4913,7 @@ type ImagePullOutcome struct {
 
 func (x *ImagePullOutcome) Reset() {
 	*x = ImagePullOutcome{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[45]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4835,7 +4925,7 @@ func (x *ImagePullOutcome) String() string {
 func (*ImagePullOutcome) ProtoMessage() {}
 
 func (x *ImagePullOutcome) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[45]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4848,7 +4938,7 @@ func (x *ImagePullOutcome) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImagePullOutcome.ProtoReflect.Descriptor instead.
 func (*ImagePullOutcome) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{45}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *ImagePullOutcome) GetPulled() bool {
@@ -4881,7 +4971,7 @@ type VolumeMountStatus struct {
 
 func (x *VolumeMountStatus) Reset() {
 	*x = VolumeMountStatus{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[46]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4893,7 +4983,7 @@ func (x *VolumeMountStatus) String() string {
 func (*VolumeMountStatus) ProtoMessage() {}
 
 func (x *VolumeMountStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[46]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4906,7 +4996,7 @@ func (x *VolumeMountStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VolumeMountStatus.ProtoReflect.Descriptor instead.
 func (*VolumeMountStatus) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{46}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *VolumeMountStatus) GetName() string {
@@ -4944,7 +5034,7 @@ type ContainerUser struct {
 
 func (x *ContainerUser) Reset() {
 	*x = ContainerUser{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[47]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4956,7 +5046,7 @@ func (x *ContainerUser) String() string {
 func (*ContainerUser) ProtoMessage() {}
 
 func (x *ContainerUser) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[47]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4969,7 +5059,7 @@ func (x *ContainerUser) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContainerUser.ProtoReflect.Descriptor instead.
 func (*ContainerUser) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{47}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ContainerUser) GetLinux() *LinuxContainerUser {
@@ -4997,7 +5087,7 @@ type LinuxContainerUser struct {
 
 func (x *LinuxContainerUser) Reset() {
 	*x = LinuxContainerUser{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[48]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5009,7 +5099,7 @@ func (x *LinuxContainerUser) String() string {
 func (*LinuxContainerUser) ProtoMessage() {}
 
 func (x *LinuxContainerUser) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[48]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5022,7 +5112,7 @@ func (x *LinuxContainerUser) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LinuxContainerUser.ProtoReflect.Descriptor instead.
 func (*LinuxContainerUser) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{48}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *LinuxContainerUser) GetUid() int64 {
@@ -5059,7 +5149,7 @@ type ContainerState struct {
 
 func (x *ContainerState) Reset() {
 	*x = ContainerState{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[49]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5071,7 +5161,7 @@ func (x *ContainerState) String() string {
 func (*ContainerState) ProtoMessage() {}
 
 func (x *ContainerState) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[49]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5084,7 +5174,7 @@ func (x *ContainerState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContainerState.ProtoReflect.Descriptor instead.
 func (*ContainerState) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{49}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ContainerState) GetWaiting() *ContainerStateWaiting {
@@ -5127,7 +5217,7 @@ type ContainerStateWaiting struct {
 
 func (x *ContainerStateWaiting) Reset() {
 	*x = ContainerStateWaiting{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[50]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5139,7 +5229,7 @@ func (x *ContainerStateWaiting) String() string {
 func (*ContainerStateWaiting) ProtoMessage() {}
 
 func (x *ContainerStateWaiting) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[50]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5152,7 +5242,7 @@ func (x *ContainerStateWaiting) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContainerStateWaiting.ProtoReflect.Descriptor instead.
 func (*ContainerStateWaiting) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{50}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *ContainerStateWaiting) GetReason() string {
@@ -5186,7 +5276,7 @@ type ContainerStateRunning struct {
 
 func (x *ContainerStateRunning) Reset() {
 	*x = ContainerStateRunning{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[51]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5198,7 +5288,7 @@ func (x *ContainerStateRunning) String() string {
 func (*ContainerStateRunning) ProtoMessage() {}
 
 func (x *ContainerStateRunning) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[51]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5211,7 +5301,7 @@ func (x *ContainerStateRunning) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContainerStateRunning.ProtoReflect.Descriptor instead.
 func (*ContainerStateRunning) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{51}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *ContainerStateRunning) GetStartedAt() *timestamppb.Timestamp {
@@ -5244,7 +5334,7 @@ type ContainerStateTerminated struct {
 
 func (x *ContainerStateTerminated) Reset() {
 	*x = ContainerStateTerminated{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[52]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5256,7 +5346,7 @@ func (x *ContainerStateTerminated) String() string {
 func (*ContainerStateTerminated) ProtoMessage() {}
 
 func (x *ContainerStateTerminated) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[52]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5269,7 +5359,7 @@ func (x *ContainerStateTerminated) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContainerStateTerminated.ProtoReflect.Descriptor instead.
 func (*ContainerStateTerminated) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{52}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ContainerStateTerminated) GetExitCode() int32 {
@@ -5345,7 +5435,7 @@ type ResourceLimit struct {
 
 func (x *ResourceLimit) Reset() {
 	*x = ResourceLimit{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[53]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5357,7 +5447,7 @@ func (x *ResourceLimit) String() string {
 func (*ResourceLimit) ProtoMessage() {}
 
 func (x *ResourceLimit) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[53]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5370,7 +5460,7 @@ func (x *ResourceLimit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceLimit.ProtoReflect.Descriptor instead.
 func (*ResourceLimit) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{53}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *ResourceLimit) GetType() string {
@@ -5408,7 +5498,7 @@ type ResourceList struct {
 
 func (x *ResourceList) Reset() {
 	*x = ResourceList{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[54]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5420,7 +5510,7 @@ func (x *ResourceList) String() string {
 func (*ResourceList) ProtoMessage() {}
 
 func (x *ResourceList) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[54]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5433,7 +5523,7 @@ func (x *ResourceList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceList.ProtoReflect.Descriptor instead.
 func (*ResourceList) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{54}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *ResourceList) GetQuantities() map[string]string {
@@ -5459,7 +5549,7 @@ type ResourceRequirements struct {
 
 func (x *ResourceRequirements) Reset() {
 	*x = ResourceRequirements{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[55]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5471,7 +5561,7 @@ func (x *ResourceRequirements) String() string {
 func (*ResourceRequirements) ProtoMessage() {}
 
 func (x *ResourceRequirements) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[55]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5484,7 +5574,7 @@ func (x *ResourceRequirements) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceRequirements.ProtoReflect.Descriptor instead.
 func (*ResourceRequirements) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{55}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *ResourceRequirements) GetLimits() *ResourceList {
@@ -5533,7 +5623,7 @@ type PodStats struct {
 
 func (x *PodStats) Reset() {
 	*x = PodStats{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[56]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5545,7 +5635,7 @@ func (x *PodStats) String() string {
 func (*PodStats) ProtoMessage() {}
 
 func (x *PodStats) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[56]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5558,7 +5648,7 @@ func (x *PodStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PodStats.ProtoReflect.Descriptor instead.
 func (*PodStats) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{56}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *PodStats) GetPodId() string {
@@ -5631,7 +5721,7 @@ type ProcessStats struct {
 
 func (x *ProcessStats) Reset() {
 	*x = ProcessStats{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[57]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5643,7 +5733,7 @@ func (x *ProcessStats) String() string {
 func (*ProcessStats) ProtoMessage() {}
 
 func (x *ProcessStats) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[57]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5656,7 +5746,7 @@ func (x *ProcessStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessStats.ProtoReflect.Descriptor instead.
 func (*ProcessStats) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{57}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *ProcessStats) GetProcessCount() uint64 {
@@ -5684,7 +5774,7 @@ type ContainerStats struct {
 
 func (x *ContainerStats) Reset() {
 	*x = ContainerStats{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[58]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5696,7 +5786,7 @@ func (x *ContainerStats) String() string {
 func (*ContainerStats) ProtoMessage() {}
 
 func (x *ContainerStats) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[58]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5709,7 +5799,7 @@ func (x *ContainerStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContainerStats.ProtoReflect.Descriptor instead.
 func (*ContainerStats) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{58}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *ContainerStats) GetName() string {
@@ -5758,7 +5848,7 @@ type CPUStats struct {
 
 func (x *CPUStats) Reset() {
 	*x = CPUStats{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[59]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5770,7 +5860,7 @@ func (x *CPUStats) String() string {
 func (*CPUStats) ProtoMessage() {}
 
 func (x *CPUStats) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[59]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5783,7 +5873,7 @@ func (x *CPUStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CPUStats.ProtoReflect.Descriptor instead.
 func (*CPUStats) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{59}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *CPUStats) GetTimestamp() *timestamppb.Timestamp {
@@ -5833,7 +5923,7 @@ type MemoryStats struct {
 
 func (x *MemoryStats) Reset() {
 	*x = MemoryStats{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[60]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5845,7 +5935,7 @@ func (x *MemoryStats) String() string {
 func (*MemoryStats) ProtoMessage() {}
 
 func (x *MemoryStats) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[60]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5858,7 +5948,7 @@ func (x *MemoryStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryStats.ProtoReflect.Descriptor instead.
 func (*MemoryStats) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{60}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *MemoryStats) GetTimestamp() *timestamppb.Timestamp {
@@ -5906,7 +5996,7 @@ type CreatePodRequest struct {
 
 func (x *CreatePodRequest) Reset() {
 	*x = CreatePodRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[61]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5918,7 +6008,7 @@ func (x *CreatePodRequest) String() string {
 func (*CreatePodRequest) ProtoMessage() {}
 
 func (x *CreatePodRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[61]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5931,7 +6021,7 @@ func (x *CreatePodRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePodRequest.ProtoReflect.Descriptor instead.
 func (*CreatePodRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{61}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *CreatePodRequest) GetPod() *PodBox {
@@ -5964,7 +6054,7 @@ type CreatePodResponse struct {
 
 func (x *CreatePodResponse) Reset() {
 	*x = CreatePodResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[62]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5976,7 +6066,7 @@ func (x *CreatePodResponse) String() string {
 func (*CreatePodResponse) ProtoMessage() {}
 
 func (x *CreatePodResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[62]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5989,7 +6079,7 @@ func (x *CreatePodResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePodResponse.ProtoReflect.Descriptor instead.
 func (*CreatePodResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{62}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *CreatePodResponse) GetStatus() *PodStatus {
@@ -6025,7 +6115,7 @@ type DeletePodRequest struct {
 
 func (x *DeletePodRequest) Reset() {
 	*x = DeletePodRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[63]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6037,7 +6127,7 @@ func (x *DeletePodRequest) String() string {
 func (*DeletePodRequest) ProtoMessage() {}
 
 func (x *DeletePodRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[63]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6050,7 +6140,7 @@ func (x *DeletePodRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePodRequest.ProtoReflect.Descriptor instead.
 func (*DeletePodRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{63}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *DeletePodRequest) GetPodId() string {
@@ -6078,7 +6168,7 @@ type DeletePodResponse struct {
 
 func (x *DeletePodResponse) Reset() {
 	*x = DeletePodResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[64]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6090,7 +6180,7 @@ func (x *DeletePodResponse) String() string {
 func (*DeletePodResponse) ProtoMessage() {}
 
 func (x *DeletePodResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[64]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6103,7 +6193,7 @@ func (x *DeletePodResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePodResponse.ProtoReflect.Descriptor instead.
 func (*DeletePodResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{64}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *DeletePodResponse) GetError() *status.Status {
@@ -6131,7 +6221,7 @@ type UpdatePodRequest struct {
 
 func (x *UpdatePodRequest) Reset() {
 	*x = UpdatePodRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[65]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6143,7 +6233,7 @@ func (x *UpdatePodRequest) String() string {
 func (*UpdatePodRequest) ProtoMessage() {}
 
 func (x *UpdatePodRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[65]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6156,7 +6246,7 @@ func (x *UpdatePodRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePodRequest.ProtoReflect.Descriptor instead.
 func (*UpdatePodRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{65}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *UpdatePodRequest) GetPod() *PodBox {
@@ -6178,7 +6268,7 @@ type UpdatePodResponse struct {
 
 func (x *UpdatePodResponse) Reset() {
 	*x = UpdatePodResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[66]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6190,7 +6280,7 @@ func (x *UpdatePodResponse) String() string {
 func (*UpdatePodResponse) ProtoMessage() {}
 
 func (x *UpdatePodResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[66]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6203,7 +6293,7 @@ func (x *UpdatePodResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePodResponse.ProtoReflect.Descriptor instead.
 func (*UpdatePodResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{66}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *UpdatePodResponse) GetStatus() *PodStatus {
@@ -6238,7 +6328,7 @@ type WatchPodStatusRequest struct {
 
 func (x *WatchPodStatusRequest) Reset() {
 	*x = WatchPodStatusRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[67]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6250,7 +6340,7 @@ func (x *WatchPodStatusRequest) String() string {
 func (*WatchPodStatusRequest) ProtoMessage() {}
 
 func (x *WatchPodStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[67]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6263,7 +6353,7 @@ func (x *WatchPodStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchPodStatusRequest.ProtoReflect.Descriptor instead.
 func (*WatchPodStatusRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{67}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *WatchPodStatusRequest) GetPodId() string {
@@ -6284,7 +6374,7 @@ type PodStatusEvent struct {
 
 func (x *PodStatusEvent) Reset() {
 	*x = PodStatusEvent{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[68]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6296,7 +6386,7 @@ func (x *PodStatusEvent) String() string {
 func (*PodStatusEvent) ProtoMessage() {}
 
 func (x *PodStatusEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[68]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6309,7 +6399,7 @@ func (x *PodStatusEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PodStatusEvent.ProtoReflect.Descriptor instead.
 func (*PodStatusEvent) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{68}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *PodStatusEvent) GetType() PodStatusEventType {
@@ -6336,7 +6426,7 @@ type GetPodStatusRequest struct {
 
 func (x *GetPodStatusRequest) Reset() {
 	*x = GetPodStatusRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[69]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6348,7 +6438,7 @@ func (x *GetPodStatusRequest) String() string {
 func (*GetPodStatusRequest) ProtoMessage() {}
 
 func (x *GetPodStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[69]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6361,7 +6451,7 @@ func (x *GetPodStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPodStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetPodStatusRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{69}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *GetPodStatusRequest) GetPodId() string {
@@ -6382,7 +6472,7 @@ type GetPodStatusResponse struct {
 
 func (x *GetPodStatusResponse) Reset() {
 	*x = GetPodStatusResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[70]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6394,7 +6484,7 @@ func (x *GetPodStatusResponse) String() string {
 func (*GetPodStatusResponse) ProtoMessage() {}
 
 func (x *GetPodStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[70]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6407,7 +6497,7 @@ func (x *GetPodStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPodStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetPodStatusResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{70}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *GetPodStatusResponse) GetStatus() *PodStatus {
@@ -6452,7 +6542,7 @@ type GetLogsRequest struct {
 
 func (x *GetLogsRequest) Reset() {
 	*x = GetLogsRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[71]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6464,7 +6554,7 @@ func (x *GetLogsRequest) String() string {
 func (*GetLogsRequest) ProtoMessage() {}
 
 func (x *GetLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[71]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6477,7 +6567,7 @@ func (x *GetLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLogsRequest.ProtoReflect.Descriptor instead.
 func (*GetLogsRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{71}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *GetLogsRequest) GetPodId() string {
@@ -6557,7 +6647,7 @@ type LogEntry struct {
 
 func (x *LogEntry) Reset() {
 	*x = LogEntry{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[72]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6569,7 +6659,7 @@ func (x *LogEntry) String() string {
 func (*LogEntry) ProtoMessage() {}
 
 func (x *LogEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[72]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6582,7 +6672,7 @@ func (x *LogEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogEntry.ProtoReflect.Descriptor instead.
 func (*LogEntry) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{72}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *LogEntry) GetLine() []byte {
@@ -6635,7 +6725,7 @@ type ExecRequest struct {
 
 func (x *ExecRequest) Reset() {
 	*x = ExecRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[73]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6647,7 +6737,7 @@ func (x *ExecRequest) String() string {
 func (*ExecRequest) ProtoMessage() {}
 
 func (x *ExecRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[73]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6660,7 +6750,7 @@ func (x *ExecRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecRequest.ProtoReflect.Descriptor instead.
 func (*ExecRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{73}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *ExecRequest) GetPodId() string {
@@ -6739,7 +6829,7 @@ type ExecResponse struct {
 
 func (x *ExecResponse) Reset() {
 	*x = ExecResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[74]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6751,7 +6841,7 @@ func (x *ExecResponse) String() string {
 func (*ExecResponse) ProtoMessage() {}
 
 func (x *ExecResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[74]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6764,7 +6854,7 @@ func (x *ExecResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecResponse.ProtoReflect.Descriptor instead.
 func (*ExecResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{74}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *ExecResponse) GetStdout() []byte {
@@ -6799,7 +6889,7 @@ type ExecResult struct {
 
 func (x *ExecResult) Reset() {
 	*x = ExecResult{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[75]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6811,7 +6901,7 @@ func (x *ExecResult) String() string {
 func (*ExecResult) ProtoMessage() {}
 
 func (x *ExecResult) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[75]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6824,7 +6914,7 @@ func (x *ExecResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecResult.ProtoReflect.Descriptor instead.
 func (*ExecResult) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{75}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *ExecResult) GetExitCode() int32 {
@@ -6858,7 +6948,7 @@ type AttachRequest struct {
 
 func (x *AttachRequest) Reset() {
 	*x = AttachRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[76]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6870,7 +6960,7 @@ func (x *AttachRequest) String() string {
 func (*AttachRequest) ProtoMessage() {}
 
 func (x *AttachRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[76]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6883,7 +6973,7 @@ func (x *AttachRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachRequest.ProtoReflect.Descriptor instead.
 func (*AttachRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{76}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *AttachRequest) GetPodId() string {
@@ -6954,7 +7044,7 @@ type AttachResponse struct {
 
 func (x *AttachResponse) Reset() {
 	*x = AttachResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[77]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6966,7 +7056,7 @@ func (x *AttachResponse) String() string {
 func (*AttachResponse) ProtoMessage() {}
 
 func (x *AttachResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[77]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6979,7 +7069,7 @@ func (x *AttachResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachResponse.ProtoReflect.Descriptor instead.
 func (*AttachResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{77}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *AttachResponse) GetStdout() []byte {
@@ -7022,7 +7112,7 @@ type PortForwardRequest struct {
 
 func (x *PortForwardRequest) Reset() {
 	*x = PortForwardRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[78]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7034,7 +7124,7 @@ func (x *PortForwardRequest) String() string {
 func (*PortForwardRequest) ProtoMessage() {}
 
 func (x *PortForwardRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[78]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7047,7 +7137,7 @@ func (x *PortForwardRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PortForwardRequest.ProtoReflect.Descriptor instead.
 func (*PortForwardRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{78}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *PortForwardRequest) GetPodId() string {
@@ -7098,7 +7188,7 @@ type PortForwardResponse struct {
 
 func (x *PortForwardResponse) Reset() {
 	*x = PortForwardResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[79]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7110,7 +7200,7 @@ func (x *PortForwardResponse) String() string {
 func (*PortForwardResponse) ProtoMessage() {}
 
 func (x *PortForwardResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[79]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7123,7 +7213,7 @@ func (x *PortForwardResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PortForwardResponse.ProtoReflect.Descriptor instead.
 func (*PortForwardResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{79}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *PortForwardResponse) GetConnectionId() uint64 {
@@ -7165,7 +7255,7 @@ type TerminalSize struct {
 
 func (x *TerminalSize) Reset() {
 	*x = TerminalSize{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[80]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7177,7 +7267,7 @@ func (x *TerminalSize) String() string {
 func (*TerminalSize) ProtoMessage() {}
 
 func (x *TerminalSize) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[80]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7190,7 +7280,7 @@ func (x *TerminalSize) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TerminalSize.ProtoReflect.Descriptor instead.
 func (*TerminalSize) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{80}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *TerminalSize) GetWidth() uint32 {
@@ -7216,7 +7306,7 @@ type GetRuntimeInfoRequest struct {
 
 func (x *GetRuntimeInfoRequest) Reset() {
 	*x = GetRuntimeInfoRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[81]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7228,7 +7318,7 @@ func (x *GetRuntimeInfoRequest) String() string {
 func (*GetRuntimeInfoRequest) ProtoMessage() {}
 
 func (x *GetRuntimeInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[81]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7241,7 +7331,7 @@ func (x *GetRuntimeInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRuntimeInfoRequest.ProtoReflect.Descriptor instead.
 func (*GetRuntimeInfoRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{81}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{82}
 }
 
 // GetRuntimeInfoResponse reports the daemon version + health for the
@@ -7270,7 +7360,7 @@ type GetRuntimeInfoResponse struct {
 
 func (x *GetRuntimeInfoResponse) Reset() {
 	*x = GetRuntimeInfoResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[82]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7282,7 +7372,7 @@ func (x *GetRuntimeInfoResponse) String() string {
 func (*GetRuntimeInfoResponse) ProtoMessage() {}
 
 func (x *GetRuntimeInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[82]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7295,7 +7385,7 @@ func (x *GetRuntimeInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRuntimeInfoResponse.ProtoReflect.Descriptor instead.
 func (*GetRuntimeInfoResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{82}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *GetRuntimeInfoResponse) GetRuntimeName() string {
@@ -7393,7 +7483,7 @@ type GPUFacts struct {
 
 func (x *GPUFacts) Reset() {
 	*x = GPUFacts{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[83]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7405,7 +7495,7 @@ func (x *GPUFacts) String() string {
 func (*GPUFacts) ProtoMessage() {}
 
 func (x *GPUFacts) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[83]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7418,7 +7508,7 @@ func (x *GPUFacts) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GPUFacts.ProtoReflect.Descriptor instead.
 func (*GPUFacts) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{83}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *GPUFacts) GetMetalAvailable() bool {
@@ -7483,7 +7573,7 @@ type RuntimeCondition struct {
 
 func (x *RuntimeCondition) Reset() {
 	*x = RuntimeCondition{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[84]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7495,7 +7585,7 @@ func (x *RuntimeCondition) String() string {
 func (*RuntimeCondition) ProtoMessage() {}
 
 func (x *RuntimeCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[84]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7508,7 +7598,7 @@ func (x *RuntimeCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeCondition.ProtoReflect.Descriptor instead.
 func (*RuntimeCondition) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{84}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *RuntimeCondition) GetType() string {
@@ -7550,7 +7640,7 @@ type ListPodStatsRequest struct {
 
 func (x *ListPodStatsRequest) Reset() {
 	*x = ListPodStatsRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[85]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7562,7 +7652,7 @@ func (x *ListPodStatsRequest) String() string {
 func (*ListPodStatsRequest) ProtoMessage() {}
 
 func (x *ListPodStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[85]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7575,7 +7665,7 @@ func (x *ListPodStatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPodStatsRequest.ProtoReflect.Descriptor instead.
 func (*ListPodStatsRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{85}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *ListPodStatsRequest) GetPodId() string {
@@ -7595,7 +7685,7 @@ type ListPodStatsResponse struct {
 
 func (x *ListPodStatsResponse) Reset() {
 	*x = ListPodStatsResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[86]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7607,7 +7697,7 @@ func (x *ListPodStatsResponse) String() string {
 func (*ListPodStatsResponse) ProtoMessage() {}
 
 func (x *ListPodStatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[86]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7620,7 +7710,7 @@ func (x *ListPodStatsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPodStatsResponse.ProtoReflect.Descriptor instead.
 func (*ListPodStatsResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{86}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *ListPodStatsResponse) GetPodStats() []*PodStats {
@@ -7653,7 +7743,7 @@ type RestartContainerRequest struct {
 
 func (x *RestartContainerRequest) Reset() {
 	*x = RestartContainerRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[87]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7665,7 +7755,7 @@ func (x *RestartContainerRequest) String() string {
 func (*RestartContainerRequest) ProtoMessage() {}
 
 func (x *RestartContainerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[87]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7678,7 +7768,7 @@ func (x *RestartContainerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartContainerRequest.ProtoReflect.Descriptor instead.
 func (*RestartContainerRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{87}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *RestartContainerRequest) GetPodId() string {
@@ -7726,7 +7816,7 @@ type RestartContainerResponse struct {
 
 func (x *RestartContainerResponse) Reset() {
 	*x = RestartContainerResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[88]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7738,7 +7828,7 @@ func (x *RestartContainerResponse) String() string {
 func (*RestartContainerResponse) ProtoMessage() {}
 
 func (x *RestartContainerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[88]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7751,7 +7841,7 @@ func (x *RestartContainerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartContainerResponse.ProtoReflect.Descriptor instead.
 func (*RestartContainerResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{88}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *RestartContainerResponse) GetStatus() *ContainerStatus {
@@ -7788,7 +7878,7 @@ type StartContainerRequest struct {
 
 func (x *StartContainerRequest) Reset() {
 	*x = StartContainerRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[89]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7800,7 +7890,7 @@ func (x *StartContainerRequest) String() string {
 func (*StartContainerRequest) ProtoMessage() {}
 
 func (x *StartContainerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[89]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7813,7 +7903,7 @@ func (x *StartContainerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartContainerRequest.ProtoReflect.Descriptor instead.
 func (*StartContainerRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{89}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *StartContainerRequest) GetPodId() string {
@@ -7851,7 +7941,7 @@ type StartContainerResponse struct {
 
 func (x *StartContainerResponse) Reset() {
 	*x = StartContainerResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[90]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7863,7 +7953,7 @@ func (x *StartContainerResponse) String() string {
 func (*StartContainerResponse) ProtoMessage() {}
 
 func (x *StartContainerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[90]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7876,7 +7966,7 @@ func (x *StartContainerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartContainerResponse.ProtoReflect.Descriptor instead.
 func (*StartContainerResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{90}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *StartContainerResponse) GetStatus() *ContainerStatus {
@@ -7914,7 +8004,7 @@ type ReopenContainerLogRequest struct {
 
 func (x *ReopenContainerLogRequest) Reset() {
 	*x = ReopenContainerLogRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[91]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7926,7 +8016,7 @@ func (x *ReopenContainerLogRequest) String() string {
 func (*ReopenContainerLogRequest) ProtoMessage() {}
 
 func (x *ReopenContainerLogRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[91]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7939,7 +8029,7 @@ func (x *ReopenContainerLogRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReopenContainerLogRequest.ProtoReflect.Descriptor instead.
 func (*ReopenContainerLogRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{91}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *ReopenContainerLogRequest) GetPodId() string {
@@ -7966,7 +8056,7 @@ type ReopenContainerLogResponse struct {
 
 func (x *ReopenContainerLogResponse) Reset() {
 	*x = ReopenContainerLogResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[92]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7978,7 +8068,7 @@ func (x *ReopenContainerLogResponse) String() string {
 func (*ReopenContainerLogResponse) ProtoMessage() {}
 
 func (x *ReopenContainerLogResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[92]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7991,7 +8081,7 @@ func (x *ReopenContainerLogResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReopenContainerLogResponse.ProtoReflect.Descriptor instead.
 func (*ReopenContainerLogResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{92}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{93}
 }
 
 // StopContainerRequest identifies the container to stop and leave terminated.
@@ -8013,7 +8103,7 @@ type StopContainerRequest struct {
 
 func (x *StopContainerRequest) Reset() {
 	*x = StopContainerRequest{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[93]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8025,7 +8115,7 @@ func (x *StopContainerRequest) String() string {
 func (*StopContainerRequest) ProtoMessage() {}
 
 func (x *StopContainerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[93]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8038,7 +8128,7 @@ func (x *StopContainerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopContainerRequest.ProtoReflect.Descriptor instead.
 func (*StopContainerRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{93}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *StopContainerRequest) GetPodId() string {
@@ -8088,7 +8178,7 @@ type StopContainerResponse struct {
 
 func (x *StopContainerResponse) Reset() {
 	*x = StopContainerResponse{}
-	mi := &file_runtime_v1_runtime_proto_msgTypes[94]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8100,7 +8190,7 @@ func (x *StopContainerResponse) String() string {
 func (*StopContainerResponse) ProtoMessage() {}
 
 func (x *StopContainerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_runtime_proto_msgTypes[94]
+	mi := &file_runtime_v1_runtime_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8113,7 +8203,7 @@ func (x *StopContainerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopContainerResponse.ProtoReflect.Descriptor instead.
 func (*StopContainerResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{94}
+	return file_runtime_v1_runtime_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *StopContainerResponse) GetStatus() *ContainerStatus {
@@ -8179,7 +8269,7 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x04\x10\x05J\x05\bi\x10\xc8\x01R\vrootfs_path\"Z\n" +
 	"\rWasmSignature\x12\x1a\n" +
 	"\brequired\x18\x01 \x01(\bR\brequired\x12-\n" +
-	"\x13public_key_spki_der\x18\x02 \x01(\fR\x10publicKeySpkiDer\"\xe1\x04\n" +
+	"\x13public_key_spki_der\x18\x02 \x01(\fR\x10publicKeySpkiDer\"\x9e\x05\n" +
 	"\x06Volume\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12E\n" +
 	"\n" +
@@ -8190,7 +8280,9 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\tprojected\x18\x06 \x01(\v2&.k3sm.runtime.v1.ProjectedVolumeSourceR\tprojected\x12j\n" +
 	"\x17persistent_volume_claim\x18\a \x01(\v22.k3sm.runtime.v1.PersistentVolumeClaimVolumeSourceR\x15persistentVolumeClaim\x12B\n" +
 	"\thost_path\x18\b \x01(\v2%.k3sm.runtime.v1.HostPathVolumeSourceR\bhostPath\x128\n" +
-	"\x05image\x18\t \x01(\v2\".k3sm.runtime.v1.ImageVolumeSourceR\x05image\"\x9c\x01\n" +
+	"\x05image\x18\t \x01(\v2\".k3sm.runtime.v1.ImageVolumeSourceR\x05image\x12;\n" +
+	"\x06expose\x18\n" +
+	" \x01(\v2#.k3sm.runtime.v1.ExposeVolumeSourceR\x06expose\"\x9c\x01\n" +
 	"\x15ConfigMapVolumeSource\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x120\n" +
 	"\x05items\x18\x02 \x03(\v2\x1a.k3sm.runtime.v1.KeyToPathR\x05items\x12!\n" +
@@ -8246,7 +8338,12 @@ const file_runtime_v1_runtime_proto_rawDesc = "" +
 	"\tread_only\x18\x02 \x01(\bR\breadOnly\">\n" +
 	"\x14HostPathVolumeSource\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
-	"\x04type\x18\x02 \x01(\tR\x04type\"\x8a\x01\n" +
+	"\x04type\x18\x02 \x01(\tR\x04type\"Y\n" +
+	"\x12ExposeVolumeSource\x12\x12\n" +
+	"\x04user\x18\x01 \x01(\tR\x04user\x12\x10\n" +
+	"\x03uid\x18\x02 \x01(\rR\x03uid\x12\x1d\n" +
+	"\n" +
+	"read_write\x18\x03 \x01(\bR\treadWrite\"\x8a\x01\n" +
 	"\x11ImageVolumeSource\x12\x1c\n" +
 	"\treference\x18\x01 \x01(\tR\treference\x12A\n" +
 	"\vpull_policy\x18\x02 \x01(\x0e2 .k3sm.runtime.v1.ImagePullPolicyR\n" +
@@ -8782,7 +8879,7 @@ func file_runtime_v1_runtime_proto_rawDescGZIP() []byte {
 }
 
 var file_runtime_v1_runtime_proto_enumTypes = make([]protoimpl.EnumInfo, 10)
-var file_runtime_v1_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 100)
+var file_runtime_v1_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 101)
 var file_runtime_v1_runtime_proto_goTypes = []any{
 	(ContainerRestartPolicy)(0),               // 0: k3sm.runtime.v1.ContainerRestartPolicy
 	(ImagePullPolicy)(0),                      // 1: k3sm.runtime.v1.ImagePullPolicy
@@ -8811,106 +8908,107 @@ var file_runtime_v1_runtime_proto_goTypes = []any{
 	(*KeyToPath)(nil),                         // 24: k3sm.runtime.v1.KeyToPath
 	(*PersistentVolumeClaimVolumeSource)(nil), // 25: k3sm.runtime.v1.PersistentVolumeClaimVolumeSource
 	(*HostPathVolumeSource)(nil),              // 26: k3sm.runtime.v1.HostPathVolumeSource
-	(*ImageVolumeSource)(nil),                 // 27: k3sm.runtime.v1.ImageVolumeSource
-	(*PodSecurityContext)(nil),                // 28: k3sm.runtime.v1.PodSecurityContext
-	(*LocalObjectReference)(nil),              // 29: k3sm.runtime.v1.LocalObjectReference
-	(*Container)(nil),                         // 30: k3sm.runtime.v1.Container
-	(*EnvVar)(nil),                            // 31: k3sm.runtime.v1.EnvVar
-	(*VolumeMount)(nil),                       // 32: k3sm.runtime.v1.VolumeMount
-	(*ContainerPort)(nil),                     // 33: k3sm.runtime.v1.ContainerPort
-	(*Probe)(nil),                             // 34: k3sm.runtime.v1.Probe
-	(*HTTPGetAction)(nil),                     // 35: k3sm.runtime.v1.HTTPGetAction
-	(*HTTPHeader)(nil),                        // 36: k3sm.runtime.v1.HTTPHeader
-	(*TCPSocketAction)(nil),                   // 37: k3sm.runtime.v1.TCPSocketAction
-	(*ExecAction)(nil),                        // 38: k3sm.runtime.v1.ExecAction
-	(*IntOrString)(nil),                       // 39: k3sm.runtime.v1.IntOrString
-	(*SecurityContext)(nil),                   // 40: k3sm.runtime.v1.SecurityContext
-	(*EnvFromSource)(nil),                     // 41: k3sm.runtime.v1.EnvFromSource
-	(*ConfigMapEnvSource)(nil),                // 42: k3sm.runtime.v1.ConfigMapEnvSource
-	(*SecretEnvSource)(nil),                   // 43: k3sm.runtime.v1.SecretEnvSource
-	(*EnvVarSource)(nil),                      // 44: k3sm.runtime.v1.EnvVarSource
-	(*ObjectFieldSelector)(nil),               // 45: k3sm.runtime.v1.ObjectFieldSelector
-	(*ConfigMapKeySelector)(nil),              // 46: k3sm.runtime.v1.ConfigMapKeySelector
-	(*SecretKeySelector)(nil),                 // 47: k3sm.runtime.v1.SecretKeySelector
-	(*SandboxProfile)(nil),                    // 48: k3sm.runtime.v1.SandboxProfile
-	(*ImageManifest)(nil),                     // 49: k3sm.runtime.v1.ImageManifest
-	(*Descriptor)(nil),                        // 50: k3sm.runtime.v1.Descriptor
-	(*Platform)(nil),                          // 51: k3sm.runtime.v1.Platform
-	(*PodStatus)(nil),                         // 52: k3sm.runtime.v1.PodStatus
-	(*PodCondition)(nil),                      // 53: k3sm.runtime.v1.PodCondition
-	(*ContainerStatus)(nil),                   // 54: k3sm.runtime.v1.ContainerStatus
-	(*ImagePullOutcome)(nil),                  // 55: k3sm.runtime.v1.ImagePullOutcome
-	(*VolumeMountStatus)(nil),                 // 56: k3sm.runtime.v1.VolumeMountStatus
-	(*ContainerUser)(nil),                     // 57: k3sm.runtime.v1.ContainerUser
-	(*LinuxContainerUser)(nil),                // 58: k3sm.runtime.v1.LinuxContainerUser
-	(*ContainerState)(nil),                    // 59: k3sm.runtime.v1.ContainerState
-	(*ContainerStateWaiting)(nil),             // 60: k3sm.runtime.v1.ContainerStateWaiting
-	(*ContainerStateRunning)(nil),             // 61: k3sm.runtime.v1.ContainerStateRunning
-	(*ContainerStateTerminated)(nil),          // 62: k3sm.runtime.v1.ContainerStateTerminated
-	(*ResourceLimit)(nil),                     // 63: k3sm.runtime.v1.ResourceLimit
-	(*ResourceList)(nil),                      // 64: k3sm.runtime.v1.ResourceList
-	(*ResourceRequirements)(nil),              // 65: k3sm.runtime.v1.ResourceRequirements
-	(*PodStats)(nil),                          // 66: k3sm.runtime.v1.PodStats
-	(*ProcessStats)(nil),                      // 67: k3sm.runtime.v1.ProcessStats
-	(*ContainerStats)(nil),                    // 68: k3sm.runtime.v1.ContainerStats
-	(*CPUStats)(nil),                          // 69: k3sm.runtime.v1.CPUStats
-	(*MemoryStats)(nil),                       // 70: k3sm.runtime.v1.MemoryStats
-	(*CreatePodRequest)(nil),                  // 71: k3sm.runtime.v1.CreatePodRequest
-	(*CreatePodResponse)(nil),                 // 72: k3sm.runtime.v1.CreatePodResponse
-	(*DeletePodRequest)(nil),                  // 73: k3sm.runtime.v1.DeletePodRequest
-	(*DeletePodResponse)(nil),                 // 74: k3sm.runtime.v1.DeletePodResponse
-	(*UpdatePodRequest)(nil),                  // 75: k3sm.runtime.v1.UpdatePodRequest
-	(*UpdatePodResponse)(nil),                 // 76: k3sm.runtime.v1.UpdatePodResponse
-	(*WatchPodStatusRequest)(nil),             // 77: k3sm.runtime.v1.WatchPodStatusRequest
-	(*PodStatusEvent)(nil),                    // 78: k3sm.runtime.v1.PodStatusEvent
-	(*GetPodStatusRequest)(nil),               // 79: k3sm.runtime.v1.GetPodStatusRequest
-	(*GetPodStatusResponse)(nil),              // 80: k3sm.runtime.v1.GetPodStatusResponse
-	(*GetLogsRequest)(nil),                    // 81: k3sm.runtime.v1.GetLogsRequest
-	(*LogEntry)(nil),                          // 82: k3sm.runtime.v1.LogEntry
-	(*ExecRequest)(nil),                       // 83: k3sm.runtime.v1.ExecRequest
-	(*ExecResponse)(nil),                      // 84: k3sm.runtime.v1.ExecResponse
-	(*ExecResult)(nil),                        // 85: k3sm.runtime.v1.ExecResult
-	(*AttachRequest)(nil),                     // 86: k3sm.runtime.v1.AttachRequest
-	(*AttachResponse)(nil),                    // 87: k3sm.runtime.v1.AttachResponse
-	(*PortForwardRequest)(nil),                // 88: k3sm.runtime.v1.PortForwardRequest
-	(*PortForwardResponse)(nil),               // 89: k3sm.runtime.v1.PortForwardResponse
-	(*TerminalSize)(nil),                      // 90: k3sm.runtime.v1.TerminalSize
-	(*GetRuntimeInfoRequest)(nil),             // 91: k3sm.runtime.v1.GetRuntimeInfoRequest
-	(*GetRuntimeInfoResponse)(nil),            // 92: k3sm.runtime.v1.GetRuntimeInfoResponse
-	(*GPUFacts)(nil),                          // 93: k3sm.runtime.v1.GPUFacts
-	(*RuntimeCondition)(nil),                  // 94: k3sm.runtime.v1.RuntimeCondition
-	(*ListPodStatsRequest)(nil),               // 95: k3sm.runtime.v1.ListPodStatsRequest
-	(*ListPodStatsResponse)(nil),              // 96: k3sm.runtime.v1.ListPodStatsResponse
-	(*RestartContainerRequest)(nil),           // 97: k3sm.runtime.v1.RestartContainerRequest
-	(*RestartContainerResponse)(nil),          // 98: k3sm.runtime.v1.RestartContainerResponse
-	(*StartContainerRequest)(nil),             // 99: k3sm.runtime.v1.StartContainerRequest
-	(*StartContainerResponse)(nil),            // 100: k3sm.runtime.v1.StartContainerResponse
-	(*ReopenContainerLogRequest)(nil),         // 101: k3sm.runtime.v1.ReopenContainerLogRequest
-	(*ReopenContainerLogResponse)(nil),        // 102: k3sm.runtime.v1.ReopenContainerLogResponse
-	(*StopContainerRequest)(nil),              // 103: k3sm.runtime.v1.StopContainerRequest
-	(*StopContainerResponse)(nil),             // 104: k3sm.runtime.v1.StopContainerResponse
-	nil,                                       // 105: k3sm.runtime.v1.PodBox.LabelsEntry
-	nil,                                       // 106: k3sm.runtime.v1.PodBox.AnnotationsEntry
-	nil,                                       // 107: k3sm.runtime.v1.ImageManifest.AnnotationsEntry
-	nil,                                       // 108: k3sm.runtime.v1.Descriptor.AnnotationsEntry
-	nil,                                       // 109: k3sm.runtime.v1.ResourceList.QuantitiesEntry
-	(*timestamppb.Timestamp)(nil),             // 110: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),               // 111: google.protobuf.Duration
-	(*status.Status)(nil),                     // 112: google.rpc.Status
+	(*ExposeVolumeSource)(nil),                // 27: k3sm.runtime.v1.ExposeVolumeSource
+	(*ImageVolumeSource)(nil),                 // 28: k3sm.runtime.v1.ImageVolumeSource
+	(*PodSecurityContext)(nil),                // 29: k3sm.runtime.v1.PodSecurityContext
+	(*LocalObjectReference)(nil),              // 30: k3sm.runtime.v1.LocalObjectReference
+	(*Container)(nil),                         // 31: k3sm.runtime.v1.Container
+	(*EnvVar)(nil),                            // 32: k3sm.runtime.v1.EnvVar
+	(*VolumeMount)(nil),                       // 33: k3sm.runtime.v1.VolumeMount
+	(*ContainerPort)(nil),                     // 34: k3sm.runtime.v1.ContainerPort
+	(*Probe)(nil),                             // 35: k3sm.runtime.v1.Probe
+	(*HTTPGetAction)(nil),                     // 36: k3sm.runtime.v1.HTTPGetAction
+	(*HTTPHeader)(nil),                        // 37: k3sm.runtime.v1.HTTPHeader
+	(*TCPSocketAction)(nil),                   // 38: k3sm.runtime.v1.TCPSocketAction
+	(*ExecAction)(nil),                        // 39: k3sm.runtime.v1.ExecAction
+	(*IntOrString)(nil),                       // 40: k3sm.runtime.v1.IntOrString
+	(*SecurityContext)(nil),                   // 41: k3sm.runtime.v1.SecurityContext
+	(*EnvFromSource)(nil),                     // 42: k3sm.runtime.v1.EnvFromSource
+	(*ConfigMapEnvSource)(nil),                // 43: k3sm.runtime.v1.ConfigMapEnvSource
+	(*SecretEnvSource)(nil),                   // 44: k3sm.runtime.v1.SecretEnvSource
+	(*EnvVarSource)(nil),                      // 45: k3sm.runtime.v1.EnvVarSource
+	(*ObjectFieldSelector)(nil),               // 46: k3sm.runtime.v1.ObjectFieldSelector
+	(*ConfigMapKeySelector)(nil),              // 47: k3sm.runtime.v1.ConfigMapKeySelector
+	(*SecretKeySelector)(nil),                 // 48: k3sm.runtime.v1.SecretKeySelector
+	(*SandboxProfile)(nil),                    // 49: k3sm.runtime.v1.SandboxProfile
+	(*ImageManifest)(nil),                     // 50: k3sm.runtime.v1.ImageManifest
+	(*Descriptor)(nil),                        // 51: k3sm.runtime.v1.Descriptor
+	(*Platform)(nil),                          // 52: k3sm.runtime.v1.Platform
+	(*PodStatus)(nil),                         // 53: k3sm.runtime.v1.PodStatus
+	(*PodCondition)(nil),                      // 54: k3sm.runtime.v1.PodCondition
+	(*ContainerStatus)(nil),                   // 55: k3sm.runtime.v1.ContainerStatus
+	(*ImagePullOutcome)(nil),                  // 56: k3sm.runtime.v1.ImagePullOutcome
+	(*VolumeMountStatus)(nil),                 // 57: k3sm.runtime.v1.VolumeMountStatus
+	(*ContainerUser)(nil),                     // 58: k3sm.runtime.v1.ContainerUser
+	(*LinuxContainerUser)(nil),                // 59: k3sm.runtime.v1.LinuxContainerUser
+	(*ContainerState)(nil),                    // 60: k3sm.runtime.v1.ContainerState
+	(*ContainerStateWaiting)(nil),             // 61: k3sm.runtime.v1.ContainerStateWaiting
+	(*ContainerStateRunning)(nil),             // 62: k3sm.runtime.v1.ContainerStateRunning
+	(*ContainerStateTerminated)(nil),          // 63: k3sm.runtime.v1.ContainerStateTerminated
+	(*ResourceLimit)(nil),                     // 64: k3sm.runtime.v1.ResourceLimit
+	(*ResourceList)(nil),                      // 65: k3sm.runtime.v1.ResourceList
+	(*ResourceRequirements)(nil),              // 66: k3sm.runtime.v1.ResourceRequirements
+	(*PodStats)(nil),                          // 67: k3sm.runtime.v1.PodStats
+	(*ProcessStats)(nil),                      // 68: k3sm.runtime.v1.ProcessStats
+	(*ContainerStats)(nil),                    // 69: k3sm.runtime.v1.ContainerStats
+	(*CPUStats)(nil),                          // 70: k3sm.runtime.v1.CPUStats
+	(*MemoryStats)(nil),                       // 71: k3sm.runtime.v1.MemoryStats
+	(*CreatePodRequest)(nil),                  // 72: k3sm.runtime.v1.CreatePodRequest
+	(*CreatePodResponse)(nil),                 // 73: k3sm.runtime.v1.CreatePodResponse
+	(*DeletePodRequest)(nil),                  // 74: k3sm.runtime.v1.DeletePodRequest
+	(*DeletePodResponse)(nil),                 // 75: k3sm.runtime.v1.DeletePodResponse
+	(*UpdatePodRequest)(nil),                  // 76: k3sm.runtime.v1.UpdatePodRequest
+	(*UpdatePodResponse)(nil),                 // 77: k3sm.runtime.v1.UpdatePodResponse
+	(*WatchPodStatusRequest)(nil),             // 78: k3sm.runtime.v1.WatchPodStatusRequest
+	(*PodStatusEvent)(nil),                    // 79: k3sm.runtime.v1.PodStatusEvent
+	(*GetPodStatusRequest)(nil),               // 80: k3sm.runtime.v1.GetPodStatusRequest
+	(*GetPodStatusResponse)(nil),              // 81: k3sm.runtime.v1.GetPodStatusResponse
+	(*GetLogsRequest)(nil),                    // 82: k3sm.runtime.v1.GetLogsRequest
+	(*LogEntry)(nil),                          // 83: k3sm.runtime.v1.LogEntry
+	(*ExecRequest)(nil),                       // 84: k3sm.runtime.v1.ExecRequest
+	(*ExecResponse)(nil),                      // 85: k3sm.runtime.v1.ExecResponse
+	(*ExecResult)(nil),                        // 86: k3sm.runtime.v1.ExecResult
+	(*AttachRequest)(nil),                     // 87: k3sm.runtime.v1.AttachRequest
+	(*AttachResponse)(nil),                    // 88: k3sm.runtime.v1.AttachResponse
+	(*PortForwardRequest)(nil),                // 89: k3sm.runtime.v1.PortForwardRequest
+	(*PortForwardResponse)(nil),               // 90: k3sm.runtime.v1.PortForwardResponse
+	(*TerminalSize)(nil),                      // 91: k3sm.runtime.v1.TerminalSize
+	(*GetRuntimeInfoRequest)(nil),             // 92: k3sm.runtime.v1.GetRuntimeInfoRequest
+	(*GetRuntimeInfoResponse)(nil),            // 93: k3sm.runtime.v1.GetRuntimeInfoResponse
+	(*GPUFacts)(nil),                          // 94: k3sm.runtime.v1.GPUFacts
+	(*RuntimeCondition)(nil),                  // 95: k3sm.runtime.v1.RuntimeCondition
+	(*ListPodStatsRequest)(nil),               // 96: k3sm.runtime.v1.ListPodStatsRequest
+	(*ListPodStatsResponse)(nil),              // 97: k3sm.runtime.v1.ListPodStatsResponse
+	(*RestartContainerRequest)(nil),           // 98: k3sm.runtime.v1.RestartContainerRequest
+	(*RestartContainerResponse)(nil),          // 99: k3sm.runtime.v1.RestartContainerResponse
+	(*StartContainerRequest)(nil),             // 100: k3sm.runtime.v1.StartContainerRequest
+	(*StartContainerResponse)(nil),            // 101: k3sm.runtime.v1.StartContainerResponse
+	(*ReopenContainerLogRequest)(nil),         // 102: k3sm.runtime.v1.ReopenContainerLogRequest
+	(*ReopenContainerLogResponse)(nil),        // 103: k3sm.runtime.v1.ReopenContainerLogResponse
+	(*StopContainerRequest)(nil),              // 104: k3sm.runtime.v1.StopContainerRequest
+	(*StopContainerResponse)(nil),             // 105: k3sm.runtime.v1.StopContainerResponse
+	nil,                                       // 106: k3sm.runtime.v1.PodBox.LabelsEntry
+	nil,                                       // 107: k3sm.runtime.v1.PodBox.AnnotationsEntry
+	nil,                                       // 108: k3sm.runtime.v1.ImageManifest.AnnotationsEntry
+	nil,                                       // 109: k3sm.runtime.v1.Descriptor.AnnotationsEntry
+	nil,                                       // 110: k3sm.runtime.v1.ResourceList.QuantitiesEntry
+	(*timestamppb.Timestamp)(nil),             // 111: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),               // 112: google.protobuf.Duration
+	(*status.Status)(nil),                     // 113: google.rpc.Status
 }
 var file_runtime_v1_runtime_proto_depIdxs = []int32{
-	30,  // 0: k3sm.runtime.v1.PodBox.init_containers:type_name -> k3sm.runtime.v1.Container
-	30,  // 1: k3sm.runtime.v1.PodBox.containers:type_name -> k3sm.runtime.v1.Container
-	48,  // 2: k3sm.runtime.v1.PodBox.sandbox_profile:type_name -> k3sm.runtime.v1.SandboxProfile
+	31,  // 0: k3sm.runtime.v1.PodBox.init_containers:type_name -> k3sm.runtime.v1.Container
+	31,  // 1: k3sm.runtime.v1.PodBox.containers:type_name -> k3sm.runtime.v1.Container
+	49,  // 2: k3sm.runtime.v1.PodBox.sandbox_profile:type_name -> k3sm.runtime.v1.SandboxProfile
 	3,   // 3: k3sm.runtime.v1.PodBox.signature_policy:type_name -> k3sm.runtime.v1.SignaturePolicy
-	105, // 4: k3sm.runtime.v1.PodBox.labels:type_name -> k3sm.runtime.v1.PodBox.LabelsEntry
-	106, // 5: k3sm.runtime.v1.PodBox.annotations:type_name -> k3sm.runtime.v1.PodBox.AnnotationsEntry
+	106, // 4: k3sm.runtime.v1.PodBox.labels:type_name -> k3sm.runtime.v1.PodBox.LabelsEntry
+	107, // 5: k3sm.runtime.v1.PodBox.annotations:type_name -> k3sm.runtime.v1.PodBox.AnnotationsEntry
 	12,  // 6: k3sm.runtime.v1.PodBox.volumes:type_name -> k3sm.runtime.v1.Volume
-	28,  // 7: k3sm.runtime.v1.PodBox.pod_security_context:type_name -> k3sm.runtime.v1.PodSecurityContext
-	29,  // 8: k3sm.runtime.v1.PodBox.image_pull_secrets:type_name -> k3sm.runtime.v1.LocalObjectReference
+	29,  // 7: k3sm.runtime.v1.PodBox.pod_security_context:type_name -> k3sm.runtime.v1.PodSecurityContext
+	30,  // 8: k3sm.runtime.v1.PodBox.image_pull_secrets:type_name -> k3sm.runtime.v1.LocalObjectReference
 	6,   // 9: k3sm.runtime.v1.PodBox.qos_class:type_name -> k3sm.runtime.v1.QOSClass
-	63,  // 10: k3sm.runtime.v1.PodBox.rlimits:type_name -> k3sm.runtime.v1.ResourceLimit
-	30,  // 11: k3sm.runtime.v1.PodBox.ephemeral_containers:type_name -> k3sm.runtime.v1.Container
+	64,  // 10: k3sm.runtime.v1.PodBox.rlimits:type_name -> k3sm.runtime.v1.ResourceLimit
+	31,  // 11: k3sm.runtime.v1.PodBox.ephemeral_containers:type_name -> k3sm.runtime.v1.Container
 	11,  // 12: k3sm.runtime.v1.PodBox.wasm_signature:type_name -> k3sm.runtime.v1.WasmSignature
 	13,  // 13: k3sm.runtime.v1.Volume.config_map:type_name -> k3sm.runtime.v1.ConfigMapVolumeSource
 	14,  // 14: k3sm.runtime.v1.Volume.secret:type_name -> k3sm.runtime.v1.SecretVolumeSource
@@ -8919,159 +9017,160 @@ var file_runtime_v1_runtime_proto_depIdxs = []int32{
 	18,  // 17: k3sm.runtime.v1.Volume.projected:type_name -> k3sm.runtime.v1.ProjectedVolumeSource
 	25,  // 18: k3sm.runtime.v1.Volume.persistent_volume_claim:type_name -> k3sm.runtime.v1.PersistentVolumeClaimVolumeSource
 	26,  // 19: k3sm.runtime.v1.Volume.host_path:type_name -> k3sm.runtime.v1.HostPathVolumeSource
-	27,  // 20: k3sm.runtime.v1.Volume.image:type_name -> k3sm.runtime.v1.ImageVolumeSource
-	24,  // 21: k3sm.runtime.v1.ConfigMapVolumeSource.items:type_name -> k3sm.runtime.v1.KeyToPath
-	24,  // 22: k3sm.runtime.v1.SecretVolumeSource.items:type_name -> k3sm.runtime.v1.KeyToPath
-	17,  // 23: k3sm.runtime.v1.DownwardAPIVolumeSource.items:type_name -> k3sm.runtime.v1.DownwardAPIVolumeFile
-	45,  // 24: k3sm.runtime.v1.DownwardAPIVolumeFile.field_ref:type_name -> k3sm.runtime.v1.ObjectFieldSelector
-	19,  // 25: k3sm.runtime.v1.ProjectedVolumeSource.sources:type_name -> k3sm.runtime.v1.VolumeProjection
-	20,  // 26: k3sm.runtime.v1.VolumeProjection.config_map:type_name -> k3sm.runtime.v1.ConfigMapProjection
-	21,  // 27: k3sm.runtime.v1.VolumeProjection.secret:type_name -> k3sm.runtime.v1.SecretProjection
-	22,  // 28: k3sm.runtime.v1.VolumeProjection.downward_api:type_name -> k3sm.runtime.v1.DownwardAPIProjection
-	23,  // 29: k3sm.runtime.v1.VolumeProjection.service_account_token:type_name -> k3sm.runtime.v1.ServiceAccountTokenProjection
-	24,  // 30: k3sm.runtime.v1.ConfigMapProjection.items:type_name -> k3sm.runtime.v1.KeyToPath
-	24,  // 31: k3sm.runtime.v1.SecretProjection.items:type_name -> k3sm.runtime.v1.KeyToPath
-	17,  // 32: k3sm.runtime.v1.DownwardAPIProjection.items:type_name -> k3sm.runtime.v1.DownwardAPIVolumeFile
-	1,   // 33: k3sm.runtime.v1.ImageVolumeSource.pull_policy:type_name -> k3sm.runtime.v1.ImagePullPolicy
-	31,  // 34: k3sm.runtime.v1.Container.env:type_name -> k3sm.runtime.v1.EnvVar
-	32,  // 35: k3sm.runtime.v1.Container.volume_mounts:type_name -> k3sm.runtime.v1.VolumeMount
-	33,  // 36: k3sm.runtime.v1.Container.ports:type_name -> k3sm.runtime.v1.ContainerPort
-	34,  // 37: k3sm.runtime.v1.Container.liveness_probe:type_name -> k3sm.runtime.v1.Probe
-	34,  // 38: k3sm.runtime.v1.Container.readiness_probe:type_name -> k3sm.runtime.v1.Probe
-	34,  // 39: k3sm.runtime.v1.Container.startup_probe:type_name -> k3sm.runtime.v1.Probe
-	40,  // 40: k3sm.runtime.v1.Container.security_context:type_name -> k3sm.runtime.v1.SecurityContext
-	41,  // 41: k3sm.runtime.v1.Container.env_from:type_name -> k3sm.runtime.v1.EnvFromSource
-	0,   // 42: k3sm.runtime.v1.Container.restart_policy:type_name -> k3sm.runtime.v1.ContainerRestartPolicy
-	51,  // 43: k3sm.runtime.v1.Container.image_platform:type_name -> k3sm.runtime.v1.Platform
-	1,   // 44: k3sm.runtime.v1.Container.image_pull_policy:type_name -> k3sm.runtime.v1.ImagePullPolicy
-	44,  // 45: k3sm.runtime.v1.EnvVar.value_from:type_name -> k3sm.runtime.v1.EnvVarSource
-	35,  // 46: k3sm.runtime.v1.Probe.http_get:type_name -> k3sm.runtime.v1.HTTPGetAction
-	37,  // 47: k3sm.runtime.v1.Probe.tcp_socket:type_name -> k3sm.runtime.v1.TCPSocketAction
-	38,  // 48: k3sm.runtime.v1.Probe.exec:type_name -> k3sm.runtime.v1.ExecAction
-	39,  // 49: k3sm.runtime.v1.HTTPGetAction.port:type_name -> k3sm.runtime.v1.IntOrString
-	36,  // 50: k3sm.runtime.v1.HTTPGetAction.http_headers:type_name -> k3sm.runtime.v1.HTTPHeader
-	39,  // 51: k3sm.runtime.v1.TCPSocketAction.port:type_name -> k3sm.runtime.v1.IntOrString
-	42,  // 52: k3sm.runtime.v1.EnvFromSource.config_map_ref:type_name -> k3sm.runtime.v1.ConfigMapEnvSource
-	43,  // 53: k3sm.runtime.v1.EnvFromSource.secret_ref:type_name -> k3sm.runtime.v1.SecretEnvSource
-	45,  // 54: k3sm.runtime.v1.EnvVarSource.field_ref:type_name -> k3sm.runtime.v1.ObjectFieldSelector
-	46,  // 55: k3sm.runtime.v1.EnvVarSource.config_map_key_ref:type_name -> k3sm.runtime.v1.ConfigMapKeySelector
-	47,  // 56: k3sm.runtime.v1.EnvVarSource.secret_key_ref:type_name -> k3sm.runtime.v1.SecretKeySelector
-	2,   // 57: k3sm.runtime.v1.SandboxProfile.backend:type_name -> k3sm.runtime.v1.SandboxBackend
-	50,  // 58: k3sm.runtime.v1.ImageManifest.config:type_name -> k3sm.runtime.v1.Descriptor
-	50,  // 59: k3sm.runtime.v1.ImageManifest.layers:type_name -> k3sm.runtime.v1.Descriptor
-	107, // 60: k3sm.runtime.v1.ImageManifest.annotations:type_name -> k3sm.runtime.v1.ImageManifest.AnnotationsEntry
-	51,  // 61: k3sm.runtime.v1.ImageManifest.platform:type_name -> k3sm.runtime.v1.Platform
-	108, // 62: k3sm.runtime.v1.Descriptor.annotations:type_name -> k3sm.runtime.v1.Descriptor.AnnotationsEntry
-	51,  // 63: k3sm.runtime.v1.Descriptor.platform:type_name -> k3sm.runtime.v1.Platform
-	4,   // 64: k3sm.runtime.v1.PodStatus.phase:type_name -> k3sm.runtime.v1.PodPhase
-	53,  // 65: k3sm.runtime.v1.PodStatus.conditions:type_name -> k3sm.runtime.v1.PodCondition
-	110, // 66: k3sm.runtime.v1.PodStatus.start_time:type_name -> google.protobuf.Timestamp
-	54,  // 67: k3sm.runtime.v1.PodStatus.init_container_statuses:type_name -> k3sm.runtime.v1.ContainerStatus
-	54,  // 68: k3sm.runtime.v1.PodStatus.container_statuses:type_name -> k3sm.runtime.v1.ContainerStatus
-	54,  // 69: k3sm.runtime.v1.PodStatus.ephemeral_container_statuses:type_name -> k3sm.runtime.v1.ContainerStatus
-	5,   // 70: k3sm.runtime.v1.PodCondition.status:type_name -> k3sm.runtime.v1.ConditionStatus
-	110, // 71: k3sm.runtime.v1.PodCondition.last_probe_time:type_name -> google.protobuf.Timestamp
-	110, // 72: k3sm.runtime.v1.PodCondition.last_transition_time:type_name -> google.protobuf.Timestamp
-	59,  // 73: k3sm.runtime.v1.ContainerStatus.state:type_name -> k3sm.runtime.v1.ContainerState
-	59,  // 74: k3sm.runtime.v1.ContainerStatus.last_termination_state:type_name -> k3sm.runtime.v1.ContainerState
-	56,  // 75: k3sm.runtime.v1.ContainerStatus.volume_mounts:type_name -> k3sm.runtime.v1.VolumeMountStatus
-	57,  // 76: k3sm.runtime.v1.ContainerStatus.user:type_name -> k3sm.runtime.v1.ContainerUser
-	55,  // 77: k3sm.runtime.v1.ContainerStatus.image_pull:type_name -> k3sm.runtime.v1.ImagePullOutcome
-	65,  // 78: k3sm.runtime.v1.ContainerStatus.resources:type_name -> k3sm.runtime.v1.ResourceRequirements
-	64,  // 79: k3sm.runtime.v1.ContainerStatus.allocated_resources:type_name -> k3sm.runtime.v1.ResourceList
-	111, // 80: k3sm.runtime.v1.ImagePullOutcome.duration:type_name -> google.protobuf.Duration
-	58,  // 81: k3sm.runtime.v1.ContainerUser.linux:type_name -> k3sm.runtime.v1.LinuxContainerUser
-	60,  // 82: k3sm.runtime.v1.ContainerState.waiting:type_name -> k3sm.runtime.v1.ContainerStateWaiting
-	61,  // 83: k3sm.runtime.v1.ContainerState.running:type_name -> k3sm.runtime.v1.ContainerStateRunning
-	62,  // 84: k3sm.runtime.v1.ContainerState.terminated:type_name -> k3sm.runtime.v1.ContainerStateTerminated
-	9,   // 85: k3sm.runtime.v1.ContainerStateWaiting.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
-	110, // 86: k3sm.runtime.v1.ContainerStateRunning.started_at:type_name -> google.protobuf.Timestamp
-	110, // 87: k3sm.runtime.v1.ContainerStateTerminated.started_at:type_name -> google.protobuf.Timestamp
-	110, // 88: k3sm.runtime.v1.ContainerStateTerminated.finished_at:type_name -> google.protobuf.Timestamp
-	109, // 89: k3sm.runtime.v1.ResourceList.quantities:type_name -> k3sm.runtime.v1.ResourceList.QuantitiesEntry
-	64,  // 90: k3sm.runtime.v1.ResourceRequirements.limits:type_name -> k3sm.runtime.v1.ResourceList
-	64,  // 91: k3sm.runtime.v1.ResourceRequirements.requests:type_name -> k3sm.runtime.v1.ResourceList
-	110, // 92: k3sm.runtime.v1.PodStats.timestamp:type_name -> google.protobuf.Timestamp
-	69,  // 93: k3sm.runtime.v1.PodStats.cpu:type_name -> k3sm.runtime.v1.CPUStats
-	70,  // 94: k3sm.runtime.v1.PodStats.memory:type_name -> k3sm.runtime.v1.MemoryStats
-	68,  // 95: k3sm.runtime.v1.PodStats.containers:type_name -> k3sm.runtime.v1.ContainerStats
-	67,  // 96: k3sm.runtime.v1.PodStats.process:type_name -> k3sm.runtime.v1.ProcessStats
-	110, // 97: k3sm.runtime.v1.ContainerStats.timestamp:type_name -> google.protobuf.Timestamp
-	69,  // 98: k3sm.runtime.v1.ContainerStats.cpu:type_name -> k3sm.runtime.v1.CPUStats
-	70,  // 99: k3sm.runtime.v1.ContainerStats.memory:type_name -> k3sm.runtime.v1.MemoryStats
-	110, // 100: k3sm.runtime.v1.CPUStats.timestamp:type_name -> google.protobuf.Timestamp
-	110, // 101: k3sm.runtime.v1.MemoryStats.timestamp:type_name -> google.protobuf.Timestamp
-	10,  // 102: k3sm.runtime.v1.CreatePodRequest.pod:type_name -> k3sm.runtime.v1.PodBox
-	52,  // 103: k3sm.runtime.v1.CreatePodResponse.status:type_name -> k3sm.runtime.v1.PodStatus
-	112, // 104: k3sm.runtime.v1.CreatePodResponse.error:type_name -> google.rpc.Status
-	9,   // 105: k3sm.runtime.v1.CreatePodResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
-	112, // 106: k3sm.runtime.v1.DeletePodResponse.error:type_name -> google.rpc.Status
-	9,   // 107: k3sm.runtime.v1.DeletePodResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
-	10,  // 108: k3sm.runtime.v1.UpdatePodRequest.pod:type_name -> k3sm.runtime.v1.PodBox
-	52,  // 109: k3sm.runtime.v1.UpdatePodResponse.status:type_name -> k3sm.runtime.v1.PodStatus
-	112, // 110: k3sm.runtime.v1.UpdatePodResponse.error:type_name -> google.rpc.Status
-	9,   // 111: k3sm.runtime.v1.UpdatePodResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
-	7,   // 112: k3sm.runtime.v1.PodStatusEvent.type:type_name -> k3sm.runtime.v1.PodStatusEventType
-	52,  // 113: k3sm.runtime.v1.PodStatusEvent.status:type_name -> k3sm.runtime.v1.PodStatus
-	52,  // 114: k3sm.runtime.v1.GetPodStatusResponse.status:type_name -> k3sm.runtime.v1.PodStatus
-	112, // 115: k3sm.runtime.v1.GetPodStatusResponse.error:type_name -> google.rpc.Status
-	110, // 116: k3sm.runtime.v1.GetLogsRequest.since_time:type_name -> google.protobuf.Timestamp
-	110, // 117: k3sm.runtime.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
-	8,   // 118: k3sm.runtime.v1.LogEntry.stream:type_name -> k3sm.runtime.v1.LogStream
-	90,  // 119: k3sm.runtime.v1.ExecRequest.resize:type_name -> k3sm.runtime.v1.TerminalSize
-	85,  // 120: k3sm.runtime.v1.ExecResponse.exit:type_name -> k3sm.runtime.v1.ExecResult
-	112, // 121: k3sm.runtime.v1.ExecResult.error:type_name -> google.rpc.Status
-	90,  // 122: k3sm.runtime.v1.AttachRequest.resize:type_name -> k3sm.runtime.v1.TerminalSize
-	85,  // 123: k3sm.runtime.v1.AttachResponse.exit:type_name -> k3sm.runtime.v1.ExecResult
-	112, // 124: k3sm.runtime.v1.PortForwardResponse.error:type_name -> google.rpc.Status
-	94,  // 125: k3sm.runtime.v1.GetRuntimeInfoResponse.conditions:type_name -> k3sm.runtime.v1.RuntimeCondition
-	93,  // 126: k3sm.runtime.v1.GetRuntimeInfoResponse.gpu:type_name -> k3sm.runtime.v1.GPUFacts
-	5,   // 127: k3sm.runtime.v1.RuntimeCondition.status:type_name -> k3sm.runtime.v1.ConditionStatus
-	66,  // 128: k3sm.runtime.v1.ListPodStatsResponse.pod_stats:type_name -> k3sm.runtime.v1.PodStats
-	54,  // 129: k3sm.runtime.v1.RestartContainerResponse.status:type_name -> k3sm.runtime.v1.ContainerStatus
-	112, // 130: k3sm.runtime.v1.RestartContainerResponse.error:type_name -> google.rpc.Status
-	9,   // 131: k3sm.runtime.v1.RestartContainerResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
-	54,  // 132: k3sm.runtime.v1.StartContainerResponse.status:type_name -> k3sm.runtime.v1.ContainerStatus
-	112, // 133: k3sm.runtime.v1.StartContainerResponse.error:type_name -> google.rpc.Status
-	9,   // 134: k3sm.runtime.v1.StartContainerResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
-	54,  // 135: k3sm.runtime.v1.StopContainerResponse.status:type_name -> k3sm.runtime.v1.ContainerStatus
-	112, // 136: k3sm.runtime.v1.StopContainerResponse.error:type_name -> google.rpc.Status
-	9,   // 137: k3sm.runtime.v1.StopContainerResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
-	71,  // 138: k3sm.runtime.v1.Runtime.CreatePod:input_type -> k3sm.runtime.v1.CreatePodRequest
-	73,  // 139: k3sm.runtime.v1.Runtime.DeletePod:input_type -> k3sm.runtime.v1.DeletePodRequest
-	75,  // 140: k3sm.runtime.v1.Runtime.UpdatePod:input_type -> k3sm.runtime.v1.UpdatePodRequest
-	77,  // 141: k3sm.runtime.v1.Runtime.WatchPodStatus:input_type -> k3sm.runtime.v1.WatchPodStatusRequest
-	79,  // 142: k3sm.runtime.v1.Runtime.GetPodStatus:input_type -> k3sm.runtime.v1.GetPodStatusRequest
-	81,  // 143: k3sm.runtime.v1.Runtime.GetLogs:input_type -> k3sm.runtime.v1.GetLogsRequest
-	83,  // 144: k3sm.runtime.v1.Runtime.Exec:input_type -> k3sm.runtime.v1.ExecRequest
-	86,  // 145: k3sm.runtime.v1.Runtime.Attach:input_type -> k3sm.runtime.v1.AttachRequest
-	88,  // 146: k3sm.runtime.v1.Runtime.PortForward:input_type -> k3sm.runtime.v1.PortForwardRequest
-	91,  // 147: k3sm.runtime.v1.Runtime.GetRuntimeInfo:input_type -> k3sm.runtime.v1.GetRuntimeInfoRequest
-	95,  // 148: k3sm.runtime.v1.Runtime.ListPodStats:input_type -> k3sm.runtime.v1.ListPodStatsRequest
-	97,  // 149: k3sm.runtime.v1.Runtime.RestartContainer:input_type -> k3sm.runtime.v1.RestartContainerRequest
-	99,  // 150: k3sm.runtime.v1.Runtime.StartContainer:input_type -> k3sm.runtime.v1.StartContainerRequest
-	101, // 151: k3sm.runtime.v1.Runtime.ReopenContainerLog:input_type -> k3sm.runtime.v1.ReopenContainerLogRequest
-	103, // 152: k3sm.runtime.v1.Runtime.StopContainer:input_type -> k3sm.runtime.v1.StopContainerRequest
-	72,  // 153: k3sm.runtime.v1.Runtime.CreatePod:output_type -> k3sm.runtime.v1.CreatePodResponse
-	74,  // 154: k3sm.runtime.v1.Runtime.DeletePod:output_type -> k3sm.runtime.v1.DeletePodResponse
-	76,  // 155: k3sm.runtime.v1.Runtime.UpdatePod:output_type -> k3sm.runtime.v1.UpdatePodResponse
-	78,  // 156: k3sm.runtime.v1.Runtime.WatchPodStatus:output_type -> k3sm.runtime.v1.PodStatusEvent
-	80,  // 157: k3sm.runtime.v1.Runtime.GetPodStatus:output_type -> k3sm.runtime.v1.GetPodStatusResponse
-	82,  // 158: k3sm.runtime.v1.Runtime.GetLogs:output_type -> k3sm.runtime.v1.LogEntry
-	84,  // 159: k3sm.runtime.v1.Runtime.Exec:output_type -> k3sm.runtime.v1.ExecResponse
-	87,  // 160: k3sm.runtime.v1.Runtime.Attach:output_type -> k3sm.runtime.v1.AttachResponse
-	89,  // 161: k3sm.runtime.v1.Runtime.PortForward:output_type -> k3sm.runtime.v1.PortForwardResponse
-	92,  // 162: k3sm.runtime.v1.Runtime.GetRuntimeInfo:output_type -> k3sm.runtime.v1.GetRuntimeInfoResponse
-	96,  // 163: k3sm.runtime.v1.Runtime.ListPodStats:output_type -> k3sm.runtime.v1.ListPodStatsResponse
-	98,  // 164: k3sm.runtime.v1.Runtime.RestartContainer:output_type -> k3sm.runtime.v1.RestartContainerResponse
-	100, // 165: k3sm.runtime.v1.Runtime.StartContainer:output_type -> k3sm.runtime.v1.StartContainerResponse
-	102, // 166: k3sm.runtime.v1.Runtime.ReopenContainerLog:output_type -> k3sm.runtime.v1.ReopenContainerLogResponse
-	104, // 167: k3sm.runtime.v1.Runtime.StopContainer:output_type -> k3sm.runtime.v1.StopContainerResponse
-	153, // [153:168] is the sub-list for method output_type
-	138, // [138:153] is the sub-list for method input_type
-	138, // [138:138] is the sub-list for extension type_name
-	138, // [138:138] is the sub-list for extension extendee
-	0,   // [0:138] is the sub-list for field type_name
+	28,  // 20: k3sm.runtime.v1.Volume.image:type_name -> k3sm.runtime.v1.ImageVolumeSource
+	27,  // 21: k3sm.runtime.v1.Volume.expose:type_name -> k3sm.runtime.v1.ExposeVolumeSource
+	24,  // 22: k3sm.runtime.v1.ConfigMapVolumeSource.items:type_name -> k3sm.runtime.v1.KeyToPath
+	24,  // 23: k3sm.runtime.v1.SecretVolumeSource.items:type_name -> k3sm.runtime.v1.KeyToPath
+	17,  // 24: k3sm.runtime.v1.DownwardAPIVolumeSource.items:type_name -> k3sm.runtime.v1.DownwardAPIVolumeFile
+	46,  // 25: k3sm.runtime.v1.DownwardAPIVolumeFile.field_ref:type_name -> k3sm.runtime.v1.ObjectFieldSelector
+	19,  // 26: k3sm.runtime.v1.ProjectedVolumeSource.sources:type_name -> k3sm.runtime.v1.VolumeProjection
+	20,  // 27: k3sm.runtime.v1.VolumeProjection.config_map:type_name -> k3sm.runtime.v1.ConfigMapProjection
+	21,  // 28: k3sm.runtime.v1.VolumeProjection.secret:type_name -> k3sm.runtime.v1.SecretProjection
+	22,  // 29: k3sm.runtime.v1.VolumeProjection.downward_api:type_name -> k3sm.runtime.v1.DownwardAPIProjection
+	23,  // 30: k3sm.runtime.v1.VolumeProjection.service_account_token:type_name -> k3sm.runtime.v1.ServiceAccountTokenProjection
+	24,  // 31: k3sm.runtime.v1.ConfigMapProjection.items:type_name -> k3sm.runtime.v1.KeyToPath
+	24,  // 32: k3sm.runtime.v1.SecretProjection.items:type_name -> k3sm.runtime.v1.KeyToPath
+	17,  // 33: k3sm.runtime.v1.DownwardAPIProjection.items:type_name -> k3sm.runtime.v1.DownwardAPIVolumeFile
+	1,   // 34: k3sm.runtime.v1.ImageVolumeSource.pull_policy:type_name -> k3sm.runtime.v1.ImagePullPolicy
+	32,  // 35: k3sm.runtime.v1.Container.env:type_name -> k3sm.runtime.v1.EnvVar
+	33,  // 36: k3sm.runtime.v1.Container.volume_mounts:type_name -> k3sm.runtime.v1.VolumeMount
+	34,  // 37: k3sm.runtime.v1.Container.ports:type_name -> k3sm.runtime.v1.ContainerPort
+	35,  // 38: k3sm.runtime.v1.Container.liveness_probe:type_name -> k3sm.runtime.v1.Probe
+	35,  // 39: k3sm.runtime.v1.Container.readiness_probe:type_name -> k3sm.runtime.v1.Probe
+	35,  // 40: k3sm.runtime.v1.Container.startup_probe:type_name -> k3sm.runtime.v1.Probe
+	41,  // 41: k3sm.runtime.v1.Container.security_context:type_name -> k3sm.runtime.v1.SecurityContext
+	42,  // 42: k3sm.runtime.v1.Container.env_from:type_name -> k3sm.runtime.v1.EnvFromSource
+	0,   // 43: k3sm.runtime.v1.Container.restart_policy:type_name -> k3sm.runtime.v1.ContainerRestartPolicy
+	52,  // 44: k3sm.runtime.v1.Container.image_platform:type_name -> k3sm.runtime.v1.Platform
+	1,   // 45: k3sm.runtime.v1.Container.image_pull_policy:type_name -> k3sm.runtime.v1.ImagePullPolicy
+	45,  // 46: k3sm.runtime.v1.EnvVar.value_from:type_name -> k3sm.runtime.v1.EnvVarSource
+	36,  // 47: k3sm.runtime.v1.Probe.http_get:type_name -> k3sm.runtime.v1.HTTPGetAction
+	38,  // 48: k3sm.runtime.v1.Probe.tcp_socket:type_name -> k3sm.runtime.v1.TCPSocketAction
+	39,  // 49: k3sm.runtime.v1.Probe.exec:type_name -> k3sm.runtime.v1.ExecAction
+	40,  // 50: k3sm.runtime.v1.HTTPGetAction.port:type_name -> k3sm.runtime.v1.IntOrString
+	37,  // 51: k3sm.runtime.v1.HTTPGetAction.http_headers:type_name -> k3sm.runtime.v1.HTTPHeader
+	40,  // 52: k3sm.runtime.v1.TCPSocketAction.port:type_name -> k3sm.runtime.v1.IntOrString
+	43,  // 53: k3sm.runtime.v1.EnvFromSource.config_map_ref:type_name -> k3sm.runtime.v1.ConfigMapEnvSource
+	44,  // 54: k3sm.runtime.v1.EnvFromSource.secret_ref:type_name -> k3sm.runtime.v1.SecretEnvSource
+	46,  // 55: k3sm.runtime.v1.EnvVarSource.field_ref:type_name -> k3sm.runtime.v1.ObjectFieldSelector
+	47,  // 56: k3sm.runtime.v1.EnvVarSource.config_map_key_ref:type_name -> k3sm.runtime.v1.ConfigMapKeySelector
+	48,  // 57: k3sm.runtime.v1.EnvVarSource.secret_key_ref:type_name -> k3sm.runtime.v1.SecretKeySelector
+	2,   // 58: k3sm.runtime.v1.SandboxProfile.backend:type_name -> k3sm.runtime.v1.SandboxBackend
+	51,  // 59: k3sm.runtime.v1.ImageManifest.config:type_name -> k3sm.runtime.v1.Descriptor
+	51,  // 60: k3sm.runtime.v1.ImageManifest.layers:type_name -> k3sm.runtime.v1.Descriptor
+	108, // 61: k3sm.runtime.v1.ImageManifest.annotations:type_name -> k3sm.runtime.v1.ImageManifest.AnnotationsEntry
+	52,  // 62: k3sm.runtime.v1.ImageManifest.platform:type_name -> k3sm.runtime.v1.Platform
+	109, // 63: k3sm.runtime.v1.Descriptor.annotations:type_name -> k3sm.runtime.v1.Descriptor.AnnotationsEntry
+	52,  // 64: k3sm.runtime.v1.Descriptor.platform:type_name -> k3sm.runtime.v1.Platform
+	4,   // 65: k3sm.runtime.v1.PodStatus.phase:type_name -> k3sm.runtime.v1.PodPhase
+	54,  // 66: k3sm.runtime.v1.PodStatus.conditions:type_name -> k3sm.runtime.v1.PodCondition
+	111, // 67: k3sm.runtime.v1.PodStatus.start_time:type_name -> google.protobuf.Timestamp
+	55,  // 68: k3sm.runtime.v1.PodStatus.init_container_statuses:type_name -> k3sm.runtime.v1.ContainerStatus
+	55,  // 69: k3sm.runtime.v1.PodStatus.container_statuses:type_name -> k3sm.runtime.v1.ContainerStatus
+	55,  // 70: k3sm.runtime.v1.PodStatus.ephemeral_container_statuses:type_name -> k3sm.runtime.v1.ContainerStatus
+	5,   // 71: k3sm.runtime.v1.PodCondition.status:type_name -> k3sm.runtime.v1.ConditionStatus
+	111, // 72: k3sm.runtime.v1.PodCondition.last_probe_time:type_name -> google.protobuf.Timestamp
+	111, // 73: k3sm.runtime.v1.PodCondition.last_transition_time:type_name -> google.protobuf.Timestamp
+	60,  // 74: k3sm.runtime.v1.ContainerStatus.state:type_name -> k3sm.runtime.v1.ContainerState
+	60,  // 75: k3sm.runtime.v1.ContainerStatus.last_termination_state:type_name -> k3sm.runtime.v1.ContainerState
+	57,  // 76: k3sm.runtime.v1.ContainerStatus.volume_mounts:type_name -> k3sm.runtime.v1.VolumeMountStatus
+	58,  // 77: k3sm.runtime.v1.ContainerStatus.user:type_name -> k3sm.runtime.v1.ContainerUser
+	56,  // 78: k3sm.runtime.v1.ContainerStatus.image_pull:type_name -> k3sm.runtime.v1.ImagePullOutcome
+	66,  // 79: k3sm.runtime.v1.ContainerStatus.resources:type_name -> k3sm.runtime.v1.ResourceRequirements
+	65,  // 80: k3sm.runtime.v1.ContainerStatus.allocated_resources:type_name -> k3sm.runtime.v1.ResourceList
+	112, // 81: k3sm.runtime.v1.ImagePullOutcome.duration:type_name -> google.protobuf.Duration
+	59,  // 82: k3sm.runtime.v1.ContainerUser.linux:type_name -> k3sm.runtime.v1.LinuxContainerUser
+	61,  // 83: k3sm.runtime.v1.ContainerState.waiting:type_name -> k3sm.runtime.v1.ContainerStateWaiting
+	62,  // 84: k3sm.runtime.v1.ContainerState.running:type_name -> k3sm.runtime.v1.ContainerStateRunning
+	63,  // 85: k3sm.runtime.v1.ContainerState.terminated:type_name -> k3sm.runtime.v1.ContainerStateTerminated
+	9,   // 86: k3sm.runtime.v1.ContainerStateWaiting.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
+	111, // 87: k3sm.runtime.v1.ContainerStateRunning.started_at:type_name -> google.protobuf.Timestamp
+	111, // 88: k3sm.runtime.v1.ContainerStateTerminated.started_at:type_name -> google.protobuf.Timestamp
+	111, // 89: k3sm.runtime.v1.ContainerStateTerminated.finished_at:type_name -> google.protobuf.Timestamp
+	110, // 90: k3sm.runtime.v1.ResourceList.quantities:type_name -> k3sm.runtime.v1.ResourceList.QuantitiesEntry
+	65,  // 91: k3sm.runtime.v1.ResourceRequirements.limits:type_name -> k3sm.runtime.v1.ResourceList
+	65,  // 92: k3sm.runtime.v1.ResourceRequirements.requests:type_name -> k3sm.runtime.v1.ResourceList
+	111, // 93: k3sm.runtime.v1.PodStats.timestamp:type_name -> google.protobuf.Timestamp
+	70,  // 94: k3sm.runtime.v1.PodStats.cpu:type_name -> k3sm.runtime.v1.CPUStats
+	71,  // 95: k3sm.runtime.v1.PodStats.memory:type_name -> k3sm.runtime.v1.MemoryStats
+	69,  // 96: k3sm.runtime.v1.PodStats.containers:type_name -> k3sm.runtime.v1.ContainerStats
+	68,  // 97: k3sm.runtime.v1.PodStats.process:type_name -> k3sm.runtime.v1.ProcessStats
+	111, // 98: k3sm.runtime.v1.ContainerStats.timestamp:type_name -> google.protobuf.Timestamp
+	70,  // 99: k3sm.runtime.v1.ContainerStats.cpu:type_name -> k3sm.runtime.v1.CPUStats
+	71,  // 100: k3sm.runtime.v1.ContainerStats.memory:type_name -> k3sm.runtime.v1.MemoryStats
+	111, // 101: k3sm.runtime.v1.CPUStats.timestamp:type_name -> google.protobuf.Timestamp
+	111, // 102: k3sm.runtime.v1.MemoryStats.timestamp:type_name -> google.protobuf.Timestamp
+	10,  // 103: k3sm.runtime.v1.CreatePodRequest.pod:type_name -> k3sm.runtime.v1.PodBox
+	53,  // 104: k3sm.runtime.v1.CreatePodResponse.status:type_name -> k3sm.runtime.v1.PodStatus
+	113, // 105: k3sm.runtime.v1.CreatePodResponse.error:type_name -> google.rpc.Status
+	9,   // 106: k3sm.runtime.v1.CreatePodResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
+	113, // 107: k3sm.runtime.v1.DeletePodResponse.error:type_name -> google.rpc.Status
+	9,   // 108: k3sm.runtime.v1.DeletePodResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
+	10,  // 109: k3sm.runtime.v1.UpdatePodRequest.pod:type_name -> k3sm.runtime.v1.PodBox
+	53,  // 110: k3sm.runtime.v1.UpdatePodResponse.status:type_name -> k3sm.runtime.v1.PodStatus
+	113, // 111: k3sm.runtime.v1.UpdatePodResponse.error:type_name -> google.rpc.Status
+	9,   // 112: k3sm.runtime.v1.UpdatePodResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
+	7,   // 113: k3sm.runtime.v1.PodStatusEvent.type:type_name -> k3sm.runtime.v1.PodStatusEventType
+	53,  // 114: k3sm.runtime.v1.PodStatusEvent.status:type_name -> k3sm.runtime.v1.PodStatus
+	53,  // 115: k3sm.runtime.v1.GetPodStatusResponse.status:type_name -> k3sm.runtime.v1.PodStatus
+	113, // 116: k3sm.runtime.v1.GetPodStatusResponse.error:type_name -> google.rpc.Status
+	111, // 117: k3sm.runtime.v1.GetLogsRequest.since_time:type_name -> google.protobuf.Timestamp
+	111, // 118: k3sm.runtime.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
+	8,   // 119: k3sm.runtime.v1.LogEntry.stream:type_name -> k3sm.runtime.v1.LogStream
+	91,  // 120: k3sm.runtime.v1.ExecRequest.resize:type_name -> k3sm.runtime.v1.TerminalSize
+	86,  // 121: k3sm.runtime.v1.ExecResponse.exit:type_name -> k3sm.runtime.v1.ExecResult
+	113, // 122: k3sm.runtime.v1.ExecResult.error:type_name -> google.rpc.Status
+	91,  // 123: k3sm.runtime.v1.AttachRequest.resize:type_name -> k3sm.runtime.v1.TerminalSize
+	86,  // 124: k3sm.runtime.v1.AttachResponse.exit:type_name -> k3sm.runtime.v1.ExecResult
+	113, // 125: k3sm.runtime.v1.PortForwardResponse.error:type_name -> google.rpc.Status
+	95,  // 126: k3sm.runtime.v1.GetRuntimeInfoResponse.conditions:type_name -> k3sm.runtime.v1.RuntimeCondition
+	94,  // 127: k3sm.runtime.v1.GetRuntimeInfoResponse.gpu:type_name -> k3sm.runtime.v1.GPUFacts
+	5,   // 128: k3sm.runtime.v1.RuntimeCondition.status:type_name -> k3sm.runtime.v1.ConditionStatus
+	67,  // 129: k3sm.runtime.v1.ListPodStatsResponse.pod_stats:type_name -> k3sm.runtime.v1.PodStats
+	55,  // 130: k3sm.runtime.v1.RestartContainerResponse.status:type_name -> k3sm.runtime.v1.ContainerStatus
+	113, // 131: k3sm.runtime.v1.RestartContainerResponse.error:type_name -> google.rpc.Status
+	9,   // 132: k3sm.runtime.v1.RestartContainerResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
+	55,  // 133: k3sm.runtime.v1.StartContainerResponse.status:type_name -> k3sm.runtime.v1.ContainerStatus
+	113, // 134: k3sm.runtime.v1.StartContainerResponse.error:type_name -> google.rpc.Status
+	9,   // 135: k3sm.runtime.v1.StartContainerResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
+	55,  // 136: k3sm.runtime.v1.StopContainerResponse.status:type_name -> k3sm.runtime.v1.ContainerStatus
+	113, // 137: k3sm.runtime.v1.StopContainerResponse.error:type_name -> google.rpc.Status
+	9,   // 138: k3sm.runtime.v1.StopContainerResponse.failure_reason:type_name -> k3sm.runtime.v1.FailureReason
+	72,  // 139: k3sm.runtime.v1.Runtime.CreatePod:input_type -> k3sm.runtime.v1.CreatePodRequest
+	74,  // 140: k3sm.runtime.v1.Runtime.DeletePod:input_type -> k3sm.runtime.v1.DeletePodRequest
+	76,  // 141: k3sm.runtime.v1.Runtime.UpdatePod:input_type -> k3sm.runtime.v1.UpdatePodRequest
+	78,  // 142: k3sm.runtime.v1.Runtime.WatchPodStatus:input_type -> k3sm.runtime.v1.WatchPodStatusRequest
+	80,  // 143: k3sm.runtime.v1.Runtime.GetPodStatus:input_type -> k3sm.runtime.v1.GetPodStatusRequest
+	82,  // 144: k3sm.runtime.v1.Runtime.GetLogs:input_type -> k3sm.runtime.v1.GetLogsRequest
+	84,  // 145: k3sm.runtime.v1.Runtime.Exec:input_type -> k3sm.runtime.v1.ExecRequest
+	87,  // 146: k3sm.runtime.v1.Runtime.Attach:input_type -> k3sm.runtime.v1.AttachRequest
+	89,  // 147: k3sm.runtime.v1.Runtime.PortForward:input_type -> k3sm.runtime.v1.PortForwardRequest
+	92,  // 148: k3sm.runtime.v1.Runtime.GetRuntimeInfo:input_type -> k3sm.runtime.v1.GetRuntimeInfoRequest
+	96,  // 149: k3sm.runtime.v1.Runtime.ListPodStats:input_type -> k3sm.runtime.v1.ListPodStatsRequest
+	98,  // 150: k3sm.runtime.v1.Runtime.RestartContainer:input_type -> k3sm.runtime.v1.RestartContainerRequest
+	100, // 151: k3sm.runtime.v1.Runtime.StartContainer:input_type -> k3sm.runtime.v1.StartContainerRequest
+	102, // 152: k3sm.runtime.v1.Runtime.ReopenContainerLog:input_type -> k3sm.runtime.v1.ReopenContainerLogRequest
+	104, // 153: k3sm.runtime.v1.Runtime.StopContainer:input_type -> k3sm.runtime.v1.StopContainerRequest
+	73,  // 154: k3sm.runtime.v1.Runtime.CreatePod:output_type -> k3sm.runtime.v1.CreatePodResponse
+	75,  // 155: k3sm.runtime.v1.Runtime.DeletePod:output_type -> k3sm.runtime.v1.DeletePodResponse
+	77,  // 156: k3sm.runtime.v1.Runtime.UpdatePod:output_type -> k3sm.runtime.v1.UpdatePodResponse
+	79,  // 157: k3sm.runtime.v1.Runtime.WatchPodStatus:output_type -> k3sm.runtime.v1.PodStatusEvent
+	81,  // 158: k3sm.runtime.v1.Runtime.GetPodStatus:output_type -> k3sm.runtime.v1.GetPodStatusResponse
+	83,  // 159: k3sm.runtime.v1.Runtime.GetLogs:output_type -> k3sm.runtime.v1.LogEntry
+	85,  // 160: k3sm.runtime.v1.Runtime.Exec:output_type -> k3sm.runtime.v1.ExecResponse
+	88,  // 161: k3sm.runtime.v1.Runtime.Attach:output_type -> k3sm.runtime.v1.AttachResponse
+	90,  // 162: k3sm.runtime.v1.Runtime.PortForward:output_type -> k3sm.runtime.v1.PortForwardResponse
+	93,  // 163: k3sm.runtime.v1.Runtime.GetRuntimeInfo:output_type -> k3sm.runtime.v1.GetRuntimeInfoResponse
+	97,  // 164: k3sm.runtime.v1.Runtime.ListPodStats:output_type -> k3sm.runtime.v1.ListPodStatsResponse
+	99,  // 165: k3sm.runtime.v1.Runtime.RestartContainer:output_type -> k3sm.runtime.v1.RestartContainerResponse
+	101, // 166: k3sm.runtime.v1.Runtime.StartContainer:output_type -> k3sm.runtime.v1.StartContainerResponse
+	103, // 167: k3sm.runtime.v1.Runtime.ReopenContainerLog:output_type -> k3sm.runtime.v1.ReopenContainerLogResponse
+	105, // 168: k3sm.runtime.v1.Runtime.StopContainer:output_type -> k3sm.runtime.v1.StopContainerResponse
+	154, // [154:169] is the sub-list for method output_type
+	139, // [139:154] is the sub-list for method input_type
+	139, // [139:139] is the sub-list for extension type_name
+	139, // [139:139] is the sub-list for extension extendee
+	0,   // [0:139] is the sub-list for field type_name
 }
 
 func init() { file_runtime_v1_runtime_proto_init() }
@@ -9085,7 +9184,7 @@ func file_runtime_v1_runtime_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_runtime_v1_runtime_proto_rawDesc), len(file_runtime_v1_runtime_proto_rawDesc)),
 			NumEnums:      10,
-			NumMessages:   100,
+			NumMessages:   101,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
