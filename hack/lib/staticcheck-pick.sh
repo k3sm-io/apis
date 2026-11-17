@@ -14,7 +14,7 @@ pick_staticcheck() {
 	local sc_seen="" sc_cands="" sc_ver c
 	local sc_gopath
 	sc_gopath="$(go env GOPATH)"
-	local sc_hint="go install honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}; or, beside another pin: GOBIN=<tmp> go install honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION} && mv <tmp>/staticcheck ${sc_gopath}/bin/staticcheck-${STATICCHECK_VERSION}"
+	local sc_hint="runs in a k3sm pod, never installed on the host (containers only, CONTRIBUTING.md); the pinned build in the pod: go install honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}; or, beside another pin: GOBIN=<tmp> go install honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION} && mv <tmp>/staticcheck ${sc_gopath}/bin/staticcheck-${STATICCHECK_VERSION}"
 	for c in "${sc_gopath}/bin/staticcheck-${STATICCHECK_VERSION}" "$(command -v staticcheck 2>/dev/null || true)" "${sc_gopath}/bin/staticcheck"; do
 		[ -n "$c" ] && [ -x "$c" ] || continue
 		case $'\n'"${sc_cands}"$'\n' in *$'\n'"${c}"$'\n'*) continue ;; esac
