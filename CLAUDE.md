@@ -1,5 +1,12 @@
 # apis — k3sm shared contracts
 
+@.claude/rules/native-builds.md
+
+Use the `yurei build` queue via the runtime's executable absolute `YUREI_BIN`; verify native pod placement.
+Preserve BypassGuard and every real human gate; this policy never widens credential, money, release or irreversible authority.
+
+All build and test examples below run through the approved native Darwin pod route; older host exceptions are superseded.
+
 Module **`k3sm.io/apis`**. The shared-contracts module for k3sm: gRPC protos + generated Go,
 cross-repo Go types (PodBox spec, OCI image manifest), and CRD types.
 **Depends on nothing in `k3sm.io/*`** — it exists to break import cycles between `runtimed`,
