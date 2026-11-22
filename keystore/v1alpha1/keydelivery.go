@@ -19,11 +19,9 @@ package keystorev1alpha1
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-)
 
-// DefaultDataKey is the Secret data key a KeyDelivery writes when
-// Spec.DataKey is omitted (the CRD defaults it).
-const DefaultDataKey = "value"
+	"k3sm.io/apis/keystore/credential"
+)
 
 // The KeyDelivery condition types. Published so no consumer spells the
 // strings.
@@ -32,11 +30,16 @@ const (
 	// this declaration.
 	ConditionAuthorized = "Authorized"
 	// ConditionReady reports whether the target Secret holds the entry's
-	// current version.
+	// current version: Ready means delivered. It does not change on expiry or
+	// revocation; health readers read ConditionCredentialValid.
 	ConditionReady = "Ready"
 	// ConditionSecretRetained reports whether a labelled Secret of this object
 	// stays while Authorized is Unknown or False.
 	ConditionSecretRetained = "SecretRetained"
+	// ConditionCredentialValid reports the delivered credential's health,
+	// only for kinds with an expiry (token, oauth); its reasons are
+	// credential.CredentialValidReasons.
+	ConditionCredentialValid = credential.ConditionCredentialValid
 )
 
 // The closed set of KeyDelivery condition reasons. Each condition carries
@@ -72,6 +75,9 @@ const (
 	// ReasonSecretClaimed (Ready=False): an older KeyDelivery owns the target
 	// Secret; one declaration per target Secret.
 	ReasonSecretClaimed = "SecretClaimed"
+	// ReasonProjectionInvalid (Ready=False): an item names a field the
+	// entry's kind does not have; any existing Secret is left untouched.
+	ReasonProjectionInvalid = credential.ReasonProjectionInvalid
 	// ReasonEncryptionOff (Ready=False): secrets encryption is off.
 	ReasonEncryptionOff = "EncryptionOff"
 	// ReasonUserScopeOff (Ready=False, SecretRetained=True): more than one
@@ -105,12 +111,13 @@ func ConditionReasons() map[string][]string {
 		},
 		ConditionReady: {
 			ReasonPending, ReasonDelivered, ReasonNotAuthorized, ReasonSecretExists,
-			ReasonSecretClaimed, ReasonEncryptionOff, ReasonUserScopeOff,
+			ReasonSecretClaimed, ReasonProjectionInvalid, ReasonEncryptionOff, ReasonUserScopeOff,
 		},
 		ConditionSecretRetained: {
 			ReasonDeletePending, ReasonUnowned, ReasonIndeterminate, ReasonLabelRemoved,
 			ReasonUserScopeOff, ReasonOwnerUnresolvable, ReasonNoneRetained,
 		},
+		ConditionCredentialValid: credential.CredentialValidReasons(),
 	}
 }
 
@@ -135,9 +142,11 @@ type KeyDeliverySpec struct {
 	Entry string `json:"entry"`
 	// SecretName is the target Secret in the object's namespace.
 	SecretName string `json:"secretName"`
-	// DataKey is the key in the Secret's data that holds the value. Empty
-	// means DefaultDataKey (the CRD defaults it).
-	DataKey string `json:"dataKey,omitempty"`
+	// Items are the projections into the Secret's data: each writes one
+	// credential field under one data key. Required with no default (1 to
+	// 8, keys unique); the field set is credential.Fields. Order is not
+	// semantic: a reorder is not a change, any other edit is refused.
+	Items []credential.Item `json:"items"`
 	// RequestedBy is the local principal k3sm:local:<uid> that declared the
 	// delivery; for a user entry it equals k3sm:local: and the entry's uid.
 	// Informational: it authorises nothing by itself.
@@ -150,8 +159,9 @@ type KeyDeliveryStatus struct {
 	// ObservedGeneration is the metadata.generation this status was computed
 	// from.
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-	// Conditions are Authorized, Ready and SecretRetained, one per type, the
-	// source of truth; each carries a reason from ConditionReasons.
+	// Conditions are Authorized, Ready, SecretRetained and (for kinds with
+	// an expiry) CredentialValid, one per type, the source of truth; each
+	// carries a reason from ConditionReasons and its observedGeneration.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// DeliveredVersion is the entry version the Secret last received; 0
 	// before any delivery.
@@ -172,10 +182,13 @@ type KeyDeliveryList struct {
 // slice is copied, or a client-go informer's cached object and a caller's
 // mutation share memory.
 
-// DeepCopyInto copies the receiver into out. KeyDeliverySpec holds no
-// reference types, so a value copy is a deep copy.
+// DeepCopyInto copies the receiver into out.
 func (in *KeyDeliverySpec) DeepCopyInto(out *KeyDeliverySpec) {
 	*out = *in
+	if in.Items != nil {
+		out.Items = make([]credential.Item, len(in.Items))
+		copy(out.Items, in.Items)
+	}
 }
 
 // DeepCopy returns a deep copy of the spec.

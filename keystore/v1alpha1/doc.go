@@ -23,25 +23,31 @@ limitations under the License.
 // Spec.Entry names the entry (user/<uid>/<name>, the grammar of
 // k3sm.io/apis/keystore/entry; a system entry is refused, since a system entry
 // reaches a namespace only through root's deliver). Spec.SecretName is the
-// target Secret, Spec.DataKey the key in its data (defaulted to "value"), and
-// Spec.RequestedBy the local principal k3sm:local:<uid> that declared it,
-// which for a user entry must name the entry's own uid. All four are required
-// or defaulted, and all four are immutable after create through CRD CEL
-// transition rules (self == oldSelf), so the CRD holds its shape without an
-// admission policy. A field present from the first write is covered for the
-// object's whole life; that is why none of them is optional.
+// target Secret. Spec.Items are the projections: each writes one credential
+// field (k3sm.io/apis/keystore/credential, which no refresh field is in)
+// under one Secret data key; there is no default, because the apiserver
+// cannot see the entry's kind. Spec.RequestedBy is the local principal
+// k3sm:local:<uid> that declared it, which for a user entry must name the
+// entry's own uid. All four are required, and all four are immutable after
+// create through CRD CEL transition rules (self == oldSelf; for Items a
+// map comparison, so a reorder is not a change), so the CRD holds its shape
+// without an admission policy. A transition rule does not run when the old
+// value is absent; that is why none of them is optional.
 //
 // # Status: conditions first
 //
 // The status subresource is on. Status.Conditions (Authorized, Ready,
-// SecretRetained; one per type) are the source of truth, with
+// SecretRetained, and CredentialValid for kinds with an expiry; one per type,
+// each with its observedGeneration) are the source of truth, with
 // Status.ObservedGeneration and Status.DeliveredVersion beside them. Status
 // never carries a value or a fingerprint of one. The condition reasons are a
 // closed set, listed in the CRD schema description and as the Reason*
 // constants here; a reader treats a reason it does not know as a generic
 // failure of the condition carrying it, so a reason added later breaks no
 // reader. "No such entry" and "not yours" share one reason,
-// ReasonEntryUnavailable, so status reveals nothing about existence.
+// ReasonEntryUnavailable, so status reveals nothing about existence. Ready
+// means delivered: it does not change on expiry or revocation, and health
+// readers read CredentialValid.
 //
 // # Neither the schema nor admission is the authority
 //

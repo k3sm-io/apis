@@ -25,6 +25,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"k3sm.io/apis/keystore/credential"
 )
 
 // sampleKeyDelivery sets every field, so the deep-copy and wire checks cover
@@ -34,9 +36,12 @@ func sampleKeyDelivery() *KeyDelivery {
 		TypeMeta:   metav1.TypeMeta{APIVersion: "keystore.k3sm.io/v1alpha1", Kind: "KeyDelivery"},
 		ObjectMeta: metav1.ObjectMeta{Name: "claude", Namespace: "agents", Generation: 1},
 		Spec: KeyDeliverySpec{
-			Entry:       "user/501/claude-a",
-			SecretName:  "claude-token",
-			DataKey:     "token",
+			Entry:      "user/501/claude-a",
+			SecretName: "claude-token",
+			Items: []credential.Item{
+				{Field: credential.FieldAccessToken, Key: "access_token"},
+				{Field: credential.FieldAccessExpiresAt, Key: "access_expires_at"},
+			},
 			RequestedBy: "k3sm:local:501",
 		},
 		Status: KeyDeliveryStatus{
@@ -82,7 +87,7 @@ func TestKeyDeliveryWireNames(t *testing.T) {
 	if err := json.Unmarshal(b, &m); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"entry", "secretName", "dataKey", "requestedBy"} {
+	for _, f := range []string{"entry", "secretName", "items", "requestedBy"} {
 		if _, ok := m.Spec[f]; !ok {
 			t.Errorf("spec.%s missing from the wire form", f)
 		}
@@ -106,6 +111,10 @@ func TestKeyDeliveryDeepCopy(t *testing.T) {
 	if in.Status.Conditions[0].Reason != ReasonDelivered {
 		t.Error("deep copy shares Conditions")
 	}
+	out.Spec.Items[0].Key = "changed"
+	if in.Spec.Items[0].Key != "access_token" {
+		t.Error("deep copy shares Items")
+	}
 	list := &KeyDeliveryList{Items: []KeyDelivery{*sampleKeyDelivery()}}
 	lc, ok := list.DeepCopyObject().(*KeyDeliveryList)
 	if !ok || !reflect.DeepEqual(list, lc) {
@@ -125,9 +134,10 @@ func TestKeyDeliveryDeepCopy(t *testing.T) {
 func TestConditionReasonsClosedSet(t *testing.T) {
 	t.Parallel()
 	want := map[string][]string{
-		"Authorized":     {"Authorized", "EntryUnavailable", "NotRecorded", "NotAuthorized", "Indeterminate"},
-		"Ready":          {"Pending", "Delivered", "NotAuthorized", "SecretExists", "SecretClaimed", "EncryptionOff", "UserScopeOff"},
-		"SecretRetained": {"DeletePending", "Unowned", "Indeterminate", "LabelRemoved", "UserScopeOff", "OwnerUnresolvable", "NoneRetained"},
+		"Authorized":      {"Authorized", "EntryUnavailable", "NotRecorded", "NotAuthorized", "Indeterminate"},
+		"Ready":           {"Pending", "Delivered", "NotAuthorized", "SecretExists", "SecretClaimed", "ProjectionInvalid", "EncryptionOff", "UserScopeOff"},
+		"SecretRetained":  {"DeletePending", "Unowned", "Indeterminate", "LabelRemoved", "UserScopeOff", "OwnerUnresolvable", "NoneRetained"},
+		"CredentialValid": {"Valid", "Expiring", "RefreshFailing", "Expired", "Revoked", "Indeterminate"},
 	}
 	got := ConditionReasons()
 	if !reflect.DeepEqual(got, want) {

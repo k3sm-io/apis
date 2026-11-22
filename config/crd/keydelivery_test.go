@@ -29,19 +29,30 @@ import (
 	"k3sm.io/apis/keystore/entry"
 )
 
-// keyDeliveryImmutableRule is the transition rule every spec field carries.
+// keyDeliveryImmutableRule is the transition rule every scalar spec field
+// carries.
 const keyDeliveryImmutableRule = "self == oldSelf"
+
+// keyDeliveryItemsImmutableRule is spec.items' transition rule: the plan's
+// map comparison, written out so it holds whether or not the apiserver's CEL
+// equality ignores order on a listType=map list (not provable without an
+// apiserver in this module).
+const keyDeliveryItemsImmutableRule = "size(self) == size(oldSelf) && self.all(i, oldSelf.exists(o, o.key == i.key && o.field == i.field))"
+
+// secretDataKeyPattern is the Kubernetes Secret data-key grammar.
+const secretDataKeyPattern = `^[-._a-zA-Z0-9]+$`
 
 // keyDeliverySpecFields is the reviewable copy of KeyDeliverySpec's wire
 // names, in schema order.
-var keyDeliverySpecFields = []string{"entry", "secretName", "dataKey", "requestedBy"}
+var keyDeliverySpecFields = []string{"entry", "secretName", "items", "requestedBy"}
 
 // keyDeliveryReasons is the reviewable copy of the closed reason set per
 // condition (keystore/v1alpha1 ConditionReasons).
 var keyDeliveryReasons = map[string][]string{
-	"Authorized":     {"Authorized", "EntryUnavailable", "NotRecorded", "NotAuthorized", "Indeterminate"},
-	"Ready":          {"Pending", "Delivered", "NotAuthorized", "SecretExists", "SecretClaimed", "EncryptionOff", "UserScopeOff"},
-	"SecretRetained": {"DeletePending", "Unowned", "Indeterminate", "LabelRemoved", "UserScopeOff", "OwnerUnresolvable", "NoneRetained"},
+	"Authorized":      {"Authorized", "EntryUnavailable", "NotRecorded", "NotAuthorized", "Indeterminate"},
+	"Ready":           {"Pending", "Delivered", "NotAuthorized", "SecretExists", "SecretClaimed", "ProjectionInvalid", "EncryptionOff", "UserScopeOff"},
+	"SecretRetained":  {"DeletePending", "Unowned", "Indeterminate", "LabelRemoved", "UserScopeOff", "OwnerUnresolvable", "NoneRetained"},
+	"CredentialValid": {"Valid", "Expiring", "RefreshFailing", "Expired", "Revoked", "Indeterminate"},
 }
 
 // keyDeliveryVersion decodes the embedded manifest and returns its single
@@ -123,23 +134,20 @@ func TestKeyDeliveryCRDMatchesTheGoTypes(t *testing.T) {
 	if got := rb["maxLength"]; got != int64(len("k3sm:local:4294967295")) {
 		t.Errorf("spec.requestedBy maxLength = %v, want %d", got, len("k3sm:local:4294967295"))
 	}
-	// Kubernetes object-name and Secret-key bounds.
-	for _, tc := range []struct {
-		field, pattern string
-	}{
-		{"secretName", `^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`},
-		{"dataKey", `^[-._a-zA-Z0-9]+$`},
-	} {
-		f := mapAt(t, sp, tc.field)
-		if f["pattern"] != tc.pattern || f["maxLength"] != int64(253) || f["minLength"] != int64(1) {
-			t.Errorf("spec.%s pattern/minLength/maxLength = %v/%v/%v, want %q/1/253", tc.field, f["pattern"], f["minLength"], f["maxLength"], tc.pattern)
-		}
+	// The Kubernetes object-name bound.
+	sn := mapAt(t, sp, "secretName")
+	if sn["pattern"] != `^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$` || sn["maxLength"] != int64(253) || sn["minLength"] != int64(1) {
+		t.Errorf("spec.secretName pattern/minLength/maxLength = %v/%v/%v, want the DNS subdomain grammar/1/253", sn["pattern"], sn["minLength"], sn["maxLength"])
 	}
-	for _, f := range keyDeliverySpecFields {
+	for _, f := range []string{"entry", "secretName", "requestedBy"} {
 		if got := mapAt(t, sp, f)["type"]; got != "string" {
 			t.Errorf("spec.%s type = %v, want string", f, got)
 		}
 	}
+	if got := mapAt(t, sp, "items")["type"]; got != "array" {
+		t.Errorf("spec.items type = %v, want array", got)
+	}
+	assertDeclared(t, "spec.items[]", mapAt(t, sp, "items", "items", "properties"), "field", "key")
 
 	st := mapAt(t, root, "properties", "status", "properties")
 	assertDeclared(t, "status", st, "observedGeneration", "deliveredVersion", "conditions")
@@ -161,11 +169,11 @@ func TestKeyDeliveryCRDMatchesTheGoTypes(t *testing.T) {
 			t.Errorf("status.conditions description does not introduce the %s reasons", cond)
 			continue
 		}
+		// The listing runs to the first sentence end; the prose after it
+		// may name a reason again and must not count as the listing.
 		section := desc[i:]
-		for other := range keyDeliveryReasons {
-			if j := strings.Index(section, other+" - "); other != cond && j > 0 {
-				section = section[:j]
-			}
+		if j := strings.Index(section, ". "); j > 0 {
+			section = section[:j]
 		}
 		for _, r := range reasons {
 			if !regexp.MustCompile(`\b` + r + `\b`).MatchString(section) {
@@ -178,11 +186,12 @@ func TestKeyDeliveryCRDMatchesTheGoTypes(t *testing.T) {
 	}
 }
 
-// TestKeyDeliveryImmutableFields (U18) asserts every spec field carries the
-// transition rule self == oldSelf, and that every field is required or
-// defaulted, without which the rule would not run for a field absent at
-// create. apis has no CEL evaluator, so the rule is pinned by text and its
-// meaning transcribed: an unchanged value passes, a changed one is refused.
+// TestKeyDeliveryImmutableFields (U18) asserts every spec field carries its
+// transition rule (self == oldSelf; the map comparison for items), and that
+// every field is required, without which the rule would not run for a field
+// absent at create. apis has no CEL evaluator, so the rule is pinned by text
+// and its meaning transcribed: an unchanged value passes, a changed one is
+// refused. TestItemsReorderAcceptedChangeRefused covers the items rule.
 func TestKeyDeliveryImmutableFields(t *testing.T) {
 	t.Parallel()
 	v := keyDeliveryVersion(t)
@@ -190,11 +199,15 @@ func TestKeyDeliveryImmutableFields(t *testing.T) {
 	sp := specProps(t, v)
 	for _, f := range keyDeliverySpecFields {
 		node := mapAt(t, sp, f)
+		want := keyDeliveryImmutableRule
+		if f == "items" {
+			want = keyDeliveryItemsImmutableRule
+		}
 		rules, _ := node["x-kubernetes-validations"].([]any)
 		found := 0
 		for _, r := range rules {
 			rule, _ := r.(map[string]any)
-			if rule["rule"] == keyDeliveryImmutableRule {
+			if rule["rule"] == want {
 				found++
 				if rule["message"] != "spec."+f+" is immutable after create" {
 					t.Errorf("spec.%s immutability message = %v", f, rule["message"])
@@ -202,11 +215,10 @@ func TestKeyDeliveryImmutableFields(t *testing.T) {
 			}
 		}
 		if found != 1 {
-			t.Errorf("spec.%s carries %d %q rules, want exactly 1", f, found, keyDeliveryImmutableRule)
+			t.Errorf("spec.%s carries %d %q rules, want exactly 1", f, found, want)
 		}
-		_, defaulted := node["default"]
-		if !hasString(spec["required"], f) && !defaulted {
-			t.Errorf("spec.%s is neither required nor defaulted, so its transition rule would not run for a value set after create", f)
+		if !hasString(spec["required"], f) {
+			t.Errorf("spec.%s is not required, so its transition rule would not run for a value set after create", f)
 		}
 	}
 	immutable := func(self, oldSelf any) bool { return reflect.DeepEqual(self, oldSelf) }
@@ -216,7 +228,7 @@ func TestKeyDeliveryImmutableFields(t *testing.T) {
 	}{
 		{"user/501/a", "user/501/a", true},
 		{"user/501/a", "user/501/b", false},
-		{"value", "token", false},
+		{"secret-a", "secret-b", false},
 		{"k3sm:local:501", "k3sm:local:502", false},
 	} {
 		if got := immutable(tc.new, tc.old); got != tc.ok {
@@ -225,19 +237,21 @@ func TestKeyDeliveryImmutableFields(t *testing.T) {
 	}
 }
 
-// TestKeyDeliveryRequiredFields (U18) pins the required set and the dataKey
-// default.
+// TestKeyDeliveryRequiredFields (U18) pins the required set, and that no
+// spec field carries a default.
 func TestKeyDeliveryRequiredFields(t *testing.T) {
 	t.Parallel()
 	v := keyDeliveryVersion(t)
 	spec := mapAt(t, v, "schema", "openAPIV3Schema", "properties", "spec")
 	req, _ := spec["required"].([]any)
-	want := []any{"entry", "secretName", "requestedBy"}
+	want := []any{"entry", "secretName", "items", "requestedBy"}
 	if !reflect.DeepEqual(req, want) {
 		t.Errorf("spec.required = %v, want %v", req, want)
 	}
-	if got := mapAt(t, specProps(t, v), "dataKey")["default"]; got != "value" {
-		t.Errorf("spec.dataKey default = %v, want value", got)
+	for f, node := range specProps(t, v) {
+		if d, ok := node.(map[string]any)["default"]; ok {
+			t.Errorf("spec.%s default = %v, want none", f, d)
+		}
 	}
 }
 
@@ -285,7 +299,7 @@ func TestKeyDeliveryConditionsListMap(t *testing.T) {
 		t.Errorf("status.conditions list-map-keys = %v, want [type]", got)
 	}
 	items := mapAt(t, c, "items")
-	for _, f := range []string{"type", "status", "lastTransitionTime", "reason"} {
+	for _, f := range []string{"type", "status", "observedGeneration", "lastTransitionTime", "reason"} {
 		if !hasString(items["required"], f) {
 			t.Errorf("status.conditions[].required does not include %s", f)
 		}
