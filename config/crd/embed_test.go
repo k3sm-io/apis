@@ -603,6 +603,7 @@ func TestNoGlobEmbed(t *testing.T) {
 		"updates.k3sm.io_updatepolicies.yaml":    false,
 		"budget.k3sm.io_nodebudgets.yaml":        false,
 		"budget.k3sm.io_nodebudgetpolicies.yaml": false,
+		"keystore.k3sm.io_keydeliveries.yaml":    false,
 	}
 
 	var directives []string
@@ -710,6 +711,9 @@ func TestNoGlobEmbed(t *testing.T) {
 	}
 	if strings.Contains(string(NodeBudgetPolicyCRD()), NodeBudgetCRDName) {
 		t.Error("NodeBudgetPolicyCRD returns the NodeBudget CRD")
+	}
+	if !strings.Contains(string(KeyDeliveryCRD()), KeyDeliveryCRDName) {
+		t.Error("KeyDeliveryCRD does not return the KeyDelivery CRD")
 	}
 }
 
@@ -858,6 +862,7 @@ func TestEmbeddedCRDSetHasNoDirectLink(t *testing.T) {
 		"UpdatePolicyCRD":     UpdatePolicyCRD(),
 		"NodeBudgetCRD":       NodeBudgetCRD(),
 		"NodeBudgetPolicyCRD": NodeBudgetPolicyCRD(),
+		"KeyDeliveryCRD":      KeyDeliveryCRD(),
 	} {
 		if strings.Contains(string(b), name) {
 			t.Errorf("%s returns the removed DirectLink CRD", acc)

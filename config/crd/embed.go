@@ -53,6 +53,11 @@ limitations under the License.
 // The two budget.k3sm.io manifests (NodeBudget and NodeBudgetPolicy) are the
 // alpha budget.k3sm.io/v1alpha1 node budget contract: the per-node published
 // budget and the one policy object. Neither carries labels.
+//
+// The KeyDelivery manifest (keystore.k3sm.io_keydeliveries.yaml) is the alpha
+// keystore.k3sm.io/v1alpha1 namespaced declaration that delivers one
+// user-scope keystore entry into its namespace as a Secret; its entry pattern
+// is the grammar of k3sm.io/apis/keystore/entry.
 package crd
 
 import (
@@ -217,4 +222,21 @@ var nodeBudgetPolicyCRDYAML string
 // It returns a fresh copy on every call, for the same reason as MLXModelCRD.
 func NodeBudgetPolicyCRD() []byte {
 	return []byte(nodeBudgetPolicyCRDYAML)
+}
+
+// KeyDeliveryCRDName is the metadata.name of the KeyDelivery
+// CustomResourceDefinition (the <plural>.<group> form the API server
+// addresses it by). Published so a consumer waiting on or reading back the
+// CRD does not spell the string.
+const KeyDeliveryCRDName = "keydeliveries.keystore.k3sm.io"
+
+//go:embed keystore.k3sm.io_keydeliveries.yaml
+var keyDeliveryCRDYAML string
+
+// KeyDeliveryCRD returns the keystore.k3sm.io/v1alpha1 KeyDelivery
+// CustomResourceDefinition manifest as YAML bytes, ready to apply.
+//
+// It returns a fresh copy on every call, for the same reason as MLXModelCRD.
+func KeyDeliveryCRD() []byte {
+	return []byte(keyDeliveryCRDYAML)
 }
