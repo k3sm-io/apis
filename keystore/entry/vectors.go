@@ -46,7 +46,7 @@ func Vectors() []Vector {
 		{"user/1/a", true, true, "the smallest uid"},
 		{"user/4294967295/a", true, true, "the largest uid"},
 		{"user/501/registry.example-token", true, true, "a dotted name"},
-		{"user/501/github.stockkitty-fund", true, true, "a <service>.<account> name"},
+		{"user/501/github.example-org", true, true, "a <service>.<account> name"},
 		{"user/4294967295/" + name253, true, true, "269 bytes, the maxLength"},
 		{"user/4294967295/" + name254, false, false, "one over the name bound and the maxLength"},
 		{"user/1/" + name254, false, false, "under the maxLength, refused by the name-length rule"},
