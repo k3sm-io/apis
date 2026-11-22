@@ -36,6 +36,14 @@ limitations under the License.
 //
 // # Status: conditions first
 //
+// The condition set, including SecretRetained, and the reason table come
+// from the merged keystore design, docs/design/keystore.md in the k3sm
+// repository, section "User scope", subsection "KeyDelivery" (its
+// "Shape" list and reason table), which binds over the milestone plan. The
+// CredentialValid condition and ProjectionInvalid come from the plan's
+// typed-credentials amendment (TR3, TR4), which the design has not yet
+// absorbed.
+//
 // The status subresource is on. Status.Conditions (Authorized, Ready,
 // SecretRetained, and CredentialValid for kinds with an expiry; one per type,
 // each with its observedGeneration) are the source of truth, with

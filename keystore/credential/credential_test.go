@@ -127,11 +127,11 @@ func TestNameSetsClosed(t *testing.T) {
 	if got := Kinds(); !reflect.DeepEqual(got, []Kind{"ed25519", "opaque", "token", "ssh", "oauth"}) {
 		t.Errorf("Kinds() = %v", got)
 	}
-	if ConditionCredentialValid != "CredentialValid" || ReasonProjectionInvalid != "ProjectionInvalid" {
-		t.Error("condition or ProjectionInvalid name changed")
+	if ConditionCredentialValid != "CredentialValid" {
+		t.Error("condition name changed")
 	}
-	if got := CredentialValidReasons(); !reflect.DeepEqual(got, []string{"Valid", "Expiring", "RefreshFailing", "Expired", "Revoked", "Indeterminate"}) {
-		t.Errorf("CredentialValidReasons() = %v", got)
+	if got := Validities(); !reflect.DeepEqual(got, []Validity{"Valid", "Expiring", "RefreshFailing", "Expired", "Revoked", "Indeterminate"}) {
+		t.Errorf("Validities() = %v", got)
 	}
 	wantEvents := map[string]EventType{
 		"CredentialExpiring": "Warning", "CredentialExpired": "Warning", "CredentialRefreshFailing": "Warning",
@@ -143,8 +143,16 @@ func TestNameSetsClosed(t *testing.T) {
 	if got := RefreshStates(); !reflect.DeepEqual(got, []RefreshState{"ok", "failing", "revoked", "off"}) {
 		t.Errorf("RefreshStates() = %v", got)
 	}
-	if LabelDelivery != "k3sm.io/keystore-delivery" || AnnotationVersion != "k3sm.io/keystore-version" {
-		t.Error("metadata keys changed")
+	for got, want := range map[string]string{
+		LabelDelivery:         "k3sm.io/keystore-delivery",
+		LabelValueKeyDelivery: "keydelivery",
+		AnnotationVersion:     "k3sm.io/keystore-version",
+		AnnotationEntry:       "k3sm.io/keystore-entry",
+		FinalizerDelivery:     "keystore.k3sm.io/delivery",
+	} {
+		if got != want {
+			t.Errorf("metadata key = %q, want %q", got, want)
+		}
 	}
 }
 

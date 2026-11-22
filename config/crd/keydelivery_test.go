@@ -106,6 +106,7 @@ func TestKeyDeliveryCRDMatchesTheGoTypes(t *testing.T) {
 		{"Entry", ".spec.entry"},
 		{"Secret", ".spec.secretName"},
 		{"Ready", `.status.conditions[?(@.type=="Ready")].status`},
+		{"Valid", `.status.conditions[?(@.type=="CredentialValid")].status`},
 		{"Age", ".metadata.creationTimestamp"},
 	})
 

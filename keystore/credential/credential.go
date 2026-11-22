@@ -20,7 +20,7 @@ limitations under the License.
 // It owns the credential kinds, the projection field table (which fields of
 // each kind may be delivered into a Secret), the {field, key} item a
 // KeyDelivery and the root-file target both carry, the refresh-owner grammar,
-// the CredentialValid condition reasons, ProjectionInvalid, the Event reasons
+// the CredentialValid condition reasons (Validity), the Event reasons
 // and types, the refresh_state values, and the label and annotation keys on a
 // delivered Secret. Rendering a credential into Secret bytes is not here; it
 // stays in k3sm, and a conformance test there checks the renderer supports
@@ -88,9 +88,10 @@ const (
 	FieldTokenType Field = "tokenType"
 )
 
-// RefreshTokenField names the oauth refresh token. It is NOT a Field and no
-// kind projects it: the KeyDelivery schema refuses it, and it exists here so
-// tests can assert exactly that.
+// RefreshTokenField names the oauth refresh token, for negative tests only:
+// it is never a Field, no kind projects it, and the KeyDelivery schema
+// refuses it. It exists so tests can assert exactly that; never convert it
+// to a Field.
 const RefreshTokenField = "refreshToken"
 
 // MaxFieldLength is the longest Field name the KeyDelivery schema admits.
@@ -178,35 +179,34 @@ func ParseRefreshOwner(s string) (profile string, err error) {
 // does not change on expiry or revocation; health readers read this.
 const ConditionCredentialValid = "CredentialValid"
 
-// The CredentialValid reasons, a closed set. Valid, Expiring and
-// RefreshFailing share status True on purpose: the access token still works
-// in all three, and readers key on the reason.
+// Validity is a CredentialValid condition reason: the closed set below. The
+// wire strings are the reason values on the condition.
+type Validity string
+
+// The CredentialValid reasons. ValidityValid, ValidityExpiring and
+// ValidityRefreshFailing share status True on purpose: the credential still
+// works in all three, and readers key on the reason.
 const (
-	// ReasonValid (True): not expiring, refresh healthy.
-	ReasonValid = "Valid"
-	// ReasonExpiring (True): within the expiring threshold.
-	ReasonExpiring = "Expiring"
-	// ReasonRefreshFailing (True): the last server refresh failed transiently
-	// and the access token is still valid.
-	ReasonRefreshFailing = "RefreshFailing"
-	// ReasonExpired (False): past expiry with no newer version.
-	ReasonExpired = "Expired"
-	// ReasonRevoked (False): the token endpoint answered a revoked code.
-	ReasonRevoked = "Revoked"
-	// ReasonIndeterminate (Unknown): the entry could not be opened.
-	ReasonIndeterminate = "Indeterminate"
+	// ValidityValid (True): not expiring, refresh healthy.
+	ValidityValid Validity = "Valid"
+	// ValidityExpiring (True): within the expiring threshold.
+	ValidityExpiring Validity = "Expiring"
+	// ValidityRefreshFailing (True): the last server refresh failed
+	// transiently and the access token is still valid.
+	ValidityRefreshFailing Validity = "RefreshFailing"
+	// ValidityExpired (False): past expiry with no newer version.
+	ValidityExpired Validity = "Expired"
+	// ValidityRevoked (False): the token endpoint answered a revoked code.
+	ValidityRevoked Validity = "Revoked"
+	// ValidityIndeterminate (Unknown): the entry could not be opened.
+	ValidityIndeterminate Validity = "Indeterminate"
 )
 
-// CredentialValidReasons returns the closed CredentialValid reason set. It
-// returns a fresh slice.
-func CredentialValidReasons() []string {
-	return []string{ReasonValid, ReasonExpiring, ReasonRefreshFailing, ReasonExpired, ReasonRevoked, ReasonIndeterminate}
+// Validities returns the closed CredentialValid reason set. It returns a
+// fresh slice.
+func Validities() []Validity {
+	return []Validity{ValidityValid, ValidityExpiring, ValidityRefreshFailing, ValidityExpired, ValidityRevoked, ValidityIndeterminate}
 }
-
-// ReasonProjectionInvalid is the Ready=False reason when an item names a
-// field the entry's kind does not have; any existing Secret is left
-// untouched.
-const ReasonProjectionInvalid = "ProjectionInvalid"
 
 // EventType is an Event's type.
 type EventType string
@@ -266,12 +266,23 @@ func RefreshStates() []RefreshState {
 	return []RefreshState{RefreshStateOK, RefreshStateFailing, RefreshStateRevoked, RefreshStateOff}
 }
 
-// The metadata keys on a delivered Secret, so a reader (the provider) never
-// imports the keystore itself.
+// The metadata keys on a delivered Secret and its KeyDelivery, so a reader
+// (the provider) never imports the keystore itself.
 const (
 	// LabelDelivery is the label every keystore-delivered Secret carries.
 	LabelDelivery = "k3sm.io/keystore-delivery"
+	// LabelValueKeyDelivery is LabelDelivery's constant value on a Secret a
+	// KeyDelivery wrote. A user entry is not a valid label value, so the
+	// entry goes in AnnotationEntry instead.
+	LabelValueKeyDelivery = "keydelivery"
 	// AnnotationVersion is the annotation holding the delivered entry
 	// version.
 	AnnotationVersion = "k3sm.io/keystore-version"
+	// AnnotationEntry is the owner annotation naming the entry a
+	// KeyDelivery's Secret delivers.
+	AnnotationEntry = "k3sm.io/keystore-entry"
+	// FinalizerDelivery is the finalizer the reconciler adds to a
+	// KeyDelivery: it deletes the owned Secret, then withdraws the sealed
+	// record entry, then drops the finalizer.
+	FinalizerDelivery = "keystore.k3sm.io/delivery"
 )

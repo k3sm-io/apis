@@ -38,7 +38,7 @@ const (
 	ConditionSecretRetained = "SecretRetained"
 	// ConditionCredentialValid reports the delivered credential's health,
 	// only for kinds with an expiry (token, oauth); its reasons are
-	// credential.CredentialValidReasons.
+	// credential.Validities.
 	ConditionCredentialValid = credential.ConditionCredentialValid
 )
 
@@ -59,9 +59,12 @@ const (
 	// definitive denial. On Ready=False it is the one reason for any
 	// authority failure, its message naming the Authorized reason.
 	ReasonNotAuthorized = "NotAuthorized"
-	// ReasonIndeterminate (Authorized=Unknown, SecretRetained=True): an
-	// outcome that is not a definitive one, such as a transient error;
-	// nothing was changed.
+	// ReasonIndeterminate applies to two conditions here: Authorized=Unknown
+	// (an outcome that is not a definitive one, such as a transient error;
+	// nothing was changed) and SecretRetained=True (a labelled Secret stays at
+	// its last version while Authorized is Unknown). The CredentialValid
+	// condition's Unknown reason has the same wire string and is
+	// credential.ValidityIndeterminate.
 	ReasonIndeterminate = "Indeterminate"
 	// ReasonPending (Ready=Unknown): before the first sweep decides, and while
 	// Authorized is Unknown.
@@ -77,7 +80,7 @@ const (
 	ReasonSecretClaimed = "SecretClaimed"
 	// ReasonProjectionInvalid (Ready=False): an item names a field the
 	// entry's kind does not have; any existing Secret is left untouched.
-	ReasonProjectionInvalid = credential.ReasonProjectionInvalid
+	ReasonProjectionInvalid = "ProjectionInvalid"
 	// ReasonEncryptionOff (Ready=False): secrets encryption is off.
 	ReasonEncryptionOff = "EncryptionOff"
 	// ReasonUserScopeOff (Ready=False, SecretRetained=True): more than one
@@ -117,8 +120,17 @@ func ConditionReasons() map[string][]string {
 			ReasonDeletePending, ReasonUnowned, ReasonIndeterminate, ReasonLabelRemoved,
 			ReasonUserScopeOff, ReasonOwnerUnresolvable, ReasonNoneRetained,
 		},
-		ConditionCredentialValid: credential.CredentialValidReasons(),
+		ConditionCredentialValid: validities(),
 	}
+}
+
+// validities returns credential.Validities as reason strings.
+func validities() []string {
+	var out []string
+	for _, v := range credential.Validities() {
+		out = append(out, string(v))
+	}
+	return out
 }
 
 // KeyDelivery declares that one user-scope keystore entry is delivered into
@@ -130,11 +142,13 @@ type KeyDelivery struct {
 
 	// Spec is the declaration. Every field is immutable after create.
 	Spec KeyDeliverySpec `json:"spec"`
-	// Status is the observed state of the delivery.
+	// Status is the observed state of the delivery. A value, not a pointer,
+	// as on every other CRD type in this module; the zero value is the state
+	// before the reconciler's first write.
 	Status KeyDeliveryStatus `json:"status,omitempty"`
 }
 
-// KeyDeliverySpec is the declaration. Every field is required or defaulted,
+// KeyDeliverySpec is the declaration. Every field is required,
 // and immutable after create (CEL transition rules on the CRD).
 type KeyDeliverySpec struct {
 	// Entry is the scope-qualified entry, user/<uid>/<name>, in the grammar of
@@ -155,6 +169,9 @@ type KeyDeliverySpec struct {
 
 // KeyDeliveryStatus is the observed state of a KeyDelivery, written through
 // the status subresource. It never carries a value or a fingerprint of one.
+//
+// Writers must set ObservedGeneration on every condition: the CRD requires
+// it, and meta.SetStatusCondition does not fill it in.
 type KeyDeliveryStatus struct {
 	// ObservedGeneration is the metadata.generation this status was computed
 	// from.

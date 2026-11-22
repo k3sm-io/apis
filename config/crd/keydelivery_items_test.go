@@ -22,8 +22,32 @@ import (
 	"strings"
 	"testing"
 
+	"k8s.io/apimachinery/pkg/util/validation"
+
 	"k3sm.io/apis/keystore/credential"
 )
+
+// keyRule is spec.items[].key's one CEL rule. With the key's pattern and
+// maxLength it mirrors apimachinery's IsConfigMapKey (k8s.io/apimachinery
+// v0.35.0 pkg/util/validation/validation.go:419, the call to hasChDirPrefix,
+// and :457, hasChDirPrefix: not ".", not "..", not starting with "..").
+const keyRule = "self != '.' && !self.startsWith('..')"
+
+// schemaAdmitsKey reports whether spec.items[].key's schema node admits s:
+// its maxLength, its pattern, and keyRule transcribed (pinned by text).
+func schemaAdmitsKey(t *testing.T, key map[string]any, s string) bool {
+	t.Helper()
+	rules, _ := key["x-kubernetes-validations"].([]any)
+	if len(rules) != 1 || rules[0].(map[string]any)["rule"] != keyRule {
+		t.Fatalf("spec.items[].key rules = %v, want exactly %q; pin the new rule's meaning here", rules, keyRule)
+	}
+	if ml, ok := key["minLength"].(int64); ok && int64(len(s)) < ml {
+		return false
+	}
+	return len(s) <= int(key["maxLength"].(int64)) &&
+		regexp.MustCompile(key["pattern"].(string)).MatchString(s) &&
+		s != "." && !strings.HasPrefix(s, "..")
+}
 
 // kdItem is one spec.items entry, as the transcribed rules see it.
 type kdItem struct{ field, key string }
@@ -47,11 +71,6 @@ func itemsAdmitted(t *testing.T, node map[string]any, items []kdItem) bool {
 	}
 	props := mapAt(t, node, "items", "properties")
 	field, key := mapAt(t, props, "field"), mapAt(t, props, "key")
-	keyRE := regexp.MustCompile(key["pattern"].(string))
-	keyRules, _ := key["x-kubernetes-validations"].([]any)
-	if len(keyRules) != 1 || keyRules[0].(map[string]any)["rule"] != "self != '.' && self != '..'" {
-		t.Fatalf("spec.items[].key rules = %v; pin the new rule's meaning here", keyRules)
-	}
 	seen := map[string]bool{}
 	for _, it := range items {
 		if seen[it.key] {
@@ -61,8 +80,7 @@ func itemsAdmitted(t *testing.T, node map[string]any, items []kdItem) bool {
 		if !hasString(field["enum"], it.field) || int64(len(it.field)) > field["maxLength"].(int64) {
 			return false
 		}
-		if len(it.key) < int(key["minLength"].(int64)) || len(it.key) > int(key["maxLength"].(int64)) ||
-			!keyRE.MatchString(it.key) || it.key == "." || it.key == ".." {
+		if !schemaAdmitsKey(t, key, it.key) {
 			return false
 		}
 	}
@@ -114,8 +132,8 @@ func TestKeyDeliveryItemsSchema(t *testing.T) {
 		t.Errorf("spec.items[].required = %v, want [field key]", it["required"])
 	}
 	key := mapAt(t, it, "properties", "key")
-	if key["pattern"] != secretDataKeyPattern || key["maxLength"] != int64(253) || key["minLength"] != int64(1) {
-		t.Errorf("spec.items[].key pattern/minLength/maxLength = %v/%v/%v", key["pattern"], key["minLength"], key["maxLength"])
+	if key["pattern"] != secretDataKeyPattern || key["maxLength"] != int64(253) {
+		t.Errorf("spec.items[].key pattern/maxLength = %v/%v", key["pattern"], key["maxLength"])
 	}
 	if got := mapAt(t, it, "properties", "field")["maxLength"]; got != int64(credential.MaxFieldLength) || credential.MaxFieldLength != 32 {
 		t.Errorf("spec.items[].field maxLength = %v, want 32", got)
@@ -132,6 +150,7 @@ func TestKeyDeliveryItemsSchema(t *testing.T) {
 		{"duplicate key", []kdItem{{"value", "a"}, {"expiresAt", "a"}}, false},
 		{"bad key", []kdItem{{"value", "a/b"}}, false},
 		{"dot key", []kdItem{{"value", ".."}}, false},
+		{"dot-dot prefix key", []kdItem{{"value", "..data"}}, false},
 		{"long key", []kdItem{{"value", strings.Repeat("k", 254)}}, false},
 		{"max key", []kdItem{{"value", strings.Repeat("k", 253)}}, true},
 		{"unknown field", []kdItem{{"password", "a"}}, false},
@@ -148,6 +167,24 @@ func eightItems() []kdItem {
 		out = append(out, kdItem{"value", "k" + string(rune('0'+i))})
 	}
 	return out
+}
+
+// TestItemKeyMatchesIsConfigMapKey asserts spec.items[].key admits exactly
+// what apimachinery's IsConfigMapKey admits, the kubelet's rule for a Secret
+// data key, over vectors at each of its edges.
+func TestItemKeyMatchesIsConfigMapKey(t *testing.T) {
+	t.Parallel()
+	key := mapAt(t, itemsSchema(t), "items", "properties", "key")
+	for _, s := range []string{
+		"token", "access_token", "id_ed25519.pub", "KEY_NAME", "key-name", "a", ".x", "a..b", "x..",
+		".", "..", "..x", "..data", "...", "", "a/b", "a b", "caf\u00e9", "tok\n",
+		strings.Repeat("k", 253), strings.Repeat("k", 254),
+	} {
+		want := len(validation.IsConfigMapKey(s)) == 0
+		if got := schemaAdmitsKey(t, key, s); got != want {
+			t.Errorf("key %.30q: schema admits %v, IsConfigMapKey admits %v", s, got, want)
+		}
+	}
 }
 
 // TestKeyDeliveryHasNoDataKey (U65) asserts dataKey is gone from the schema.
@@ -264,14 +301,14 @@ func TestKeyDeliveryReasonDescriptions(t *testing.T) {
 	if j := strings.Index(section, ". "); j > 0 {
 		section = section[:j]
 	}
-	for _, r := range credential.CredentialValidReasons() {
-		if !regexp.MustCompile(`\b` + r + `\b`).MatchString(section) {
+	for _, r := range credential.Validities() {
+		if !regexp.MustCompile(`\b` + string(r) + `\b`).MatchString(section) {
 			t.Errorf("the CredentialValid section does not list %s", r)
 		}
 	}
 	for _, s := range []string{
 		"Ready - ",
-		credential.ReasonProjectionInvalid,
+		"ProjectionInvalid",
 		"Ready means delivered. It does not change on expiry or revocation",
 		"health readers read CredentialValid",
 		"Valid, Expiring and RefreshFailing share True",
@@ -279,6 +316,41 @@ func TestKeyDeliveryReasonDescriptions(t *testing.T) {
 		if !strings.Contains(desc, s) {
 			t.Errorf("the conditions description does not say %q", s)
 		}
+	}
+}
+
+// TestConditionItemSchemaMatchesUpstream asserts the condition item schema is
+// controller-gen's output for metav1.Condition (k8s.io/apimachinery v0.35.0
+// pkg/apis/meta/v1/types.go, type Condition's markers), with one deliberate
+// difference: observedGeneration is required, because every KeyDelivery
+// condition carries it.
+func TestConditionItemSchemaMatchesUpstream(t *testing.T) {
+	t.Parallel()
+	got := mapAt(t, keyDeliveryVersion(t), "schema", "openAPIV3Schema", "properties", "status", "properties", "conditions", "items")
+	want := map[string]any{
+		"type":     "object",
+		"required": []any{"lastTransitionTime", "message", "observedGeneration", "reason", "status", "type"},
+		"properties": map[string]any{
+			"lastTransitionTime": map[string]any{"type": "string", "format": "date-time"},
+			"message":            map[string]any{"type": "string", "maxLength": int64(32768)},
+			"observedGeneration": map[string]any{"type": "integer", "format": "int64", "minimum": int64(0)},
+			"reason": map[string]any{
+				"type": "string", "maxLength": int64(1024), "minLength": int64(1),
+				"pattern": `^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$`,
+			},
+			"status": map[string]any{"type": "string", "enum": []any{"True", "False", "Unknown"}},
+			"type": map[string]any{
+				"type": "string", "maxLength": int64(316),
+				"pattern": `^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$`,
+			},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("status.conditions[] schema =\n%v\nwant\n%v", got, want)
+	}
+	desc, _ := mapAt(t, keyDeliveryVersion(t), "schema", "openAPIV3Schema", "properties", "status", "properties", "conditions")["description"].(string)
+	if !strings.Contains(desc, "writers must set observedGeneration on every condition, since meta.SetStatusCondition does not fill it in") {
+		t.Error("the conditions description does not tell writers to set observedGeneration")
 	}
 }
 
